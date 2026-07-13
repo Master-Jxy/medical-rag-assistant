@@ -423,7 +423,7 @@ UPLOAD_DIR=./data
 - 实现 PDF/TXT 解析、递归文本切分、Embedding 向量化及 Chroma 持久化检索。
 - 设计 RAG 问答链路，支持来源引用、知识不足拒答及 SSE 流式响应。
 - 采用 Pydantic 完成接口参数校验，并实现统一异常处理、请求日志和配置隔离。
-- 后续根据真实完成情况补充 MySQL、Redis、JWT、Docker 等内容，未实现的功能不写入简历。
+- 后续根据真实完成情况补充 MySQL、Redis、JWT、Docker 等内容。
 
 ## 16. 当前开发决策
 
