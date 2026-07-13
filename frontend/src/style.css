@@ -1,0 +1,42 @@
+:root {
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  color: #19342f;
+  background: #f2f7f5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --primary: #157a67;
+  --primary-dark: #0d5e50;
+  --ink: #19342f;
+  --muted: #6d817c;
+  --line: #dce8e4;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+a { color: inherit; text-decoration: none; }
+.app-shell { min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }
+.app-header {
+  height: 72px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 max(24px, calc((100vw - 1120px) / 2));
+  background: rgba(255, 255, 255, 0.94); border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-mark {
+  width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px;
+  color: white; font-weight: 800; background: linear-gradient(145deg, var(--primary), #43a58f);
+  box-shadow: 0 8px 18px rgba(21, 122, 103, 0.2);
+}
+.brand strong, .brand small { display: block; }
+.brand strong { letter-spacing: -0.02em; }
+.brand small { margin-top: 2px; color: var(--muted); font-size: 12px; }
+nav { display: flex; align-items: center; gap: 24px; }
+nav a { color: var(--muted); font-size: 14px; }
+nav a.router-link-active { color: var(--primary-dark); font-weight: 700; }
+main { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
+footer { padding: 24px; color: var(--muted); text-align: center; font-size: 13px; }
+
+@media (max-width: 640px) {
+  .app-header { height: 64px; padding: 0 16px; }
+  .brand-mark { width: 36px; height: 36px; }
+  main { width: min(100% - 28px, 1120px); }
+}
