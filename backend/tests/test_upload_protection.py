@@ -3,6 +3,7 @@
 import asyncio
 from datetime import datetime, timezone
 from io import BytesIO
+from types import SimpleNamespace
 
 import pytest
 from fastapi import UploadFile
@@ -26,6 +27,7 @@ from app.services.admin_document_service import (
 from app.services.document_service import DocumentService, get_document_service
 from app.services.rate_limit_service import RateLimitService
 from app.services.upload_protection_service import (
+    ADMIN_UPLOAD_POLICY,
     UploadConcurrencyExceededError,
     UploadProtectionService,
     UploadRateLimitExceededError,
@@ -56,6 +58,31 @@ class NeverCalledLifecycle:
     async def replace_system_document(self, *args, **kwargs):
         self.called = True
         raise AssertionError("受保护拒绝不应进入文档替换生命周期")
+
+
+class RecordingLifecycle:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def create_document(self, upload_file, *args, **kwargs):
+        self.calls.append("create")
+        return self._record("created", upload_file.filename)
+
+    async def replace_system_document(self, _document_id, upload_file):
+        self.calls.append("replace")
+        return self._record("replaced", upload_file.filename)
+
+    @staticmethod
+    def _record(document_id: str, file_name: str):
+        return SimpleNamespace(
+            id=document_id,
+            original_name=file_name,
+            size_bytes=7,
+            chunk_count=1,
+            status="ready",
+            is_system=True,
+            created_at=datetime.now(timezone.utc),
+        )
 
 
 TEST_USER = UserResponse(
@@ -207,10 +234,10 @@ def test_upload_api_returns_stable_429_without_starting_document_lifecycle() -> 
     assert lifecycle.called is False
 
 
-def test_admin_create_and_replace_share_upload_protection() -> None:
+def test_admin_create_and_replace_skip_frequency_limit() -> None:
     protection, _ = build_protection(rate_limit=1)
     asyncio.run(protection.execute(ADMIN_USER.id, lambda: asyncio.sleep(0)))
-    lifecycle = NeverCalledLifecycle()
+    lifecycle = RecordingLifecycle()
     service = AdminDocumentService(
         session=object(),
         settings=protection.settings,
@@ -235,9 +262,64 @@ def test_admin_create_and_replace_share_upload_protection() -> None:
     finally:
         app.dependency_overrides.clear()
 
-    assert [response.status_code for response in responses] == [429, 429]
-    assert all(
-        response.json()["error"]["code"] == "UPLOAD_RATE_LIMITED"
-        for response in responses
+    assert [response.status_code for response in responses] == [201, 200]
+    assert lifecycle.calls == ["create", "replace"]
+
+
+def test_admin_uploads_still_enforce_concurrency_limit() -> None:
+    protection, concurrency = build_protection(rate_limit=1)
+    held = concurrency.acquire("upload:concurrency", ADMIN_USER.id, 1, 600)
+    lifecycle = NeverCalledLifecycle()
+    service = AdminDocumentService(
+        session=object(),
+        settings=protection.settings,
+        vector_store=object(),
+        upload_protection=protection,
     )
+    service.lifecycle = lifecycle
+    app.dependency_overrides[get_current_user] = lambda: ADMIN_USER
+    app.dependency_overrides[get_admin_document_service] = lambda: service
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/admin/documents",
+                files={"file": ("系统.txt", b"content", "text/plain")},
+            )
+    finally:
+        app.dependency_overrides.clear()
+        assert held.lease is not None
+        concurrency.release(held.lease)
+
+    assert response.status_code == 429
+    assert response.json()["error"]["code"] == "UPLOAD_CONCURRENCY_LIMITED"
     assert lifecycle.called is False
+
+
+def test_admin_policy_only_skips_frequency_check() -> None:
+    protection, concurrency = build_protection(rate_limit=1)
+    asyncio.run(protection.execute("admin-a", lambda: asyncio.sleep(0)))
+
+    assert (
+        asyncio.run(
+            protection.execute(
+                "admin-a",
+                lambda: asyncio.sleep(0, result="uploaded"),
+                policy=ADMIN_UPLOAD_POLICY,
+            )
+        )
+        == "uploaded"
+    )
+
+    held = concurrency.acquire("upload:concurrency", "admin-a", 1, 600)
+    try:
+        with pytest.raises(UploadConcurrencyExceededError):
+            asyncio.run(
+                protection.execute(
+                    "admin-a",
+                    lambda: asyncio.sleep(0),
+                    policy=ADMIN_UPLOAD_POLICY,
+                )
+            )
+    finally:
+        assert held.lease is not None
+        concurrency.release(held.lease)

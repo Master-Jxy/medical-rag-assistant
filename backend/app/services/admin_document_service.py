@@ -17,6 +17,7 @@ from app.modules.knowledge.repository import DocumentRepository
 from app.schemas.document import DocumentDeleteResponse, DocumentUploadResponse
 from app.services.document_service import document_to_item, get_vector_store_service
 from app.services.upload_protection_service import (
+    ADMIN_UPLOAD_POLICY,
     UploadProtectionService,
     get_upload_protection_service,
 )
@@ -55,7 +56,11 @@ class AdminDocumentService:
 
         try:
             record = (
-                await self.upload_protection.execute(actor_user_id, create_document)
+                await self.upload_protection.execute(
+                    actor_user_id,
+                    create_document,
+                    policy=ADMIN_UPLOAD_POLICY,
+                )
                 if self.upload_protection is not None and actor_user_id is not None
                 else await create_document()
             )
@@ -89,7 +94,11 @@ class AdminDocumentService:
 
         try:
             record = (
-                await self.upload_protection.execute(actor_user_id, replace_document)
+                await self.upload_protection.execute(
+                    actor_user_id,
+                    replace_document,
+                    policy=ADMIN_UPLOAD_POLICY,
+                )
                 if self.upload_protection is not None and actor_user_id is not None
                 else await replace_document()
             )
