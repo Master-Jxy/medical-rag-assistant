@@ -101,7 +101,7 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      test: ["CMD-SHELL", "test -f /usr/share/nginx/html/index.html && nginx -t"]
       interval: 15s
       timeout: 3s
       retries: 5

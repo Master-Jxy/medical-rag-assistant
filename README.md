@@ -30,12 +30,14 @@
 - 会话问答使用 `Idempotency-Key` 防止网络重试重复创建消息或调用模型，完成结果通过 MySQL 资源 ID 恢复而非缓存完整回答。
 - 最近 3 轮有效上下文、刷新恢复和历史会话管理。
 - 后端 pytest、Vue 组件测试、SSE UTF-8 分片测试和生产构建验证。
+- Docker Compose 编排 MySQL、Redis、FastAPI 和 Vue/Nginx，具备持久卷、健康检查、资源上限和统一公网入口。
+- 已在 Ubuntu 22.04、2 核 2G 阿里云 ECS 完成 HTTP 部署基线与注册、登录、会话链路验收。
 
 尚未实现，不能当作当前功能宣传：
 
 - 前端稳定错误提示与真实 Redis 幂等/冲突验收。
 - 混合检索、Reranker 和正式评估体系。
-- 独立 Agent、Docker Compose 和公网部署。
+- 独立 Agent、HTTPS/域名、自动备份和完整的线上问答验收。
 
 ## 系统架构
 
@@ -214,6 +216,7 @@ npm --prefix frontend run build
 3. `docs/development-roadmap.md` 提供分阶段任务和验收标准。
 4. `docs/technical-design.md` 规定当前与目标架构、权限和模块边界。
 5. `docs/project-vision.md` 规定产品目标和明确不做的内容。
+6. `docs/deployment.md` 记录服务器部署、更新、检查和数据备份步骤。
 
 ## 下一步
 
@@ -224,7 +227,7 @@ Redis 前端提示与真实环境验收
 -> RAG 固定评估集与检索优化
 -> 结构化日志和可观测性
 -> 独立受控的资料整理 Agent
--> Docker 与云端发布
+-> HTTPS、备份恢复与云端完整验收
 ```
 
 每次只做一个可验证的小任务，详细范围以 `docs/handoff.md` 和 `docs/development-roadmap.md` 为准。
