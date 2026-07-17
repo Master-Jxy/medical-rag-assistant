@@ -1,6 +1,7 @@
 import http, { apiBaseUrl, createApiErrorFromResponse } from './http.js'
 import { consumeSseResponse } from './chat.js'
 import { getAuthorizationHeaders, notifyUnauthorized } from '../auth/token.js'
+import { createUuid } from '../utils/uuid.js'
 
 export async function listConversations(limit = 50) {
   const response = await http.get('/conversations', { params: { limit, offset: 0 } })
@@ -32,7 +33,7 @@ export async function stopConversationStream(conversationId, idempotencyKey) {
 }
 
 export async function streamConversation(conversationId, question, options = {}) {
-  const idempotencyKey = options.idempotencyKey || crypto.randomUUID()
+  const idempotencyKey = options.idempotencyKey || createUuid()
   const response = await fetch(
     `${apiBaseUrl}/conversations/${encodeURIComponent(conversationId)}/chat/stream`,
     {

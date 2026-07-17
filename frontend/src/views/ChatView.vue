@@ -10,6 +10,7 @@ import {
   streamConversation,
 } from '../api/conversations.js'
 import { getApiErrorMessage } from '../api/http.js'
+import { createUuid } from '../utils/uuid.js'
 
 const WELCOME_MESSAGE = {
   id: 'welcome',
@@ -148,13 +149,13 @@ async function sendQuestion() {
 
   if (messages.value.length === 1 && messages.value[0].id === 'welcome') messages.value = []
   const userMessage = reactive({
-    id: crypto.randomUUID(),
+    id: createUuid(),
     role: 'user',
     content: cleanedQuestion,
     sources: [],
   })
   const assistantMessage = reactive({
-    id: crypto.randomUUID(),
+    id: createUuid(),
     role: 'assistant',
     content: '',
     sources: [],
@@ -165,7 +166,7 @@ async function sendQuestion() {
   question.value = ''
   sending.value = true
   activeController.value = new AbortController()
-  const idempotencyKey = crypto.randomUUID()
+  const idempotencyKey = createUuid()
   activeIdempotencyKey.value = idempotencyKey
   await scrollToBottom()
 
