@@ -1,8 +1,9 @@
 """请求幂等端口：Redis 只保存短期状态和最终消息资源标识。"""
 
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import Protocol
+
+from app.core.enums import StrEnum
 
 
 class IdempotencyBackendUnavailable(RuntimeError):

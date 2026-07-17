@@ -1,13 +1,13 @@
 """Redis 连接适配器：集中封装创建、ping、失败降级和关闭。"""
 
 import logging
-from enum import StrEnum
 from threading import Lock
 from typing import Callable, Protocol
 
 from redis import Redis
 
 from app.core.config import Settings
+from app.core.enums import StrEnum
 from app.ports.distributed_lock import DistributedLockBackendUnavailable
 from app.ports.idempotency import (
     IdempotencyBackendUnavailable,
