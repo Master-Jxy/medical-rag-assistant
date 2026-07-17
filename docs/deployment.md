@@ -95,7 +95,20 @@ docker compose --env-file deploy/.env ps
 
 Compose 更新不会主动删除命名卷。禁止使用 `docker compose down -v`，该命令会删除数据库、Redis、上传文件和向量库数据。
 
-## 7. 日志和故障定位
+## 7. 设置管理员
+
+用户必须先通过网页完成普通账号注册，再由服务器上的受控命令提升角色。项目不提供公开的管理员注册接口。
+
+```bash
+docker compose --env-file deploy/.env exec backend \
+  python3 -m scripts.set_user_role 已注册邮箱 admin --confirm
+```
+
+成功时输出 `role_updated`。用户随后退出并重新登录，即可看到系统管理入口。必须使用 `python3 -m scripts.set_user_role` 的模块方式；直接运行 `python3 scripts/set_user_role.py` 会因为 Python 导入路径不包含 `/app` 而找不到项目模块。
+
+如需取消管理员权限，将命令中的 `admin` 改为 `user`。不要把真实邮箱、密码或令牌写进本文档和 Git。
+
+## 8. 日志和故障定位
 
 ```bash
 docker compose --env-file deploy/.env logs --tail=100 backend
@@ -110,7 +123,7 @@ free -h
 - Compose 提示变量为空：命令缺少 `--env-file deploy/.env`。
 - 镜像拉取超时：检查 Docker 镜像加速器，不要反复删除已成功拉取的镜像。
 
-## 8. 尚未完成的上线验收
+## 9. 尚未完成的上线验收
 
 - 配置域名和 HTTPS，之后才使用正式密码或向他人开放注册。
 - 建立 MySQL、Chroma、上传文件和 Redis 的备份及恢复脚本。
