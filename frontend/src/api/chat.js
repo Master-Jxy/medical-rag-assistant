@@ -1,4 +1,4 @@
-import http, { apiBaseUrl } from './http.js'
+import http, { apiBaseUrl, createApiErrorFromResponse } from './http.js'
 
 export async function askKnowledgeBase(question, topK = 4) {
   const response = await http.post('/chat', {
@@ -32,6 +32,7 @@ function handleSseEvent(item, handlers) {
   if (item.event === 'token') handlers.onToken?.(item.data.content || '')
   if (item.event === 'sources') handlers.onSources?.(item.data.sources || [])
   if (item.event === 'done') handlers.onDone?.(item.data)
+  if (item.event === 'stopped') handlers.onStopped?.(item.data)
   if (item.event === 'error') throw createUserError(item.data.message || '流式回答失败。')
 }
 
@@ -41,19 +42,34 @@ export async function consumeSseResponse(response, handlers = {}) {
   const reader = response.body.getReader()
   const decoder = new TextDecoder('utf-8')
   let buffer = ''
+  const cancelReader = () => {
+    // AbortController 只保证前端 fetch 停止；显式取消读取器才能尽快通知后端关闭 SSE。
+    reader.cancel().catch(() => {})
+  }
+  handlers.signal?.addEventListener('abort', cancelReader, { once: true })
 
-  while (true) {
-    const { value, done } = await reader.read()
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
 
-    const frames = buffer.split(/\r?\n\r?\n/)
-    buffer = frames.pop() || ''
-    for (const frame of frames) handleSseEvent(parseSseFrame(frame), handlers)
+      const frames = buffer.split(/\r?\n\r?\n/)
+      buffer = frames.pop() || ''
+      for (const frame of frames) handleSseEvent(parseSseFrame(frame), handlers)
 
-    if (done) break
+      if (done) break
+    }
+
+    if (buffer.trim()) handleSseEvent(parseSseFrame(buffer), handlers)
+  } finally {
+    handlers.signal?.removeEventListener('abort', cancelReader)
   }
 
-  if (buffer.trim()) handleSseEvent(parseSseFrame(buffer), handlers)
+  if (handlers.signal?.aborted) {
+    const error = new Error('已停止生成。')
+    error.name = 'AbortError'
+    throw error
+  }
 }
 
 export async function streamKnowledgeBase(question, options = {}) {
@@ -65,14 +81,7 @@ export async function streamKnowledgeBase(question, options = {}) {
   })
 
   if (!response.ok) {
-    let message = `请求失败（HTTP ${response.status}）`
-    try {
-      const data = await response.json()
-      message = data?.error?.message || data?.detail?.[0]?.msg || data?.detail || message
-    } catch {
-      // 非 JSON 错误响应使用上面的通用信息。
-    }
-    throw createUserError(message)
+    throw await createApiErrorFromResponse(response)
   }
 
   await consumeSseResponse(response, options)

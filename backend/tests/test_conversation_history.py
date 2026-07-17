@@ -4,9 +4,11 @@ from sqlalchemy.orm import Session
 
 from app.db.base import Base
 from app.db.session import build_engine
-from app.models import Conversation, Message
+from app.models import Conversation, Message, User
 from app.services.conversation_chat_service import ConversationChatService
 from app.services.rag_service import RagService
+from app.services.generation_lock_service import GenerationLockLease
+from tests.idempotency_helpers import AllowingIdempotency
 
 
 class CapturingRagService:
@@ -18,19 +20,36 @@ class CapturingRagService:
         return f"回答：{question}", []
 
 
+class AllowingGenerationLock:
+    def acquire(self, user_id: str, conversation_id: str) -> GenerationLockLease:
+        return GenerationLockLease("history-lock", "history-owner")
+
+    def release(self, lease: GenerationLockLease) -> None:
+        pass
+
+
 def test_only_latest_three_rounds_are_passed_in_chronological_order() -> None:
     engine = build_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     rag = CapturingRagService()
     try:
         with Session(engine, expire_on_commit=False) as session:
-            conversation = Conversation(title="多轮测试")
-            session.add(conversation)
+            user = User(
+                id="history-rounds-user",
+                email="history-rounds@example.com",
+                password_hash="not-used",
+            )
+            conversation = Conversation(user_id=user.id, title="多轮测试")
+            session.add_all([user, conversation])
             session.commit()
-            service = ConversationChatService(session, rag)
+            service = ConversationChatService(
+                session, rag, AllowingGenerationLock(), AllowingIdempotency()
+            )
 
             for index in range(1, 6):
-                service.ask(conversation.id, f"问题{index}", 2)
+                service.ask(
+                    user.id, conversation.id, f"问题{index}", 2, f"history-{index}"
+                )
 
             assert rag.histories[0] == []
             assert rag.histories[1] == [("user", "问题1"), ("assistant", "回答：问题1")]
@@ -51,7 +70,12 @@ def test_history_excludes_failed_pending_and_applies_character_budget() -> None:
     Base.metadata.create_all(engine)
     try:
         with Session(engine, expire_on_commit=False) as session:
-            conversation = Conversation(title="过滤测试")
+            user = User(
+                id="history-filter-user",
+                email="history-filter@example.com",
+                password_hash="not-used",
+            )
+            conversation = Conversation(user_id=user.id, title="过滤测试")
             conversation.messages.extend(
                 [
                     Message(sequence=1, role="user", content="旧内容", status="completed"),
@@ -62,13 +86,18 @@ def test_history_excludes_failed_pending_and_applies_character_budget() -> None:
                     Message(sequence=6, role="assistant", content="stop", status="stopped"),
                 ]
             )
-            session.add(conversation)
+            session.add_all([user, conversation])
             session.commit()
 
-            service = ConversationChatService(session, CapturingRagService())
+            service = ConversationChatService(
+                session,
+                CapturingRagService(),
+                AllowingGenerationLock(),
+                AllowingIdempotency(),
+            )
             service.max_history_messages = 6
             service.max_history_chars = 9
-            history = service._load_recent_history(conversation.id)
+            history = service._load_recent_history(user.id, conversation.id)
 
             assert history == [("user", "abcde"), ("assistant", "stop")]
             assert all(content not in {"失败", "等待"} for _, content in history)

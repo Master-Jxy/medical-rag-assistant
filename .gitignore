@@ -15,7 +15,7 @@ venv/
 .idea/
 .vscode/
 .agents/
-AGENTS.md
+.codex/
 
 # Frontend
 frontend/node_modules/
@@ -30,9 +30,6 @@ backend/chroma_db/
 
 # Local learning/reference material
 reference/
-
-# Internal handoff notes
-docs/handoff.md
 
 # OS
 .DS_Store

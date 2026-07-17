@@ -1,8 +1,15 @@
 """健康检查接口。"""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from app.schemas.health import HealthResponse
+from app.schemas.health import (
+    DependencyHealth,
+    HealthDependencies,
+    HealthResponse,
+    ProtectionHealth,
+    RedisProtectionHealth,
+)
+from app.services.health_service import HealthService, get_health_service
 
 router = APIRouter(tags=["系统状态"])
 
@@ -12,6 +19,19 @@ router = APIRouter(tags=["系统状态"])
     response_model=HealthResponse,
     summary="检查后端服务是否正常运行",
 )
-def health_check() -> HealthResponse:
-    """返回固定状态；不调用数据库、向量库或大模型。"""
-    return HealthResponse(status="ok")
+def health_check(
+    service: HealthService = Depends(get_health_service),
+) -> HealthResponse:
+    """不初始化数据库、向量库或模型；Redis 最多执行一次有界 ping。"""
+    result = service.inspect()
+    protections = {
+        feature: ProtectionHealth(**snapshot.__dict__)
+        for feature, snapshot in result.protections.items()
+    }
+    return HealthResponse(
+        status="ok",
+        dependencies=HealthDependencies(
+            redis=DependencyHealth(status=result.redis.value),
+            protections=RedisProtectionHealth(**protections),
+        ),
+    )

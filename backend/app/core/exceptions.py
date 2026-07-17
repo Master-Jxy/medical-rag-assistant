@@ -9,11 +9,19 @@ from fastapi.responses import JSONResponse
 class AppError(Exception):
     """可安全展示给前端的业务异常。"""
 
-    def __init__(self, message: str, *, code: str, status_code: int) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str,
+        status_code: int,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.code = code
         self.status_code = status_code
+        self.headers = headers or {}
 
 
 class ConfigurationError(AppError):
@@ -60,6 +68,21 @@ class DocumentNotFoundError(AppError):
         super().__init__("未找到指定文档", code="DOCUMENT_NOT_FOUND", status_code=404)
 
 
+class DocumentDeleteForbiddenError(AppError):
+    def __init__(self) -> None:
+        super().__init__("无权删除该文档", code="DOCUMENT_DELETE_FORBIDDEN", status_code=403)
+
+
+class SystemDocumentRequiredError(AppError):
+    def __init__(self) -> None:
+        super().__init__("该操作仅适用于系统文档", code="SYSTEM_DOCUMENT_REQUIRED", status_code=409)
+
+
+class DocumentBusyError(AppError):
+    def __init__(self) -> None:
+        super().__init__("文档正在被其他操作处理，请稍后重试", code="DOCUMENT_BUSY", status_code=409)
+
+
 class ConversationNotFoundError(AppError):
     def __init__(self) -> None:
         super().__init__("未找到指定会话", code="CONVERSATION_NOT_FOUND", status_code=404)
@@ -78,6 +101,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         request_id = getattr(request.state, "request_id", str(uuid4()))
         return JSONResponse(
             status_code=exc.status_code,
+            headers=exc.headers,
             content={
                 "error": {"code": exc.code, "message": exc.message},
                 "request_id": request_id,

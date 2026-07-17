@@ -5,6 +5,7 @@ from functools import lru_cache
 
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.core.config import get_settings
 
@@ -14,6 +15,9 @@ def build_engine(database_url: str) -> Engine:
     options: dict = {"pool_pre_ping": True}
     if database_url.startswith("sqlite"):
         options["connect_args"] = {"check_same_thread": False}
+        # 内存 SQLite 每个连接默认是独立数据库；测试客户端跨线程时需共享同一连接。
+        if ":memory:" in database_url:
+            options["poolclass"] = StaticPool
     else:
         options["pool_recycle"] = 3600
     return create_engine(database_url, **options)

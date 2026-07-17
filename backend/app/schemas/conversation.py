@@ -2,6 +2,8 @@
 
 from datetime import datetime
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.chat import ChatResponse
@@ -76,6 +78,11 @@ class ConversationDetail(ConversationSummary):
 class ConversationDeleteResponse(BaseModel):
     conversation_id: str
     message: str = "会话已删除"
+
+
+class ConversationStopResponse(BaseModel):
+    status: Literal["stopping", "idle"]
+    message: str
 
 
 class ConversationChatResponse(ChatResponse):
