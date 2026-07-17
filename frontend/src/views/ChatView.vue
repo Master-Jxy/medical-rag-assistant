@@ -6,6 +6,7 @@ import {
   deleteConversation,
   getConversation,
   listConversations,
+  stopConversationStream,
   streamConversation,
 } from '../api/conversations.js'
 import { getApiErrorMessage } from '../api/http.js'
@@ -19,6 +20,7 @@ const WELCOME_MESSAGE = {
 
 const question = ref('')
 const sending = ref(false)
+const stopping = ref(false)
 const loadingConversations = ref(true)
 const loadingMessages = ref(false)
 const errorMessage = ref('')
@@ -27,6 +29,7 @@ const activeConversationId = ref('')
 const messages = ref([{ ...WELCOME_MESSAGE }])
 const messageArea = ref(null)
 const activeController = ref(null)
+const activeIdempotencyKey = ref('')
 const deleteTarget = ref(null)
 const deleting = ref(false)
 
@@ -42,6 +45,7 @@ function mapStoredMessage(message) {
     role: message.role,
     content,
     sources: message.sources || [],
+    sourcesExpanded: false,
     requestId: message.request_id,
     status: message.status,
   }
@@ -155,15 +159,19 @@ async function sendQuestion() {
     content: '',
     sources: [],
     streaming: true,
+    sourcesExpanded: false,
   })
   messages.value.push(userMessage, assistantMessage)
   question.value = ''
   sending.value = true
   activeController.value = new AbortController()
+  const idempotencyKey = crypto.randomUUID()
+  activeIdempotencyKey.value = idempotencyKey
   await scrollToBottom()
 
   try {
     await streamConversation(conversationId, cleanedQuestion, {
+      idempotencyKey,
       signal: activeController.value.signal,
       onToken(content) {
         assistantMessage.content += content
@@ -178,6 +186,12 @@ async function sendQuestion() {
         assistantMessage.requestId = data.request_id
         assistantMessage.disclaimer = data.disclaimer
       },
+      onStopped(data) {
+        userMessage.id = data.user_message_id || userMessage.id
+        assistantMessage.id = data.assistant_message_id || assistantMessage.id
+        assistantMessage.requestId = data.request_id
+        errorMessage.value = data.message || '已停止生成。'
+      },
     })
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
@@ -188,6 +202,8 @@ async function sendQuestion() {
     assistantMessage.streaming = false
     sending.value = false
     activeController.value = null
+    activeIdempotencyKey.value = ''
+    stopping.value = false
     try {
       await refreshConversationList()
     } catch {
@@ -197,8 +213,19 @@ async function sendQuestion() {
   }
 }
 
-function stopGeneration() {
-  activeController.value?.abort()
+async function stopGeneration() {
+  if (!sending.value || stopping.value || !activeIdempotencyKey.value) return
+  stopping.value = true
+  try {
+    const result = await stopConversationStream(
+      activeConversationId.value,
+      activeIdempotencyKey.value,
+    )
+    if (result.status !== 'stopping') activeController.value?.abort()
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+    activeController.value?.abort()
+  }
 }
 
 function handleKeydown(event) {
@@ -227,7 +254,7 @@ onMounted(async () => {
       <div>
         <span>KNOWLEDGE CHAT</span>
         <h1>知识库问答</h1>
-        <p>会话保存在 MySQL，刷新页面后仍可继续追问。</p>
+        <p>为您提供专业医疗知识问答服务。</p>
       </div>
       <div class="knowledge-status"><i></i> 本地知识库已连接</div>
     </header>
@@ -287,14 +314,26 @@ onMounted(async () => {
                 </template>
               </div>
               <div v-if="message.sources?.length" class="sources">
-                <div class="sources-title">引用来源 · {{ message.sources.length }}</div>
-                <details v-for="(source, index) in message.sources" :key="`${message.id}-${index}`">
-                  <summary>
-                    <span>{{ source.file_name }}</span>
-                    <small>{{ source.page ? `第 ${source.page} 页` : '文本资料' }}</small>
-                  </summary>
-                  <p>{{ source.content }}</p>
-                </details>
+                <button
+                  type="button"
+                  class="sources-toggle"
+                  data-testid="sources-toggle"
+                  :aria-expanded="message.sourcesExpanded ? 'true' : 'false'"
+                  :aria-controls="`sources-${message.id}`"
+                  @click="message.sourcesExpanded = !message.sourcesExpanded"
+                >
+                  <span>引用来源 · {{ message.sources.length }}</span>
+                  <i :class="{ expanded: message.sourcesExpanded }">⌄</i>
+                </button>
+                <div v-if="message.sourcesExpanded" :id="`sources-${message.id}`" class="sources-list">
+                  <details v-for="(source, index) in message.sources" :key="`${message.id}-${index}`">
+                    <summary>
+                      <span>{{ source.file_name }}</span>
+                      <small>{{ source.page ? `第 ${source.page} 页` : '文本资料' }}</small>
+                    </summary>
+                    <p>{{ source.content }}</p>
+                  </details>
+                </div>
               </div>
               <div v-if="message.requestId" class="response-meta">请求标识：{{ message.requestId }}</div>
             </div>
@@ -317,7 +356,9 @@ onMounted(async () => {
           ></textarea>
           <div class="composer-footer">
             <span>{{ question.length }} / 2000</span>
-            <el-button v-if="sending" type="danger" plain round @click="stopGeneration">停止生成</el-button>
+            <el-button v-if="sending" type="danger" plain round :loading="stopping" :disabled="stopping" @click="stopGeneration">
+              {{ stopping ? '正在停止' : '停止生成' }}
+            </el-button>
             <el-button v-else type="primary" round native-type="submit" :disabled="!question.trim() || loadingMessages">发送问题</el-button>
           </div>
         </form>
@@ -375,7 +416,9 @@ onMounted(async () => {
 .bubble { padding: 15px 17px; border-radius: 6px 17px 17px 17px; color: #29433e; background: #f1f6f4; line-height: 1.75; white-space: pre-wrap; text-align: left; }
 .user .bubble { color: white; background: var(--primary); border-radius: 17px 6px 17px 17px; }
 .sources { margin-top: 12px; text-align: left; }
-.sources-title { margin-bottom: 8px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.sources-toggle { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 3px 0 8px; border: 0; color: var(--muted); background: transparent; font: inherit; font-size: 12px; font-weight: 700; text-align: left; cursor: pointer; }
+.sources-toggle i { font-style: normal; font-size: 16px; transition: transform .2s ease; }
+.sources-toggle i.expanded { transform: rotate(180deg); }
 details { margin-top: 7px; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: #fff; }
 summary { display: flex; justify-content: space-between; gap: 12px; padding: 11px 13px; cursor: pointer; color: var(--ink); font-size: 13px; }
 summary small { color: var(--muted); white-space: nowrap; }

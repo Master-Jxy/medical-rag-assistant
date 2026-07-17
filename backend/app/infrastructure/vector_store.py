@@ -36,6 +36,27 @@ class VectorStoreService:
         if ids:
             self.vector_store.delete(ids=ids)
 
+    def snapshot_documents(self, ids: list[str]) -> dict:
+        """删除前读取原始向量，失败回滚时可直接恢复且不再次调用 Embedding。"""
+        if not ids:
+            return {"ids": [], "documents": [], "metadatas": [], "embeddings": []}
+        return self.vector_store.get(
+            ids=ids,
+            include=["documents", "metadatas", "embeddings"],
+        )
+
+    def restore_documents(self, snapshot: dict) -> None:
+        """用 Chroma 原始 upsert 恢复快照；embedding 已在快照中，不产生模型费用。"""
+        ids = snapshot.get("ids") or []
+        if not ids:
+            return
+        self.vector_store._collection.upsert(
+            ids=ids,
+            documents=snapshot.get("documents"),
+            metadatas=snapshot.get("metadatas"),
+            embeddings=snapshot.get("embeddings"),
+        )
+
     def contains_ids(self, ids: list[str]) -> bool:
         """检查指定片段是否仍在 Chroma 中，主要用于删除结果验证。"""
         if not ids:

@@ -28,6 +28,11 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
     title: Mapped[str] = mapped_column(String(200), default="新对话")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
@@ -39,7 +44,10 @@ class Conversation(Base):
         order_by="Message.sequence",
     )
 
-    __table_args__ = (Index("ix_conversations_updated_at", "updated_at"),)
+    __table_args__ = (
+        Index("ix_conversations_updated_at", "updated_at"),
+        Index("ix_conversations_user_updated_at", "user_id", "updated_at"),
+    )
 
 
 class Message(Base):

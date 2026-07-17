@@ -7,7 +7,13 @@ from fastapi.responses import StreamingResponse
 
 from app.core.exceptions import AppError, RagServiceError
 from app.core.sse import format_sse
+from app.modules.auth.dependencies import get_current_user
+from app.modules.auth.schemas import UserResponse
 from app.schemas.chat import ChatRequest, ChatResponse, ErrorResponse
+from app.services.chat_rate_limit_service import (
+    ChatRateLimitService,
+    get_chat_rate_limit_service,
+)
 from app.services.rag_service import RagService, get_rag_service
 
 router = APIRouter(tags=["知识库问答"])
@@ -21,10 +27,13 @@ router = APIRouter(tags=["知识库问答"])
 )
 def chat(
     request: ChatRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    rate_limiter: ChatRateLimitService = Depends(get_chat_rate_limit_service),
     rag_service: RagService = Depends(get_rag_service),
 ) -> ChatResponse:
     """把已校验的问题交给 RAG 服务，不在路由中编写检索和模型逻辑。"""
     request_id = str(uuid4())
+    rate_limiter.check(current_user.id)
     answer, sources = rag_service.ask(request.question, request.top_k)
     return ChatResponse(answer=answer, sources=sources, request_id=request_id)
 
@@ -36,10 +45,13 @@ def chat(
 )
 def stream_chat(
     request: ChatRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    rate_limiter: ChatRateLimitService = Depends(get_chat_rate_limit_service),
     rag_service: RagService = Depends(get_rag_service),
 ) -> StreamingResponse:
     """路由只负责把服务层事件转换为 SSE，不编写检索和模型逻辑。"""
     request_id = str(uuid4())
+    rate_limiter.check(current_user.id)
 
     def event_generator():
         try:

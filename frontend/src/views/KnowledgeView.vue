@@ -90,6 +90,7 @@ async function startUpload() {
 }
 
 function requestDelete(document) {
+  if (!document.can_delete) return
   deleteTarget.value = document
   errorMessage.value = ''
 }
@@ -214,7 +215,10 @@ onMounted(loadDocuments)
           <span data-label="大小">{{ formatFileSize(document.file_size) }}</span>
           <span data-label="片段">{{ document.chunk_count }}</span>
           <span data-label="上传时间">{{ formatDate(document.created_at) }}</span>
-          <button class="delete-button" @click="requestDelete(document)">删除</button>
+          <button v-if="document.can_delete" class="delete-button" @click="requestDelete(document)">删除</button>
+          <span v-else class="protected-label" data-label="权限" :title="document.is_system ? '系统预置资料不可删除' : '只有上传者可以删除'">
+            {{ document.is_system ? '系统资料' : '仅上传者可删' }}
+          </span>
         </article>
       </div>
     </section>
@@ -283,6 +287,7 @@ onMounted(loadDocuments)
 .document-name strong { color: var(--ink); font-size: 13px; }
 .document-name small { margin-top: 3px; color: #18a875; font-size: 10px; }
 .delete-button { width: fit-content; padding: 5px 10px; border: 0; border-radius: 7px; color: #bd4b39; background: #fff0ed; cursor: pointer; }
+.protected-label { width: fit-content; color: #7f918d; font-size: 11px; white-space: nowrap; }
 .loading-state, .empty-state { padding: 48px 20px; color: var(--muted); text-align: center; }
 .empty-state div { width: 46px; height: 46px; display: grid; place-items: center; margin: 0 auto 13px; border-radius: 14px; background: #edf3f1; }
 .empty-state strong { color: var(--ink); }
@@ -304,6 +309,7 @@ onMounted(loadDocuments)
   .document-row > span::before { content: attr(data-label) '：'; color: #9aaba7; }
   .document-row > span:nth-of-type(3) { grid-column: 1 / -1; }
   .delete-button { grid-column: 2; grid-row: 2 / span 2; align-self: center; }
+  .protected-label { grid-column: 1 / -1; }
   .upload-actions { align-items: stretch; flex-direction: column; }
   .upload-actions .el-button { width: 100%; }
 }

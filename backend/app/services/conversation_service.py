@@ -22,8 +22,8 @@ class ConversationService:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def create(self, title: str) -> ConversationSummary:
-        conversation = Conversation(title=title)
+    def create(self, user_id: str, title: str) -> ConversationSummary:
+        conversation = Conversation(user_id=user_id, title=title)
         try:
             self.session.add(conversation)
             self.session.commit()
@@ -33,7 +33,7 @@ class ConversationService:
             self.session.rollback()
             raise ConversationStoreError() from exc
 
-    def list(self, limit: int, offset: int) -> ConversationListResponse:
+    def list(self, user_id: str, limit: int, offset: int) -> ConversationListResponse:
         message_count = (
             select(func.count(Message.id))
             .where(Message.conversation_id == Conversation.id)
@@ -41,9 +41,14 @@ class ConversationService:
             .scalar_subquery()
         )
         try:
-            total = self.session.scalar(select(func.count()).select_from(Conversation)) or 0
+            total = self.session.scalar(
+                select(func.count())
+                .select_from(Conversation)
+                .where(Conversation.user_id == user_id)
+            ) or 0
             rows = self.session.execute(
                 select(Conversation, message_count.label("message_count"))
+                .where(Conversation.user_id == user_id)
                 .order_by(Conversation.updated_at.desc(), Conversation.id.desc())
                 .limit(limit)
                 .offset(offset)
@@ -58,11 +63,14 @@ class ConversationService:
         except SQLAlchemyError as exc:
             raise ConversationStoreError() from exc
 
-    def get_detail(self, conversation_id: str) -> ConversationDetail:
+    def get_detail(self, user_id: str, conversation_id: str) -> ConversationDetail:
         try:
             conversation = self.session.scalar(
                 select(Conversation)
-                .where(Conversation.id == conversation_id)
+                .where(
+                    Conversation.id == conversation_id,
+                    Conversation.user_id == user_id,
+                )
                 .options(selectinload(Conversation.messages).selectinload(Message.sources))
             )
         except SQLAlchemyError as exc:
@@ -76,8 +84,10 @@ class ConversationService:
             messages=messages,
         )
 
-    def update_title(self, conversation_id: str, title: str) -> ConversationSummary:
-        conversation = self._get_or_raise(conversation_id)
+    def update_title(
+        self, user_id: str, conversation_id: str, title: str
+    ) -> ConversationSummary:
+        conversation = self._get_or_raise(user_id, conversation_id)
         try:
             conversation.title = title
             conversation.updated_at = utc_now()
@@ -91,8 +101,8 @@ class ConversationService:
             self.session.rollback()
             raise ConversationStoreError() from exc
 
-    def delete(self, conversation_id: str) -> ConversationDeleteResponse:
-        conversation = self._get_or_raise(conversation_id)
+    def delete(self, user_id: str, conversation_id: str) -> ConversationDeleteResponse:
+        conversation = self._get_or_raise(user_id, conversation_id)
         try:
             self.session.delete(conversation)
             self.session.commit()
@@ -101,9 +111,14 @@ class ConversationService:
             self.session.rollback()
             raise ConversationStoreError() from exc
 
-    def _get_or_raise(self, conversation_id: str) -> Conversation:
+    def _get_or_raise(self, user_id: str, conversation_id: str) -> Conversation:
         try:
-            conversation = self.session.get(Conversation, conversation_id)
+            conversation = self.session.scalar(
+                select(Conversation).where(
+                    Conversation.id == conversation_id,
+                    Conversation.user_id == user_id,
+                )
+            )
         except SQLAlchemyError as exc:
             raise ConversationStoreError() from exc
         if conversation is None:

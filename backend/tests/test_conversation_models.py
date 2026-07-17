@@ -9,7 +9,7 @@ from sqlalchemy.schema import CreateTable
 
 from app.db.base import Base
 from app.db.session import build_engine
-from app.models import Conversation, Message, MessageSource
+from app.models import Conversation, Message, MessageSource, User
 
 
 def build_test_engine():
@@ -26,7 +26,14 @@ def build_test_engine():
 def test_conversation_contains_ordered_messages_and_sources() -> None:
     engine = build_test_engine()
     with Session(engine) as session:
-        conversation = Conversation(title="高血压资料查询")
+        user = User(
+            id="model-owner-1",
+            email="model-owner-1@example.com",
+            password_hash="not-used",
+        )
+        session.add(user)
+        session.flush()
+        conversation = Conversation(user_id=user.id, title="高血压资料查询")
         conversation.messages.extend(
             [
                 Message(sequence=1, role="user", content="高血压有哪些常见症状？"),
@@ -61,7 +68,15 @@ def test_conversation_contains_ordered_messages_and_sources() -> None:
 def test_deleting_conversation_cascades_to_messages_and_sources() -> None:
     engine = build_test_engine()
     with Session(engine) as session:
+        user = User(
+            id="model-owner-2",
+            email="model-owner-2@example.com",
+            password_hash="not-used",
+        )
+        session.add(user)
+        session.flush()
         conversation = Conversation(
+            user_id=user.id,
             messages=[
                 Message(
                     sequence=1,
@@ -85,7 +100,14 @@ def test_deleting_conversation_cascades_to_messages_and_sources() -> None:
 def test_database_rejects_invalid_message_role() -> None:
     engine = build_test_engine()
     with Session(engine) as session:
-        conversation = Conversation()
+        user = User(
+            id="model-owner-3",
+            email="model-owner-3@example.com",
+            password_hash="not-used",
+        )
+        session.add(user)
+        session.flush()
+        conversation = Conversation(user_id=user.id)
         conversation.messages.append(Message(sequence=1, role="system", content="非法角色"))
         session.add(conversation)
         with pytest.raises(IntegrityError):
@@ -101,3 +123,5 @@ def test_models_can_compile_to_mysql_ddl_without_connecting() -> None:
     assert any("CREATE TABLE conversations" in statement for statement in statements)
     assert any("CREATE TABLE messages" in statement for statement in statements)
     assert any("CREATE TABLE message_sources" in statement for statement in statements)
+    assert any("CREATE TABLE users" in statement for statement in statements)
+    assert any("CREATE TABLE documents" in statement for statement in statements)

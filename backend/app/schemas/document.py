@@ -13,6 +13,8 @@ class DocumentItem(BaseModel):
     file_size: int
     chunk_count: int
     status: str = "ready"
+    is_system: bool
+    can_delete: bool
     created_at: datetime
 
 

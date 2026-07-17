@@ -4,12 +4,13 @@ from functools import lru_cache
 from pathlib import Path
 
 from langchain_core.documents import Document
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from app.core.exceptions import ConfigurationError, RagServiceError
 from app.core.model_factory import create_chat_model
+from app.infrastructure.async_chat_model import DashScopeAsyncChatModel
 from app.infrastructure.vector_store import VectorStoreService
 from app.schemas.chat import SourceItem
 
@@ -32,14 +33,15 @@ class RagService:
     def __init__(self) -> None:
         try:
             self.vector_store = VectorStoreService()
-            prompt = ChatPromptTemplate.from_messages(
+            self.prompt = ChatPromptTemplate.from_messages(
                 [
                     ("system", RAG_SYSTEM_PROMPT),
                     MessagesPlaceholder("history"),
                     ("human", "{question}"),
                 ]
             )
-            self.chain = prompt | create_chat_model() | StrOutputParser()
+            self.chain = self.prompt | create_chat_model() | StrOutputParser()
+            self.async_chat_model = DashScopeAsyncChatModel()
         except ValueError as exc:
             raise ConfigurationError(str(exc)) from exc
 
@@ -102,6 +104,38 @@ class RagService:
         except Exception as exc:
             raise RagServiceError() from exc
 
+    async def astream_ask(
+        self,
+        question: str,
+        top_k: int,
+        history: list[tuple[str, str]] | None = None,
+    ):
+        """使用可取消的异步 HTTP 流生成回答。"""
+        try:
+            documents = self._retrieve_documents(question, top_k, history)
+            if not documents:
+                yield {"event": "token", "data": {"content": INSUFFICIENT_KNOWLEDGE_MESSAGE}}
+                yield {"event": "sources", "data": {"sources": []}}
+                return
+
+            prompt_value = self.prompt.invoke(
+                {
+                    "question": question,
+                    "context": self._build_context(documents),
+                    "history": self._to_langchain_history(history),
+                }
+            )
+            messages = self._to_dashscope_messages(prompt_value.to_messages())
+            async for chunk in self.async_chat_model.stream(messages):
+                yield {"event": "token", "data": {"content": chunk}}
+
+            sources = [self._to_source_item(document).model_dump() for document in documents]
+            yield {"event": "sources", "data": {"sources": sources}}
+        except ConfigurationError:
+            raise
+        except Exception as exc:
+            raise RagServiceError() from exc
+
     def _retrieve_documents(
         self,
         question: str,
@@ -137,6 +171,21 @@ class RagService:
             elif role == "assistant":
                 messages.append(AIMessage(content=content))
         return messages
+
+    @staticmethod
+    def _to_dashscope_messages(messages: list[BaseMessage]) -> list[dict[str, str]]:
+        converted: list[dict[str, str]] = []
+        for message in messages:
+            if isinstance(message, SystemMessage):
+                role = "system"
+            elif isinstance(message, HumanMessage):
+                role = "user"
+            elif isinstance(message, AIMessage):
+                role = "assistant"
+            else:
+                raise TypeError(f"不支持的模型消息类型：{type(message).__name__}")
+            converted.append({"role": role, "content": str(message.content)})
+        return converted
 
     @staticmethod
     def _build_context(documents: list[Document]) -> str:
