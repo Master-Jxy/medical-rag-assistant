@@ -15,7 +15,5 @@ backend/chroma_db
 backend/data
 backend/logs
 frontend/node_modules
-frontend/dist
 reference
 deploy/.env
-
