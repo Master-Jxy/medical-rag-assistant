@@ -1,0 +1,573 @@
+{
+  "$defs": {
+    "BaselineCaseResult": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "category": {
+          "$ref": "#/$defs/EvaluationCategory"
+        },
+        "expected_behavior": {
+          "$ref": "#/$defs/ExpectedBehavior"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "retrieved_source_document_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Retrieved Source Document Ids",
+          "type": "array"
+        },
+        "actual_behavior": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExpectedBehavior"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_recall": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Recall"
+        },
+        "source_full_hit": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Full Hit"
+        },
+        "behavior_correct": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Behavior Correct"
+        },
+        "expected_key_fact_count": {
+          "minimum": 0,
+          "title": "Expected Key Fact Count",
+          "type": "integer"
+        },
+        "matched_key_fact_count": {
+          "minimum": 0,
+          "title": "Matched Key Fact Count",
+          "type": "integer"
+        },
+        "key_fact_coverage": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Key Fact Coverage"
+        },
+        "retrieval_latency_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retrieval Latency Ms"
+        },
+        "answer_latency_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Answer Latency Ms"
+        },
+        "total_latency_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Latency Ms"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BaselineTokenUsage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error_stage": {
+          "anyOf": [
+            {
+              "enum": [
+                "retrieval",
+                "answer"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Stage"
+        },
+        "error_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Type"
+        }
+      },
+      "required": [
+        "case_id",
+        "category",
+        "expected_behavior",
+        "status",
+        "retrieved_source_document_ids",
+        "actual_behavior",
+        "source_full_hit",
+        "behavior_correct",
+        "expected_key_fact_count",
+        "matched_key_fact_count",
+        "usage",
+        "error_stage",
+        "error_type"
+      ],
+      "title": "BaselineCaseResult",
+      "type": "object"
+    },
+    "BaselineMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "case_count": {
+          "minimum": 0,
+          "title": "Case Count",
+          "type": "integer"
+        },
+        "completed_case_count": {
+          "minimum": 0,
+          "title": "Completed Case Count",
+          "type": "integer"
+        },
+        "failed_case_count": {
+          "minimum": 0,
+          "title": "Failed Case Count",
+          "type": "integer"
+        },
+        "source_scored_case_count": {
+          "minimum": 0,
+          "title": "Source Scored Case Count",
+          "type": "integer"
+        },
+        "mean_source_recall": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Source Recall"
+        },
+        "full_source_hit_rate": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Full Source Hit Rate"
+        },
+        "behavior_scored_case_count": {
+          "minimum": 0,
+          "title": "Behavior Scored Case Count",
+          "type": "integer"
+        },
+        "behavior_accuracy": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Behavior Accuracy"
+        },
+        "refusal_scored_case_count": {
+          "minimum": 0,
+          "title": "Refusal Scored Case Count",
+          "type": "integer"
+        },
+        "refusal_accuracy": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Refusal Accuracy"
+        },
+        "key_fact_scored_case_count": {
+          "minimum": 0,
+          "title": "Key Fact Scored Case Count",
+          "type": "integer"
+        },
+        "mean_key_fact_coverage": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Key Fact Coverage"
+        },
+        "retrieval_observed_case_count": {
+          "minimum": 0,
+          "title": "Retrieval Observed Case Count",
+          "type": "integer"
+        },
+        "mean_retrieval_latency_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Retrieval Latency Ms"
+        },
+        "answer_observed_case_count": {
+          "minimum": 0,
+          "title": "Answer Observed Case Count",
+          "type": "integer"
+        },
+        "mean_answer_latency_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Answer Latency Ms"
+        },
+        "usage_reported_case_count": {
+          "minimum": 0,
+          "title": "Usage Reported Case Count",
+          "type": "integer"
+        },
+        "usage_missing_case_count": {
+          "minimum": 0,
+          "title": "Usage Missing Case Count",
+          "type": "integer"
+        },
+        "total_input_tokens": {
+          "minimum": 0,
+          "title": "Total Input Tokens",
+          "type": "integer"
+        },
+        "total_output_tokens": {
+          "minimum": 0,
+          "title": "Total Output Tokens",
+          "type": "integer"
+        },
+        "total_tokens": {
+          "minimum": 0,
+          "title": "Total Tokens",
+          "type": "integer"
+        },
+        "estimated_cost_cny": {
+          "minimum": 0,
+          "title": "Estimated Cost Cny",
+          "type": "number"
+        },
+        "estimated_cost_complete": {
+          "title": "Estimated Cost Complete",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "case_count",
+        "completed_case_count",
+        "failed_case_count",
+        "source_scored_case_count",
+        "behavior_scored_case_count",
+        "refusal_scored_case_count",
+        "key_fact_scored_case_count",
+        "retrieval_observed_case_count",
+        "answer_observed_case_count",
+        "usage_reported_case_count",
+        "usage_missing_case_count",
+        "total_input_tokens",
+        "total_output_tokens",
+        "total_tokens",
+        "estimated_cost_cny",
+        "estimated_cost_complete"
+      ],
+      "title": "BaselineMetrics",
+      "type": "object"
+    },
+    "BaselineScoringMethods": {
+      "additionalProperties": false,
+      "properties": {
+        "source_recall": {
+          "const": "expected_document_id_recall_v1",
+          "title": "Source Recall",
+          "type": "string"
+        },
+        "behavior": {
+          "const": "expected_behavior_exact_match_v1",
+          "title": "Behavior",
+          "type": "string"
+        },
+        "key_fact": {
+          "const": "normalized_exact_substring_v1",
+          "title": "Key Fact",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_recall",
+        "behavior",
+        "key_fact"
+      ],
+      "title": "BaselineScoringMethods",
+      "type": "object"
+    },
+    "BaselineTokenUsage": {
+      "additionalProperties": false,
+      "properties": {
+        "input_tokens": {
+          "minimum": 0,
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "minimum": 0,
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "total_tokens": {
+          "minimum": 0,
+          "title": "Total Tokens",
+          "type": "integer"
+        },
+        "estimated_cost_cny": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimated Cost Cny"
+        }
+      },
+      "required": [
+        "input_tokens",
+        "output_tokens",
+        "total_tokens"
+      ],
+      "title": "BaselineTokenUsage",
+      "type": "object"
+    },
+    "EvaluationCategory": {
+      "enum": [
+        "single_document",
+        "multi_document",
+        "conversational_follow_up",
+        "insufficient_knowledge",
+        "safety_boundary"
+      ],
+      "title": "EvaluationCategory",
+      "type": "string"
+    },
+    "ExpectedBehavior": {
+      "enum": [
+        "answer",
+        "refuse"
+      ],
+      "title": "ExpectedBehavior",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "baseline_report_v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "report_version": {
+      "pattern": "^[a-z0-9_]+_v[0-9]+$",
+      "title": "Report Version",
+      "type": "string"
+    },
+    "run_kind": {
+      "enum": [
+        "fake_dry_run",
+        "current_baseline",
+        "candidate_comparison"
+      ],
+      "title": "Run Kind",
+      "type": "string"
+    },
+    "runner_version": {
+      "const": "baseline_runner_v1",
+      "title": "Runner Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "dataset_version": {
+      "title": "Dataset Version",
+      "type": "string"
+    },
+    "evaluation_checksum": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Evaluation Checksum",
+      "type": "string"
+    },
+    "corpus_version": {
+      "title": "Corpus Version",
+      "type": "string"
+    },
+    "corpus_checksum": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Corpus Checksum",
+      "type": "string"
+    },
+    "retrieval_adapter": {
+      "minLength": 1,
+      "title": "Retrieval Adapter",
+      "type": "string"
+    },
+    "answer_adapter": {
+      "minLength": 1,
+      "title": "Answer Adapter",
+      "type": "string"
+    },
+    "scoring_methods": {
+      "$ref": "#/$defs/BaselineScoringMethods"
+    },
+    "metrics": {
+      "$ref": "#/$defs/BaselineMetrics"
+    },
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/BaselineCaseResult"
+      },
+      "title": "Cases",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "report_version",
+    "run_kind",
+    "runner_version",
+    "generated_at",
+    "dataset_version",
+    "evaluation_checksum",
+    "corpus_version",
+    "corpus_checksum",
+    "retrieval_adapter",
+    "answer_adapter",
+    "scoring_methods",
+    "metrics",
+    "cases"
+  ],
+  "title": "BaselineReport",
+  "type": "object"
+}

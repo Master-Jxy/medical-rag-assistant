@@ -1,0 +1,176 @@
+{
+  "schema_version": "rag_comparison_plan_v1",
+  "plan_version": "rag_v1_2_preflight_v1",
+  "generated_at": "2026-07-19T00:00:00Z",
+  "dataset_version": "eval_v1",
+  "evaluation_checksum": "61aacb4b0c3a1e3f8df951c31bf7d9836af45b1f12e0ff7c05521a0b8709f6f0",
+  "corpus_version": "corpus_v1",
+  "corpus_checksum": "f97a8befb45f8f85136a3205ffcde15b739b13b6a23d4050e9c6c34ddd440d9a",
+  "frozen_artifacts": [
+    {
+      "role": "baseline",
+      "relative_path": "reports/current_baseline_v1.json",
+      "sha256": "598952a8772fde26eac428cdad0335f889241f61d12b9c55bfabed5329a26ed5"
+    },
+    {
+      "role": "human_review_capture",
+      "relative_path": "reports/human_review_capture_v1.json",
+      "sha256": "db4a9afc6ed4404a17512dcf5ac39017bf3fb64cf6b8da06dc874c416b6f0a84"
+    }
+  ],
+  "baseline_candidate_id": "vector_baseline_v1",
+  "new_candidate_ids": [
+    "hybrid_rrf_v1",
+    "hybrid_rrf_rerank_v1"
+  ],
+  "candidate_profiles": [
+    {
+      "candidate_id": "vector_baseline_v1",
+      "display_name": "冻结向量检索基线",
+      "configuration": {
+        "profile_version": "rag_candidate_profile_v1",
+        "retrieval": {
+          "query_builder_version": "current_history_query_v1",
+          "vector_adapter": "current_chroma_read_only_v1",
+          "embedding_model": "text-embedding-v4",
+          "chroma_collection": "agent",
+          "top_k": 4,
+          "minimum_relevance_score": null,
+          "metadata_filters": {},
+          "hybrid_enabled": false,
+          "keyword_adapter": "chroma_bm25_style_v1",
+          "vector_weight": 0.7,
+          "keyword_weight": 0.3,
+          "rrf_k": 60
+        },
+        "rerank": {
+          "enabled": false,
+          "adapter": "dashscope_text_rerank_v1",
+          "model": "gte-rerank-v2",
+          "max_candidates": 10,
+          "timeout_seconds": 3.0,
+          "max_input_tokens": 12000,
+          "input_price_per_million_tokens_cny": 0.8,
+          "max_estimated_cost_cny": 0.01
+        },
+        "answer": {
+          "adapter": "current_qwen_read_only_v1",
+          "model": "qwen3-max",
+          "prompt_sha256": "ec6d17d880a5b03e128635d9244246c89ec4774c29da1c3eb85ae2853938a761",
+          "max_output_tokens": 2048
+        }
+      },
+      "configuration_fingerprint": "7823e3d0c6395024d7937477b0750c3f2cf4ab494a126c8e10262275a5d0f964"
+    },
+    {
+      "candidate_id": "hybrid_rrf_v1",
+      "display_name": "向量与关键词加权RRF",
+      "configuration": {
+        "profile_version": "rag_candidate_profile_v1",
+        "retrieval": {
+          "query_builder_version": "current_history_query_v1",
+          "vector_adapter": "current_chroma_read_only_v1",
+          "embedding_model": "text-embedding-v4",
+          "chroma_collection": "agent",
+          "top_k": 4,
+          "minimum_relevance_score": null,
+          "metadata_filters": {},
+          "hybrid_enabled": true,
+          "keyword_adapter": "chroma_bm25_style_v1",
+          "vector_weight": 0.7,
+          "keyword_weight": 0.3,
+          "rrf_k": 60
+        },
+        "rerank": {
+          "enabled": false,
+          "adapter": "dashscope_text_rerank_v1",
+          "model": "gte-rerank-v2",
+          "max_candidates": 10,
+          "timeout_seconds": 3.0,
+          "max_input_tokens": 12000,
+          "input_price_per_million_tokens_cny": 0.8,
+          "max_estimated_cost_cny": 0.01
+        },
+        "answer": {
+          "adapter": "current_qwen_read_only_v1",
+          "model": "qwen3-max",
+          "prompt_sha256": "ec6d17d880a5b03e128635d9244246c89ec4774c29da1c3eb85ae2853938a761",
+          "max_output_tokens": 2048
+        }
+      },
+      "configuration_fingerprint": "d29c16d92e07d60b025f2b79fd1d751fd93a56841b50d6cc16c04690305c0b58"
+    },
+    {
+      "candidate_id": "hybrid_rrf_rerank_v1",
+      "display_name": "加权RRF与可选重排",
+      "configuration": {
+        "profile_version": "rag_candidate_profile_v1",
+        "retrieval": {
+          "query_builder_version": "current_history_query_v1",
+          "vector_adapter": "current_chroma_read_only_v1",
+          "embedding_model": "text-embedding-v4",
+          "chroma_collection": "agent",
+          "top_k": 4,
+          "minimum_relevance_score": null,
+          "metadata_filters": {},
+          "hybrid_enabled": true,
+          "keyword_adapter": "chroma_bm25_style_v1",
+          "vector_weight": 0.7,
+          "keyword_weight": 0.3,
+          "rrf_k": 60
+        },
+        "rerank": {
+          "enabled": true,
+          "adapter": "dashscope_text_rerank_v1",
+          "model": "gte-rerank-v2",
+          "max_candidates": 10,
+          "timeout_seconds": 3.0,
+          "max_input_tokens": 12000,
+          "input_price_per_million_tokens_cny": 0.8,
+          "max_estimated_cost_cny": 0.01
+        },
+        "answer": {
+          "adapter": "current_qwen_read_only_v1",
+          "model": "qwen3-max",
+          "prompt_sha256": "ec6d17d880a5b03e128635d9244246c89ec4774c29da1c3eb85ae2853938a761",
+          "max_output_tokens": 2048
+        }
+      },
+      "configuration_fingerprint": "82a857196041b1589a07dea7a76476dd75dcb9ca2986373b3551ea44f319f083"
+    }
+  ],
+  "hard_limits": {
+    "max_cases_per_new_candidate": 40,
+    "new_candidate_run_count": 2,
+    "max_embedding_calls": 80,
+    "max_answer_calls": 80,
+    "max_rerank_calls": 40,
+    "automatic_retries": 0,
+    "max_total_tokens": 1480000,
+    "max_estimated_cost_cny": 4.4,
+    "stop_conditions": [
+      "任一调用次数达到上限前停止",
+      "下一次调用的Token预留会超过总上限时停止",
+      "下一次调用的费用预留会超过总上限时停止",
+      "成功返回的付费调用缺失Token或费用计量时停止；失败调用保留最坏预留",
+      "冻结报告、eval_v1或corpus_v1校验不一致时禁止开始"
+    ]
+  },
+  "pricing": {
+    "verified_on": "2026-07-19",
+    "deployment_scope": "中国内地",
+    "official_pricing_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+    "qwen_model": "qwen3-max",
+    "qwen_input_price_per_million_tokens_cny": 2.5,
+    "qwen_output_price_per_million_tokens_cny": 10.0,
+    "embedding_model": "text-embedding-v4",
+    "embedding_price_per_million_tokens_cny": 0.5,
+    "rerank_model": "gte-rerank-v2",
+    "rerank_price_per_million_tokens_cny": 0.8,
+    "expected_cost_min_cny": 0.6,
+    "expected_cost_max_cny": 1.0
+  },
+  "paid_execution_available": true,
+  "requires_new_user_confirmation": true,
+  "production_flags_changed": false
+}

@@ -1,0 +1,147 @@
+{
+  "$defs": {
+    "EvaluationCase": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "pattern": "^eval_[0-9]{3}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "category": {
+          "$ref": "#/$defs/EvaluationCategory"
+        },
+        "question": {
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "history": {
+          "items": {
+            "$ref": "#/$defs/EvaluationHistoryTurn"
+          },
+          "title": "History",
+          "type": "array"
+        },
+        "expected_behavior": {
+          "$ref": "#/$defs/ExpectedBehavior"
+        },
+        "expected_source_document_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Expected Source Document Ids",
+          "type": "array"
+        },
+        "expected_key_facts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Expected Key Facts",
+          "type": "array"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "case_id",
+        "category",
+        "question",
+        "expected_behavior",
+        "expected_source_document_ids",
+        "expected_key_facts"
+      ],
+      "title": "EvaluationCase",
+      "type": "object"
+    },
+    "EvaluationCategory": {
+      "enum": [
+        "single_document",
+        "multi_document",
+        "conversational_follow_up",
+        "insufficient_knowledge",
+        "safety_boundary"
+      ],
+      "title": "EvaluationCategory",
+      "type": "string"
+    },
+    "EvaluationHistoryTurn": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "user",
+            "assistant"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "content": {
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "content"
+      ],
+      "title": "EvaluationHistoryTurn",
+      "type": "object"
+    },
+    "ExpectedBehavior": {
+      "enum": [
+        "answer",
+        "refuse"
+      ],
+      "title": "ExpectedBehavior",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "evaluation_set_v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "dataset_version": {
+      "pattern": "^eval_v[0-9]+$",
+      "title": "Dataset Version",
+      "type": "string"
+    },
+    "corpus_version": {
+      "const": "corpus_v1",
+      "title": "Corpus Version",
+      "type": "string"
+    },
+    "corpus_checksum": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Corpus Checksum",
+      "type": "string"
+    },
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/EvaluationCase"
+      },
+      "maxItems": 50,
+      "minItems": 30,
+      "title": "Cases",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "dataset_version",
+    "corpus_version",
+    "corpus_checksum",
+    "cases"
+  ],
+  "title": "EvaluationSet",
+  "type": "object"
+}

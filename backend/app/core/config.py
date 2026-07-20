@@ -47,11 +47,35 @@ class Settings(BaseSettings):
     chroma_collection_name: str = "agent"
     upload_dir: Path = BACKEND_DIR / "data" / "uploads"
     document_registry_path: Path = BACKEND_DIR / "data" / "documents.json"
+    knowledge_base_version: str = "live_v1"
     max_upload_size_bytes: int = 10 * 1024 * 1024
     chunk_size: int = 800
     chunk_overlap: int = 100
     max_history_rounds: int = 3
     max_history_chars: int = 6000
+    rag_min_relevance_score: float | None = Field(default=None, ge=0, le=1)
+    rag_filter_department: str | None = None
+    rag_filter_topic: str | None = None
+    rag_filter_document_type: str | None = None
+    rag_filter_knowledge_base_version: str | None = None
+    rag_insufficient_knowledge_message: str = (
+        "知识库资料不足，无法根据现有资料回答。"
+    )
+    rag_hybrid_search_enabled: bool = False
+    rag_hybrid_vector_weight: float = Field(default=0.7, ge=0, le=1)
+    rag_hybrid_keyword_weight: float = Field(default=0.3, ge=0, le=1)
+    rag_hybrid_rrf_k: int = Field(default=60, ge=1, le=1000)
+    rag_rerank_enabled: bool = False
+    rag_rerank_model_name: str = "gte-rerank-v2"
+    rag_rerank_max_candidates: int = Field(default=10, ge=1, le=100)
+    rag_rerank_timeout_seconds: float = Field(default=3.0, gt=0, le=30)
+    rag_rerank_max_input_tokens: int = Field(default=12000, ge=1, le=120000)
+    rag_rerank_input_price_per_million_tokens_cny: float = Field(
+        default=0.8, ge=0, le=1000
+    )
+    rag_rerank_max_estimated_cost_cny: float = Field(
+        default=0.01, ge=0, le=100
+    )
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -78,6 +102,44 @@ class Settings(BaseSettings):
         from ipaddress import ip_address
 
         return [str(ip_address(value.strip())) for value in values]
+
+    @field_validator(
+        "rag_filter_department",
+        "rag_filter_topic",
+        "rag_filter_document_type",
+        "rag_filter_knowledge_base_version",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_rag_filter(cls, value: object) -> object:
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned or None
+        return value
+
+    @field_validator("rag_insufficient_knowledge_message")
+    @classmethod
+    def validate_rag_insufficient_message(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned or len(cleaned) > 500:
+            raise ValueError("RAG知识不足文案必须为1-500个非空字符")
+        return cleaned
+
+    @field_validator("rag_rerank_model_name")
+    @classmethod
+    def validate_rag_rerank_model_name(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned or len(cleaned) > 100:
+            raise ValueError("RAG_RERANK_MODEL_NAME 必须为1-100个非空字符")
+        return cleaned
+
+    @field_validator("knowledge_base_version")
+    @classmethod
+    def validate_knowledge_base_version(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned or len(cleaned) > 100:
+            raise ValueError("KNOWLEDGE_BASE_VERSION 必须为1-100个非空字符")
+        return cleaned
 
     def require_dashscope_api_key(self) -> str:
         """需要调用模型时再检查密钥，避免健康检查被密钥配置影响。"""
