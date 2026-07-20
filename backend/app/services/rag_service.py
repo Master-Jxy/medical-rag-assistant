@@ -1,47 +1,62 @@
-"""普通 RAG 问答服务：检索资料、组织上下文、调用模型。"""
+"""普通 RAG 应用服务：编排查询构造、知识检索和回答生成。"""
 
 from functools import lru_cache
 from pathlib import Path
 
 from langchain_core.documents import Document
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import BaseMessage
 
 from app.core.exceptions import ConfigurationError, RagServiceError
-from app.core.model_factory import create_chat_model
-from app.infrastructure.async_chat_model import DashScopeAsyncChatModel
-from app.infrastructure.vector_store import VectorStoreService
+from app.core.config import get_settings
+from app.modules.rag.adapters import (
+    RAG_SYSTEM_PROMPT,
+    CurrentQueryBuilderAdapter,
+    CurrentQwenAnswerGeneratorAdapter,
+    to_dashscope_messages,
+    to_langchain_history,
+)
+from app.modules.rag.ports import (
+    AnswerGeneratorPort,
+    ChatHistory,
+    KnowledgeSearchPort,
+    QueryBuilderPort,
+    RetrievedChunk,
+)
+from app.modules.rag.policies import (
+    DEFAULT_INSUFFICIENT_KNOWLEDGE_MESSAGE,
+    RagRetrievalPolicy,
+)
+from app.modules.rag.hybrid_search import create_current_knowledge_search
+from app.modules.rag.rerank import RerankStage, create_current_rerank_stage
 from app.schemas.chat import SourceItem
 
-INSUFFICIENT_KNOWLEDGE_MESSAGE = "知识库资料不足，无法根据现有资料回答。"
-
-RAG_SYSTEM_PROMPT = """你是医疗知识库问答助手。请严格遵守以下规则：
-1. 只依据提供的知识库上下文回答，不使用上下文之外的信息补全结论。
-2. 上下文不足时，明确回答“知识库资料不足，无法根据现有资料回答”。
-3. 不虚构疾病结论、药物剂量、页码或资料来源。
-4. 回答应简洁清楚，并提醒用户内容仅供学习和信息检索，不构成医疗建议。
-
-知识库上下文：
-{context}
-"""
+INSUFFICIENT_KNOWLEDGE_MESSAGE = DEFAULT_INSUFFICIENT_KNOWLEDGE_MESSAGE
 
 
 class RagService:
-    """对外提供一次完整问答，隐藏模型与向量库的实现细节。"""
+    """统一问答入口；三个内部能力均可通过稳定 Port 独立替换。"""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        query_builder: QueryBuilderPort | None = None,
+        knowledge_search: KnowledgeSearchPort | None = None,
+        answer_generator: AnswerGeneratorPort | None = None,
+        retrieval_policy: RagRetrievalPolicy | None = None,
+        rerank_stage: RerankStage | None = None,
+    ) -> None:
         try:
-            self.vector_store = VectorStoreService()
-            self.prompt = ChatPromptTemplate.from_messages(
-                [
-                    ("system", RAG_SYSTEM_PROMPT),
-                    MessagesPlaceholder("history"),
-                    ("human", "{question}"),
-                ]
+            settings = get_settings()
+            self.query_builder = query_builder or CurrentQueryBuilderAdapter()
+            self.knowledge_search = (
+                knowledge_search or create_current_knowledge_search(settings)
             )
-            self.chain = self.prompt | create_chat_model() | StrOutputParser()
-            self.async_chat_model = DashScopeAsyncChatModel()
+            self.answer_generator = (
+                answer_generator or CurrentQwenAnswerGeneratorAdapter()
+            )
+            self.retrieval_policy = retrieval_policy or RagRetrievalPolicy.from_settings(
+                settings
+            )
+            self.rerank_stage = rerank_stage or create_current_rerank_stage(settings)
         except ValueError as exc:
             raise ConfigurationError(str(exc)) from exc
 
@@ -49,24 +64,15 @@ class RagService:
         self,
         question: str,
         top_k: int,
-        history: list[tuple[str, str]] | None = None,
+        history: ChatHistory | None = None,
     ) -> tuple[str, list[SourceItem]]:
         """输入问题，输出模型回答和结构化引用来源。"""
         try:
-            documents = self._retrieve_documents(question, top_k, history)
-            if not documents:
-                return INSUFFICIENT_KNOWLEDGE_MESSAGE, []
-
-            context = self._build_context(documents)
-            answer = self.chain.invoke(
-                {
-                    "question": question,
-                    "context": context,
-                    "history": self._to_langchain_history(history),
-                }
-            )
-            sources = [self._to_source_item(document) for document in documents]
-            return answer, sources
+            chunks = self._retrieve_chunks(question, top_k, history)
+            if not chunks:
+                return self.retrieval_policy.insufficient_knowledge_message, []
+            answer = self.answer_generator.answer(question, history, chunks)
+            return answer, [self._chunk_to_source_item(chunk) for chunk in chunks]
         except ConfigurationError:
             raise
         except Exception as exc:
@@ -76,29 +82,33 @@ class RagService:
         self,
         question: str,
         top_k: int,
-        history: list[tuple[str, str]] | None = None,
+        history: ChatHistory | None = None,
     ):
         """逐块生成回答，最后给出结构化引用来源。"""
         try:
-            documents = self._retrieve_documents(question, top_k, history)
-            if not documents:
-                yield {"event": "token", "data": {"content": INSUFFICIENT_KNOWLEDGE_MESSAGE}}
+            chunks = self._retrieve_chunks(question, top_k, history)
+            if not chunks:
+                yield {
+                    "event": "token",
+                    "data": {
+                        "content": self.retrieval_policy.insufficient_knowledge_message
+                    },
+                }
                 yield {"event": "sources", "data": {"sources": []}}
                 return
 
-            context = self._build_context(documents)
-            for chunk in self.chain.stream(
-                {
-                    "question": question,
-                    "context": context,
-                    "history": self._to_langchain_history(history),
-                }
-            ):
+            for chunk in self.answer_generator.stream_answer(question, history, chunks):
                 if chunk:
                     yield {"event": "token", "data": {"content": chunk}}
-
-            sources = [self._to_source_item(document).model_dump() for document in documents]
-            yield {"event": "sources", "data": {"sources": sources}}
+            yield {
+                "event": "sources",
+                "data": {
+                    "sources": [
+                        self._chunk_to_source_item(chunk).model_dump()
+                        for chunk in chunks
+                    ]
+                },
+            }
         except ConfigurationError:
             raise
         except Exception as exc:
@@ -108,84 +118,76 @@ class RagService:
         self,
         question: str,
         top_k: int,
-        history: list[tuple[str, str]] | None = None,
+        history: ChatHistory | None = None,
     ):
         """使用可取消的异步 HTTP 流生成回答。"""
         try:
-            documents = self._retrieve_documents(question, top_k, history)
-            if not documents:
-                yield {"event": "token", "data": {"content": INSUFFICIENT_KNOWLEDGE_MESSAGE}}
+            chunks = self._retrieve_chunks(question, top_k, history)
+            if not chunks:
+                yield {
+                    "event": "token",
+                    "data": {
+                        "content": self.retrieval_policy.insufficient_knowledge_message
+                    },
+                }
                 yield {"event": "sources", "data": {"sources": []}}
                 return
 
-            prompt_value = self.prompt.invoke(
-                {
-                    "question": question,
-                    "context": self._build_context(documents),
-                    "history": self._to_langchain_history(history),
-                }
-            )
-            messages = self._to_dashscope_messages(prompt_value.to_messages())
-            async for chunk in self.async_chat_model.stream(messages):
+            async for chunk in self.answer_generator.astream_answer(
+                question, history, chunks
+            ):
                 yield {"event": "token", "data": {"content": chunk}}
-
-            sources = [self._to_source_item(document).model_dump() for document in documents]
-            yield {"event": "sources", "data": {"sources": sources}}
+            yield {
+                "event": "sources",
+                "data": {
+                    "sources": [
+                        self._chunk_to_source_item(chunk).model_dump()
+                        for chunk in chunks
+                    ]
+                },
+            }
         except ConfigurationError:
             raise
         except Exception as exc:
             raise RagServiceError() from exc
 
-    def _retrieve_documents(
+    def _retrieve_chunks(
         self,
         question: str,
         top_k: int,
-        history: list[tuple[str, str]] | None = None,
-    ) -> list[Document]:
-        """普通回答和流式回答共用同一套知识库检索逻辑。"""
-        if not self.vector_store.has_documents():
-            return []
-        retrieval_query = self._build_retrieval_query(question, history)
-        return self.vector_store.similarity_search(retrieval_query, top_k)
+        history: ChatHistory | None,
+    ) -> list[RetrievedChunk]:
+        query = self.query_builder.build(question, history)
+        options = self.retrieval_policy.search_options
+        if options.is_disabled:
+            chunks = self.knowledge_search.search(query, top_k)
+        else:
+            chunks = self.knowledge_search.search(query, top_k, options)
+        return self.rerank_stage.apply(query, chunks, top_k)
 
+    @staticmethod
+    def _chunk_to_source_item(chunk: RetrievedChunk) -> SourceItem:
+        return SourceItem(
+            file_name=chunk.file_name,
+            page=chunk.page,
+            content=chunk.content[:500],
+        )
+
+    # 以下兼容入口由冻结的7.1评估适配器和既有测试使用；行为委托给当前实现。
     @staticmethod
     def _build_retrieval_query(
         question: str,
-        history: list[tuple[str, str]] | None,
+        history: ChatHistory | None,
     ) -> str:
-        """用最近一个用户问题补全“它、这个”等指代，提高向量检索命中率。"""
-        if history:
-            for role, content in reversed(history):
-                if role == "user":
-                    return f"上一轮问题：{content}\n当前问题：{question}"
-        return question
+        return CurrentQueryBuilderAdapter().build(question, history)
 
     @staticmethod
-    def _to_langchain_history(
-        history: list[tuple[str, str]] | None,
-    ) -> list[BaseMessage]:
-        messages: list[BaseMessage] = []
-        for role, content in history or []:
-            if role == "user":
-                messages.append(HumanMessage(content=content))
-            elif role == "assistant":
-                messages.append(AIMessage(content=content))
-        return messages
+    def _to_langchain_history(history: ChatHistory | None) -> list[BaseMessage]:
+        return to_langchain_history(history)
 
     @staticmethod
     def _to_dashscope_messages(messages: list[BaseMessage]) -> list[dict[str, str]]:
-        converted: list[dict[str, str]] = []
-        for message in messages:
-            if isinstance(message, SystemMessage):
-                role = "system"
-            elif isinstance(message, HumanMessage):
-                role = "user"
-            elif isinstance(message, AIMessage):
-                role = "assistant"
-            else:
-                raise TypeError(f"不支持的模型消息类型：{type(message).__name__}")
-            converted.append({"role": role, "content": str(message.content)})
-        return converted
+        return to_dashscope_messages(messages)
 
     @staticmethod
     def _build_context(documents: list[Document]) -> str:

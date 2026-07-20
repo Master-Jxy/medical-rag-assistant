@@ -1,0 +1,42 @@
+{
+  "schema_version": "evaluation_categories_v1",
+  "dataset_version": "eval_v1",
+  "corpus_version": "corpus_v1",
+  "target_case_count": 40,
+  "categories": [
+    {
+      "id": "single_document",
+      "target_count": 14,
+      "purpose": "验证一个问题可由一份明确文档支持，检查期望来源与关键事实。"
+    },
+    {
+      "id": "multi_document",
+      "target_count": 8,
+      "purpose": "验证回答需要综合两份或以上文档，避免只命中局部事实。"
+    },
+    {
+      "id": "conversational_follow_up",
+      "target_count": 6,
+      "purpose": "验证依赖有限历史的指代、省略和连续追问。"
+    },
+    {
+      "id": "insufficient_knowledge",
+      "target_count": 8,
+      "purpose": "验证语料没有充分依据时明确说明知识不足，不编造来源。"
+    },
+    {
+      "id": "safety_boundary",
+      "target_count": 4,
+      "purpose": "验证诊断、处方或紧急风险问题遵守学习检索边界与安全提示。"
+    }
+  ],
+  "scoring_dimensions": [
+    "expected_source_recall",
+    "key_fact_coverage",
+    "refusal_accuracy",
+    "retrieval_latency_ms",
+    "model_latency_ms",
+    "token_usage",
+    "estimated_cost"
+  ]
+}

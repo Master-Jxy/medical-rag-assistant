@@ -1,0 +1,823 @@
+{
+  "schema_version": "corpus_manifest_v1",
+  "corpus_version": "corpus_v1",
+  "generated_on": "2026-07-18",
+  "checksum_algorithm": "sha256",
+  "corpus_checksum": "f97a8befb45f8f85136a3205ffcde15b739b13b6a23d4050e9c6c34ddd440d9a",
+  "chroma_collection": "agent",
+  "chunk_size": 800,
+  "chunk_overlap": 100,
+  "document_count": 27,
+  "chunk_count": 103,
+  "audit_policy": {
+    "empty_content_normalization": "collapse_whitespace",
+    "short_document_chars_lt": 200,
+    "short_chunk_chars_lt": 50
+  },
+  "audit_result": {
+    "status": "passed_with_warnings",
+    "consistency_passed": true,
+    "missing_file_document_ids": [],
+    "file_hash_mismatch_document_ids": [],
+    "file_size_mismatch_document_ids": [],
+    "missing_chroma_chunk_ids": [],
+    "unregistered_chroma_chunk_ids": [],
+    "duplicate_registered_chunk_ids": [],
+    "duplicate_document_hash_groups": [],
+    "duplicate_chunk_content_groups": [],
+    "empty_document_ids": [],
+    "empty_chunk_ids": [],
+    "short_document_ids": [],
+    "short_chunk_ids": [
+      "012c35e6-4cee-4498-b6e0-c0985f8781ac:6"
+    ],
+    "metadata_mismatch_chunk_ids": []
+  },
+  "documents": [
+    {
+      "document_id": "a89e5c67-364c-4480-acb3-3a48225ee49a",
+      "original_name": "00_知识库使用边界与安全分诊.txt",
+      "stored_name": "a89e5c67-364c-4480-acb3-3a48225ee49a.txt",
+      "content_sha256": "3ce86a31577a0fb9fb7bb7ae0c7e677fa73359801c5fe3d1ec5ef2b449562ae7",
+      "size_bytes": 7224,
+      "chunk_count": 5,
+      "chunks": [
+        {
+          "chunk_id": "a89e5c67-364c-4480-acb3-3a48225ee49a:0",
+          "content_sha256": "75efa860053b8e1e4c2ea2779175ea396b5e6884afb73ed0c4f2aa26b61fc0f7",
+          "normalized_char_count": 733
+        },
+        {
+          "chunk_id": "a89e5c67-364c-4480-acb3-3a48225ee49a:1",
+          "content_sha256": "24fed91be69769bf1f87c75385309549963f87f2d44f9ba313c4c36057584b2c",
+          "normalized_char_count": 222
+        },
+        {
+          "chunk_id": "a89e5c67-364c-4480-acb3-3a48225ee49a:2",
+          "content_sha256": "14348f19ae7ac48b6d903ceb7e25280477b12464be34561680a208490fb7a97a",
+          "normalized_char_count": 719
+        },
+        {
+          "chunk_id": "a89e5c67-364c-4480-acb3-3a48225ee49a:3",
+          "content_sha256": "5bddb72824d660f42d5e38c8065857e90c44d531aba8fcb3b59a93439c03ee9e",
+          "normalized_char_count": 698
+        },
+        {
+          "chunk_id": "a89e5c67-364c-4480-acb3-3a48225ee49a:4",
+          "content_sha256": "35944a842eec729083c368df4a83c14c70719c4599af02ddf057a20d1d578994",
+          "normalized_char_count": 378
+        }
+      ]
+    },
+    {
+      "document_id": "d6d34a9e-5ef7-4fe2-82a9-43e998dc1d06",
+      "original_name": "01_常见症状评估与就医导航.txt",
+      "stored_name": "d6d34a9e-5ef7-4fe2-82a9-43e998dc1d06.txt",
+      "content_sha256": "3c8bb4d998d46f11269f6d90a7629d6042025b6e473b6c6b130506ced74583ae",
+      "size_bytes": 7631,
+      "chunk_count": 4,
+      "chunks": [
+        {
+          "chunk_id": "d6d34a9e-5ef7-4fe2-82a9-43e998dc1d06:0",
+          "content_sha256": "54efb2ec92ce4e56a44bfa5ff1fcc90fef4da4d993c90af812fcf46f41c84423",
+          "normalized_char_count": 772
+        },
+        {
+          "chunk_id": "d6d34a9e-5ef7-4fe2-82a9-43e998dc1d06:1",
+          "content_sha256": "ea218516d37100c25981bfbb591542944b0f0cfbdfd61a5e4b86e9498a05f05a",
+          "normalized_char_count": 737
+        },
+        {
+          "chunk_id": "d6d34a9e-5ef7-4fe2-82a9-43e998dc1d06:2",
+          "content_sha256": "31aa302c24750ae4731fac9df6d4162da5c8dbb7cdd04ca44c19a94f69fb7c73",
+          "normalized_char_count": 744
+        },
+        {
+          "chunk_id": "d6d34a9e-5ef7-4fe2-82a9-43e998dc1d06:3",
+          "content_sha256": "8d949c91d4687339aab44b149015ee1c3352526baf5ad6b5720ac55d72674468",
+          "normalized_char_count": 635
+        }
+      ]
+    },
+    {
+      "document_id": "13ec2458-98bd-4972-b909-aa6455d54527",
+      "original_name": "02_急症识别与现场急救.txt",
+      "stored_name": "13ec2458-98bd-4972-b909-aa6455d54527.txt",
+      "content_sha256": "b320258aa0f111d11e39d03f2f095600ed64230bd3cef10b1552e94ab5f12148",
+      "size_bytes": 9053,
+      "chunk_count": 5,
+      "chunks": [
+        {
+          "chunk_id": "13ec2458-98bd-4972-b909-aa6455d54527:0",
+          "content_sha256": "92815adc688b648f0b8685e5329e36123fde6d7920b017bd0a25be353e724cde",
+          "normalized_char_count": 716
+        },
+        {
+          "chunk_id": "13ec2458-98bd-4972-b909-aa6455d54527:1",
+          "content_sha256": "5895df95e8707541abe732b6ea6b343a5a25f981f9b298888e6baa7e75950d24",
+          "normalized_char_count": 752
+        },
+        {
+          "chunk_id": "13ec2458-98bd-4972-b909-aa6455d54527:2",
+          "content_sha256": "eaf28607eaf1dae619a677add07248c5845526f57a38a10e2eeb6da6843e05d8",
+          "normalized_char_count": 717
+        },
+        {
+          "chunk_id": "13ec2458-98bd-4972-b909-aa6455d54527:3",
+          "content_sha256": "66a7141362b6a6e36bd25f6ab268f7322e8d8758f868c20b2fa8348d473f081f",
+          "normalized_char_count": 711
+        },
+        {
+          "chunk_id": "13ec2458-98bd-4972-b909-aa6455d54527:4",
+          "content_sha256": "7e6fab9b4f055c6db60e622e8ab0c0afbed23109a60169d7289d1cb30bb0ff80",
+          "normalized_char_count": 471
+        }
+      ]
+    },
+    {
+      "document_id": "5ab95333-86e3-4b7d-b831-e273ad43f866",
+      "original_name": "03_心血管疾病与风险管理.txt",
+      "stored_name": "5ab95333-86e3-4b7d-b831-e273ad43f866.txt",
+      "content_sha256": "264218fc25d8c065a2884329cc4814eeaaca7c719823b0bdb6574728e6a51434",
+      "size_bytes": 6880,
+      "chunk_count": 4,
+      "chunks": [
+        {
+          "chunk_id": "5ab95333-86e3-4b7d-b831-e273ad43f866:0",
+          "content_sha256": "99434e9dc483e7aebac5fb83a9e2eb62a082cce938a4d9ed1de107bdcf3bb1a9",
+          "normalized_char_count": 696
+        },
+        {
+          "chunk_id": "5ab95333-86e3-4b7d-b831-e273ad43f866:1",
+          "content_sha256": "fd2b7cf52336f71c3e0d4d216f23ac1c812eade63755ba4d55786266b8ab21fd",
+          "normalized_char_count": 732
+        },
+        {
+          "chunk_id": "5ab95333-86e3-4b7d-b831-e273ad43f866:2",
+          "content_sha256": "427b4791a1a5f26c2443e05d65b452b79c906996adaef706e8acbd7095a1d5ec",
+          "normalized_char_count": 705
+        },
+        {
+          "chunk_id": "5ab95333-86e3-4b7d-b831-e273ad43f866:3",
+          "content_sha256": "f350debc25358792b59d8257e39fbdbd26c0b840dda35d09d21cd974f44472be",
+          "normalized_char_count": 497
+        }
+      ]
+    },
+    {
+      "document_id": "93aaa204-b415-4f1c-90fd-ae5c6132d7dd",
+      "original_name": "04_呼吸系统疾病与肺健康.txt",
+      "stored_name": "93aaa204-b415-4f1c-90fd-ae5c6132d7dd.txt",
+      "content_sha256": "133fc2f3faa7d801c8dcbb3bcec58a5a4047419f12060dc4ceb24845d06deeb5",
+      "size_bytes": 6815,
+      "chunk_count": 4,
+      "chunks": [
+        {
+          "chunk_id": "93aaa204-b415-4f1c-90fd-ae5c6132d7dd:0",
+          "content_sha256": "cc390b820ecdc1c710bd26dcc72eeb8964b1db038b11fe73ab03d6ea9b739794",
+          "normalized_char_count": 726
+        },
+        {
+          "chunk_id": "93aaa204-b415-4f1c-90fd-ae5c6132d7dd:1",
+          "content_sha256": "85496a231ca1466f1cf5d2fd862fbbc2094cb519a1828f30f2146c445cab7cc0",
+          "normalized_char_count": 709
+        },
+        {
+          "chunk_id": "93aaa204-b415-4f1c-90fd-ae5c6132d7dd:2",
+          "content_sha256": "d5032d992f3319eb7cf0ccb9b461234e3d0e9d3965d36b3370c35ac096a3361e",
+          "normalized_char_count": 758
+        },
+        {
+          "chunk_id": "93aaa204-b415-4f1c-90fd-ae5c6132d7dd:3",
+          "content_sha256": "e46c8c40011258ca979709cea1831e03003a8dc86a74b02f013e05a12ad613b4",
+          "normalized_char_count": 585
+        }
+      ]
+    },
+    {
+      "document_id": "b1d70c89-381f-458d-bf9f-a1524f47a017",
+      "original_name": "05_内分泌代谢与糖尿病.txt",
+      "stored_name": "b1d70c89-381f-458d-bf9f-a1524f47a017.txt",
+      "content_sha256": "7177a508f1f2d7529a403d0c1d3f3fb66df3fb87e298c6ae402b05143c48df54",
+      "size_bytes": 6615,
+      "chunk_count": 4,
+      "chunks": [
+        {
+          "chunk_id": "b1d70c89-381f-458d-bf9f-a1524f47a017:0",
+          "content_sha256": "238b416f04ffbd8b60160f060a54fae13244549b37bc14dab691ea655ca45301",
+          "normalized_char_count": 701
+        },
+        {
+          "chunk_id": "b1d70c89-381f-458d-bf9f-a1524f47a017:1",
+          "content_sha256": "656c5815841c51ff6fde75f38f274a8aebfeb8e11d899846b184d7754036bd3c",
+          "normalized_char_count": 695
+        },
+        {
+          "chunk_id": "b1d70c89-381f-458d-bf9f-a1524f47a017:2",
+          "content_sha256": "e660f09b14a2f7ffbb44033b8c2c8dfac96fdb23254ba9a56fed5dfa46b32f81",
+          "normalized_char_count": 757
+        },
+        {
+          "chunk_id": "b1d70c89-381f-458d-bf9f-a1524f47a017:3",
+          "content_sha256": "c9bc43cb44bd7671fbdf1a34b83ebe27abc1714eb93014ab2d2ecdeff1540a0d",
+          "normalized_char_count": 481
+        }
+      ]
+    },
+    {
+      "document_id": "294675dd-e459-4a5e-98cb-368b58547494",
+      "original_name": "06_消化肝胆胰与胃肠健康.txt",
+      "stored_name": "294675dd-e459-4a5e-98cb-368b58547494.txt",
+      "content_sha256": "2bc383e1c28a55dfc615b16d8e25d8081ff9e4dcb290af93ac9a3f57879391ec",
+      "size_bytes": 6716,
+      "chunk_count": 4,
+      "chunks": [
+        {
+          "chunk_id": "294675dd-e459-4a5e-98cb-368b58547494:0",
+          "content_sha256": "06b13ef2402b4c8e0c82a7988a82e960f7783d5a03f54eee5512d512a198b912",
+          "normalized_char_count": 787
+        },
+        {
+          "chunk_id": "294675dd-e459-4a5e-98cb-368b58547494:1",
+          "content_sha256": "dff522a410af462c77977cba8c1a763860bb1c56f3616bd367476da31814ded0",
+          "normalized_char_count": 775
+        },
+        {
+          "chunk_id": "294675dd-e459-4a5e-98cb-368b58547494:2",
+          "content_sha256": "5c190e59d3d39d4d7bef2b0375ab3ce72a6390726d895ddaf965fc76e728c7c4",
+          "normalized_char_count": 617
+        },
+        {
+          "chunk_id": "294675dd-e459-4a5e-98cb-368b58547494:3",
+          "content_sha256": "27c199be07e625a6ccf43100965a8ee6fdaa53d3d13f75da72fd62a0ee066a53",
+          "normalized_char_count": 467
+        }
+      ]
+    },
+    {
+      "document_id": "953e5a9e-cb46-4a93-8efc-5b688954fa1b",
+      "original_name": "07_神经系统疾病与康复.txt",
+      "stored_name": "953e5a9e-cb46-4a93-8efc-5b688954fa1b.txt",
+      "content_sha256": "4e12367a5a60ca6a52495d7f17faa77ab8f28e9f3332a18146a770e8782b7e16",
+      "size_bytes": 6222,
+      "chunk_count": 4,
+      "chunks": [
+        {
+          "chunk_id": "953e5a9e-cb46-4a93-8efc-5b688954fa1b:0",
+          "content_sha256": "7acea70ec0f9251e23ee622721fe2fe5862da288d1f5f390a73c06b8034b0523",
+          "normalized_char_count": 776
+        },
+        {
+          "chunk_id": "953e5a9e-cb46-4a93-8efc-5b688954fa1b:1",
+          "content_sha256": "d6380579976cf24a1098ee385a4c8ce72b6e5308bb2f9fdd75c998032c622404",
+          "normalized_char_count": 749
+        },
+        {
+          "chunk_id": "953e5a9e-cb46-4a93-8efc-5b688954fa1b:2",
+          "content_sha256": "2f062928a63d354d0e90f3d4fc7a96fcc3e483721a6f4e2d8b67286e8bbb80ee",
+          "normalized_char_count": 584
+        },
+        {
+          "chunk_id": "953e5a9e-cb46-4a93-8efc-5b688954fa1b:3",
+          "content_sha256": "dee4053e49bfb00fcd9d1c4d55665497cced4246beda008759b8e1acf681c197",
+          "normalized_char_count": 450
+        }
+      ]
+    },
+    {
+      "document_id": "100ea094-07cb-4338-94af-3c66b41d6d3d",
+      "original_name": "08_肾脏泌尿与水电解质健康.txt",
+      "stored_name": "100ea094-07cb-4338-94af-3c66b41d6d3d.txt",
+      "content_sha256": "89f67b425e2f227eb579e527c72b7756905ef71813ed7413d33bd9103571fd94",
+      "size_bytes": 5575,
+      "chunk_count": 3,
+      "chunks": [
+        {
+          "chunk_id": "100ea094-07cb-4338-94af-3c66b41d6d3d:0",
+          "content_sha256": "3371d4c03591132254ff294d7b799c23ca0cb9986280d55e67dbd741043496b1",
+          "normalized_char_count": 725
+        },
+        {
+          "chunk_id": "100ea094-07cb-4338-94af-3c66b41d6d3d:1",
+          "content_sha256": "a82f469a220f7bbb2383eb445372d2016556d4883230b69d6705afa0ca811a61",
+          "normalized_char_count": 736
+        },
+        {
+          "chunk_id": "100ea094-07cb-4338-94af-3c66b41d6d3d:2",
+          "content_sha256": "f47d1d03eaa3550f48c7754194d9e621b7bdde7cfd18401c3633e829bc50890c",
+          "normalized_char_count": 649
+        }
+      ]
+    },
+    {
+      "document_id": "ffbfd0db-d1c7-4b4c-819a-c3db33071d6f",
+      "original_name": "09_感染性疾病与抗微生物药物.txt",
+      "stored_name": "ffbfd0db-d1c7-4b4c-819a-c3db33071d6f.txt",
+      "content_sha256": "3fec2124685860ee7db853769b62c3bac5198ff8f84130c1a57a9949af9398b5",
+      "size_bytes": 5880,
+      "chunk_count": 4,
+      "chunks": [
+        {
+          "chunk_id": "ffbfd0db-d1c7-4b4c-819a-c3db33071d6f:0",
+          "content_sha256": "1da0d9b2be0caf407c286586c3ec25384baf0b0dbca996aeaa81fc294ee76e70",
+          "normalized_char_count": 750
+        },
+        {
+          "chunk_id": "ffbfd0db-d1c7-4b4c-819a-c3db33071d6f:1",
+          "content_sha256": "8996efcfe379da1449020677eac9b3fccdf949e8b95038d8f4d6af7bcfe19ef7",
+          "normalized_char_count": 775
+        },
+        {
+          "chunk_id": "ffbfd0db-d1c7-4b4c-819a-c3db33071d6f:2",
+          "content_sha256": "7fa6f45e7c6ec7989b4ccb287aa5f885fffdea3a217399f62ff2131810b54a4e",
+          "normalized_char_count": 403
+        },
+        {
+          "chunk_id": "ffbfd0db-d1c7-4b4c-819a-c3db33071d6f:3",
+          "content_sha256": "6dd0c8684430cd44c02905db531dcf118910897640ec5513c81506b8d7208ebf",
+          "normalized_char_count": 496
+        }
+      ]
+    },
+    {
+      "document_id": "eee38e43-a254-473d-97f9-9eb921b02d92",
+      "original_name": "10_儿童生长发育与常见健康问题.txt",
+      "stored_name": "eee38e43-a254-473d-97f9-9eb921b02d92.txt",
+      "content_sha256": "53e820c554a242988c024b228a9bec50ae7d55ba7054647de2885ddb82bfce28",
+      "size_bytes": 6545,
+      "chunk_count": 4,
+      "chunks": [
+        {
+          "chunk_id": "eee38e43-a254-473d-97f9-9eb921b02d92:0",
+          "content_sha256": "0590a60ed8238fa5930481dbf0c2db050254738819a0f668c50328779b690cf5",
+          "normalized_char_count": 737
+        },
+        {
+          "chunk_id": "eee38e43-a254-473d-97f9-9eb921b02d92:1",
+          "content_sha256": "cc6033ac697cee4517f816dda78857e2ec80d7c81cef886b2b4749c2c87ff0db",
+          "normalized_char_count": 750
+        },
+        {
+          "chunk_id": "eee38e43-a254-473d-97f9-9eb921b02d92:2",
+          "content_sha256": "2bee0375401aee4441d745d080e6d06327c904e27541cf67c153c871a72ad8c5",
+          "normalized_char_count": 614
+        },
+        {
+          "chunk_id": "eee38e43-a254-473d-97f9-9eb921b02d92:3",
+          "content_sha256": "50682463054d25c5d0411a7a4b49eaa1667fa059716db88cda4776069537cd84",
+          "normalized_char_count": 591
+        }
+      ]
+    },
+    {
+      "document_id": "4475d69d-91db-4742-a912-314f1d44e5ec",
+      "original_name": "11_孕产妇与女性健康.txt",
+      "stored_name": "4475d69d-91db-4742-a912-314f1d44e5ec.txt",
+      "content_sha256": "7c322e1d5e877c4722a34050c5f63c1b511c97341ce3ec523422f1573c743c29",
+      "size_bytes": 6442,
+      "chunk_count": 4,
+      "chunks": [
+        {
+          "chunk_id": "4475d69d-91db-4742-a912-314f1d44e5ec:0",
+          "content_sha256": "72b7a84009819567edc8d0be4b69371a538ad26203cbae418ec5da41771b62ed",
+          "normalized_char_count": 731
+        },
+        {
+          "chunk_id": "4475d69d-91db-4742-a912-314f1d44e5ec:1",
+          "content_sha256": "cb4035d551aa3bf6f9cdd1be25cda0f12b19716ff679966e954add3059dc15dc",
+          "normalized_char_count": 754
+        },
+        {
+          "chunk_id": "4475d69d-91db-4742-a912-314f1d44e5ec:2",
+          "content_sha256": "0a73d7cb1993447d7bf4eccbb3d5e1c49cd2e59b74be9fd6a7295d8b7780d95b",
+          "normalized_char_count": 648
+        },
+        {
+          "chunk_id": "4475d69d-91db-4742-a912-314f1d44e5ec:3",
+          "content_sha256": "ededfbdd7800c1677872ca52913ca4e7a3a62ff963631895a64a9461a128abdd",
+          "normalized_char_count": 589
+        }
+      ]
+    },
+    {
+      "document_id": "6c934029-9a27-4fa9-a314-2f61db852a25",
+      "original_name": "12_老年综合健康与照护.txt",
+      "stored_name": "6c934029-9a27-4fa9-a314-2f61db852a25.txt",
+      "content_sha256": "506732b8605d46ef08b1694b6244760fa878718f592cf50a94578f6908752dcf",
+      "size_bytes": 5555,
+      "chunk_count": 3,
+      "chunks": [
+        {
+          "chunk_id": "6c934029-9a27-4fa9-a314-2f61db852a25:0",
+          "content_sha256": "fc6e1c01f4f5a117dac27afa85299fc27ae781536eee931208e828059f342b98",
+          "normalized_char_count": 785
+        },
+        {
+          "chunk_id": "6c934029-9a27-4fa9-a314-2f61db852a25:1",
+          "content_sha256": "8eb2ceace38c5ffc72c0e7fb891523476fd0b96104e8940ef5e80b2740ce0cdf",
+          "normalized_char_count": 767
+        },
+        {
+          "chunk_id": "6c934029-9a27-4fa9-a314-2f61db852a25:2",
+          "content_sha256": "f66ad7179d6a16271db5fee26e0e39ce02a54626020d89895e9be82fc4e97a5a",
+          "normalized_char_count": 777
+        }
+      ]
+    },
+    {
+      "document_id": "5e0f2ed4-5cea-43a2-b2a5-d0e5f6154ff6",
+      "original_name": "13_精神心理与睡眠健康.txt",
+      "stored_name": "5e0f2ed4-5cea-43a2-b2a5-d0e5f6154ff6.txt",
+      "content_sha256": "7e27d8e362ba3cd9cacece2a1fcf000abaadb1c4d76cfe2c83703133d0b50f06",
+      "size_bytes": 5462,
+      "chunk_count": 3,
+      "chunks": [
+        {
+          "chunk_id": "5e0f2ed4-5cea-43a2-b2a5-d0e5f6154ff6:0",
+          "content_sha256": "4a2a6c536d9df3953145d5ed3627ecea32064179fe66bd365755508bd76048f0",
+          "normalized_char_count": 756
+        },
+        {
+          "chunk_id": "5e0f2ed4-5cea-43a2-b2a5-d0e5f6154ff6:1",
+          "content_sha256": "2023fe7b7271dfe814d81f95815dd362ea02fc567870041a9d82cdfa5142978a",
+          "normalized_char_count": 733
+        },
+        {
+          "chunk_id": "5e0f2ed4-5cea-43a2-b2a5-d0e5f6154ff6:2",
+          "content_sha256": "87bcea2654d5dde8b80e46ee26e1a5b4b3de6e4878a8ab23dfe31b2795429a1b",
+          "normalized_char_count": 642
+        }
+      ]
+    },
+    {
+      "document_id": "a05da860-08a3-47e2-b8f2-6b59c7b1f868",
+      "original_name": "14_肿瘤预防筛查与支持照护.txt",
+      "stored_name": "a05da860-08a3-47e2-b8f2-6b59c7b1f868.txt",
+      "content_sha256": "42850c56f996f20d1337f6d16cba9814bd0120959027a0faa10f5225ed97028a",
+      "size_bytes": 5640,
+      "chunk_count": 4,
+      "chunks": [
+        {
+          "chunk_id": "a05da860-08a3-47e2-b8f2-6b59c7b1f868:0",
+          "content_sha256": "31126faf32a510518f67b2c17004f26a5045f2d6ee91bedf87d7df1b84f8f076",
+          "normalized_char_count": 758
+        },
+        {
+          "chunk_id": "a05da860-08a3-47e2-b8f2-6b59c7b1f868:1",
+          "content_sha256": "b3fad032bad970a9d564b419f01709ad1ebd0960f176dd039dab3b68f592b098",
+          "normalized_char_count": 730
+        },
+        {
+          "chunk_id": "a05da860-08a3-47e2-b8f2-6b59c7b1f868:2",
+          "content_sha256": "7f57f55fcb848d5458e6d6d0b9c5dd1d520ffecc333fdceffcab228d014fdbe6",
+          "normalized_char_count": 403
+        },
+        {
+          "chunk_id": "a05da860-08a3-47e2-b8f2-6b59c7b1f868:3",
+          "content_sha256": "cb65729556543e37c38e1874241e4e07aaea31cde71ff8f637acfd1861dc0853",
+          "normalized_char_count": 490
+        }
+      ]
+    },
+    {
+      "document_id": "fda6f02f-f83d-4bf3-bdde-793b73ae1696",
+      "original_name": "15_合理用药与药物安全.txt",
+      "stored_name": "fda6f02f-f83d-4bf3-bdde-793b73ae1696.txt",
+      "content_sha256": "fdafa89042ce867553cc46f048e10eee2bd1714a426466e6f1e17e1427f7aefe",
+      "size_bytes": 6168,
+      "chunk_count": 4,
+      "chunks": [
+        {
+          "chunk_id": "fda6f02f-f83d-4bf3-bdde-793b73ae1696:0",
+          "content_sha256": "6cf0ae70d94c9db3d26d1c2661caa805e8d02449bc4eaa3937b46053c021596d",
+          "normalized_char_count": 742
+        },
+        {
+          "chunk_id": "fda6f02f-f83d-4bf3-bdde-793b73ae1696:1",
+          "content_sha256": "14d4c74b605969767fb15bf50cc9d30fdd85bd5eb65dca16a610710ec8461c01",
+          "normalized_char_count": 724
+        },
+        {
+          "chunk_id": "fda6f02f-f83d-4bf3-bdde-793b73ae1696:2",
+          "content_sha256": "d9a83725ef8c15dbef17cd9214bb90e5cf23fbc109c5e60157bd959bceffb3da",
+          "normalized_char_count": 479
+        },
+        {
+          "chunk_id": "fda6f02f-f83d-4bf3-bdde-793b73ae1696:3",
+          "content_sha256": "3a87699da2d0f0a4813df6f86ba215c0b7af1be41371f3b097a212f6d600b688",
+          "normalized_char_count": 483
+        }
+      ]
+    },
+    {
+      "document_id": "eede3f4a-4f51-4c69-a738-534ecc82c17e",
+      "original_name": "16_营养体重运动与生活方式.txt",
+      "stored_name": "eede3f4a-4f51-4c69-a738-534ecc82c17e.txt",
+      "content_sha256": "fdf75fb7afdbdff6c7c1891d14df89991dc468ea3d9318124247b3eaca15738a",
+      "size_bytes": 5547,
+      "chunk_count": 3,
+      "chunks": [
+        {
+          "chunk_id": "eede3f4a-4f51-4c69-a738-534ecc82c17e:0",
+          "content_sha256": "1de78e32bc9a62b18e0699a39897dfb6638a07ce89ec13987a089f1aee335722",
+          "normalized_char_count": 775
+        },
+        {
+          "chunk_id": "eede3f4a-4f51-4c69-a738-534ecc82c17e:1",
+          "content_sha256": "da46db5e02503bbcbd7a3b4c62e34564ccdbc4106a0426c6652c636cca12dfe6",
+          "normalized_char_count": 784
+        },
+        {
+          "chunk_id": "eede3f4a-4f51-4c69-a738-534ecc82c17e:2",
+          "content_sha256": "729daa298d95526c669ca881aeef9ed128fee1fabf93c64549e6ce43a5265a74",
+          "normalized_char_count": 733
+        }
+      ]
+    },
+    {
+      "document_id": "0baef465-2b93-4d40-a065-a0e7f8daa492",
+      "original_name": "17_疫苗免疫与传染病预防.txt",
+      "stored_name": "0baef465-2b93-4d40-a065-a0e7f8daa492.txt",
+      "content_sha256": "61656c8887c907028367a86b624e826d575c446d45b2c6ae1a738b55a871c70c",
+      "size_bytes": 5507,
+      "chunk_count": 3,
+      "chunks": [
+        {
+          "chunk_id": "0baef465-2b93-4d40-a065-a0e7f8daa492:0",
+          "content_sha256": "c899281508ed3e1f22cbfefd4046df81a983ae542a71d68d80721847291e4f85",
+          "normalized_char_count": 712
+        },
+        {
+          "chunk_id": "0baef465-2b93-4d40-a065-a0e7f8daa492:1",
+          "content_sha256": "00c1e79b969cdae880d649433059ee8bda98718fdd402a8f63a0bfbc5f59e1fa",
+          "normalized_char_count": 735
+        },
+        {
+          "chunk_id": "0baef465-2b93-4d40-a065-a0e7f8daa492:2",
+          "content_sha256": "1a2c47f24a4b61cf38811293ef969013d4049ce90a3c8b3fe2ab3a98edc80325",
+          "normalized_char_count": 780
+        }
+      ]
+    },
+    {
+      "document_id": "543de54b-33af-45e5-8351-25fc53714399",
+      "original_name": "18_常见检验检查与报告理解.txt",
+      "stored_name": "543de54b-33af-45e5-8351-25fc53714399.txt",
+      "content_sha256": "d7c678b7445ad30d5db4e31914e7941e15d1fedacb462060768085b7954f3644",
+      "size_bytes": 6613,
+      "chunk_count": 4,
+      "chunks": [
+        {
+          "chunk_id": "543de54b-33af-45e5-8351-25fc53714399:0",
+          "content_sha256": "0a152f786a7f67ecd6d30144170d35a4ebeeadc3fcd6a77564e5b07dcfbbdbb7",
+          "normalized_char_count": 730
+        },
+        {
+          "chunk_id": "543de54b-33af-45e5-8351-25fc53714399:1",
+          "content_sha256": "0b86069ac6e139ecfa80c2d200b79ef2ac2c6d2035190baca141790e6bc4db76",
+          "normalized_char_count": 769
+        },
+        {
+          "chunk_id": "543de54b-33af-45e5-8351-25fc53714399:2",
+          "content_sha256": "7f42dd7a8f4887964a1bfbca466019d7c4820bd7860812564912817237bfde55",
+          "normalized_char_count": 738
+        },
+        {
+          "chunk_id": "543de54b-33af-45e5-8351-25fc53714399:3",
+          "content_sha256": "7a0bdf02a14cb18257afc3b769fad43721e5edf9076a306e08d27e0bda73aaff",
+          "normalized_char_count": 487
+        }
+      ]
+    },
+    {
+      "document_id": "ebbaaad2-b898-47c1-8774-afd052269789",
+      "original_name": "19_眼耳口腔皮肤与肌肉骨骼健康.txt",
+      "stored_name": "ebbaaad2-b898-47c1-8774-afd052269789.txt",
+      "content_sha256": "3a446cc46df0933df6cf1c944b320fdc7cec6db5170ab235a597b77cc7abbfac",
+      "size_bytes": 6327,
+      "chunk_count": 4,
+      "chunks": [
+        {
+          "chunk_id": "ebbaaad2-b898-47c1-8774-afd052269789:0",
+          "content_sha256": "7f0402444ba199acc80c50a951917cb2aa167c0bb61dceed248d6eb5c5235829",
+          "normalized_char_count": 700
+        },
+        {
+          "chunk_id": "ebbaaad2-b898-47c1-8774-afd052269789:1",
+          "content_sha256": "4e9c1ddd3a51d1417b6d0090d59e66e50999280c66a0a5a1ab5641591d275dbb",
+          "normalized_char_count": 772
+        },
+        {
+          "chunk_id": "ebbaaad2-b898-47c1-8774-afd052269789:2",
+          "content_sha256": "0929d58dac130ac62228ed0d3f61c0e3ccfc4976fad13fb03e0d215db9e70d08",
+          "normalized_char_count": 576
+        },
+        {
+          "chunk_id": "ebbaaad2-b898-47c1-8774-afd052269789:3",
+          "content_sha256": "31fa925aadb740891594034d36e72affdccd029008eb8813ea233cc9e0065f8c",
+          "normalized_char_count": 567
+        }
+      ]
+    },
+    {
+      "document_id": "b345ba95-70cf-403b-9830-de84c07f0384",
+      "original_name": "20_食品环境职业健康与中毒预防.txt",
+      "stored_name": "b345ba95-70cf-403b-9830-de84c07f0384.txt",
+      "content_sha256": "78019a8872e88b803e7de40f141ad29a982959843510fec88ced2e659f4abf7b",
+      "size_bytes": 5947,
+      "chunk_count": 4,
+      "chunks": [
+        {
+          "chunk_id": "b345ba95-70cf-403b-9830-de84c07f0384:0",
+          "content_sha256": "b63135503eae2e97ab521c34a1912a47cdb6b3240f28f8c87a33aa1cbd9872fc",
+          "normalized_char_count": 711
+        },
+        {
+          "chunk_id": "b345ba95-70cf-403b-9830-de84c07f0384:1",
+          "content_sha256": "5ee030ca8cbd675adf368ec2182e5ef9115d9556674efdd163e294f9804ed2cb",
+          "normalized_char_count": 751
+        },
+        {
+          "chunk_id": "b345ba95-70cf-403b-9830-de84c07f0384:2",
+          "content_sha256": "f1c4d0041373ffdbcb19cf79d1bde8f7363b14b1eca23487e7143de9de22ce2f",
+          "normalized_char_count": 498
+        },
+        {
+          "chunk_id": "b345ba95-70cf-403b-9830-de84c07f0384:3",
+          "content_sha256": "3329ddc94d6d99437a4bac00fc05ba7a210b1f2accc907eff045b0ae212f5753",
+          "normalized_char_count": 559
+        }
+      ]
+    },
+    {
+      "document_id": "012c35e6-4cee-4498-b6e0-c0985f8781ac",
+      "original_name": "21_知识库术语索引来源与版本治理.txt",
+      "stored_name": "012c35e6-4cee-4498-b6e0-c0985f8781ac.txt",
+      "content_sha256": "e3d5c581412f66987fe27ed24a0645cfab74e175712d363c313c4464edb026ac",
+      "size_bytes": 7748,
+      "chunk_count": 7,
+      "chunks": [
+        {
+          "chunk_id": "012c35e6-4cee-4498-b6e0-c0985f8781ac:0",
+          "content_sha256": "a619d24a21f4366cacdf32a051da6721ebf9e4f414745608ff814296ba939628",
+          "normalized_char_count": 753
+        },
+        {
+          "chunk_id": "012c35e6-4cee-4498-b6e0-c0985f8781ac:1",
+          "content_sha256": "4073011406b821020bdd1c736c546dac9e3b41b9b6c2e37b3f1a4577578cc78e",
+          "normalized_char_count": 765
+        },
+        {
+          "chunk_id": "012c35e6-4cee-4498-b6e0-c0985f8781ac:2",
+          "content_sha256": "2519d5161b0c1724e59a1f5813937cb5452de79276f1b9b0f8e2da41e0ab6aca",
+          "normalized_char_count": 764
+        },
+        {
+          "chunk_id": "012c35e6-4cee-4498-b6e0-c0985f8781ac:3",
+          "content_sha256": "48fe0223b24957f63ad002cc943ab476c05660cef69375752918ae42317c46c1",
+          "normalized_char_count": 108
+        },
+        {
+          "chunk_id": "012c35e6-4cee-4498-b6e0-c0985f8781ac:4",
+          "content_sha256": "8f61f6f43fa59e971c1b0cf482e99aa76f2e52a589ae1ea90cefaa9e5529aa47",
+          "normalized_char_count": 731
+        },
+        {
+          "chunk_id": "012c35e6-4cee-4498-b6e0-c0985f8781ac:5",
+          "content_sha256": "5527ce097ecfdcc415a0a50cafe1f8452232949ad604e08e733122b1646aeefa",
+          "normalized_char_count": 333
+        },
+        {
+          "chunk_id": "012c35e6-4cee-4498-b6e0-c0985f8781ac:6",
+          "content_sha256": "ec47e0a93364d783bc69ea4cafc141f2eb9e6a1cce6231c467310e08b31f3867",
+          "normalized_char_count": 17
+        }
+      ]
+    },
+    {
+      "document_id": "b59e0dbf-ed90-4cf4-892a-9643c00809d6",
+      "original_name": "22_血液系统免疫与风湿健康.txt",
+      "stored_name": "b59e0dbf-ed90-4cf4-892a-9643c00809d6.txt",
+      "content_sha256": "df5492d13c1b81e52eb0b41a39f6eb86f34dca1459adee39f2350689228ffa66",
+      "size_bytes": 4598,
+      "chunk_count": 3,
+      "chunks": [
+        {
+          "chunk_id": "b59e0dbf-ed90-4cf4-892a-9643c00809d6:0",
+          "content_sha256": "32eee32351c311ac302f4697ac279534191499ca50b2cbaad23b8c3d8525c89a",
+          "normalized_char_count": 725
+        },
+        {
+          "chunk_id": "b59e0dbf-ed90-4cf4-892a-9643c00809d6:1",
+          "content_sha256": "e5cdce20d26928a849c380d1b7da3586a477858809d48f9f83c6af92e0ffd777",
+          "normalized_char_count": 732
+        },
+        {
+          "chunk_id": "b59e0dbf-ed90-4cf4-892a-9643c00809d6:2",
+          "content_sha256": "2c54adfd5cf5118cda77eb8435e27ab426c6d3bc253e71fcde929c4de7ae65fc",
+          "normalized_char_count": 469
+        }
+      ]
+    },
+    {
+      "document_id": "233f3a38-e3b9-4365-81ce-1c04ea77013c",
+      "original_name": "23_男性生殖与泌尿健康.txt",
+      "stored_name": "233f3a38-e3b9-4365-81ce-1c04ea77013c.txt",
+      "content_sha256": "b0185b4d84652871e02d7237a0dee6d5cea11c2a3be2d69770b521ba2ed0d676",
+      "size_bytes": 3823,
+      "chunk_count": 3,
+      "chunks": [
+        {
+          "chunk_id": "233f3a38-e3b9-4365-81ce-1c04ea77013c:0",
+          "content_sha256": "7994281755ae0c7f0762bf7a9505d30ef688af7cd15fc70711e70f3990ab001f",
+          "normalized_char_count": 754
+        },
+        {
+          "chunk_id": "233f3a38-e3b9-4365-81ce-1c04ea77013c:1",
+          "content_sha256": "896380b74e1063207caa7e7f684ba1b25faa5d7c4acf19e704c8a956f1e739af",
+          "normalized_char_count": 424
+        },
+        {
+          "chunk_id": "233f3a38-e3b9-4365-81ce-1c04ea77013c:2",
+          "content_sha256": "83d9aa52324e9212889cc8722154846b39ca634f7c880cb7353fb64402678ec2",
+          "normalized_char_count": 486
+        }
+      ]
+    },
+    {
+      "document_id": "ea12b902-3fa4-47dd-acb5-f4b2e829cd8e",
+      "original_name": "24_康复医学疼痛与功能恢复.txt",
+      "stored_name": "ea12b902-3fa4-47dd-acb5-f4b2e829cd8e.txt",
+      "content_sha256": "c89127d69b4e14380be61dbdf28ca0adead7abfb474548e7d97f21223cbec19c",
+      "size_bytes": 4099,
+      "chunk_count": 3,
+      "chunks": [
+        {
+          "chunk_id": "ea12b902-3fa4-47dd-acb5-f4b2e829cd8e:0",
+          "content_sha256": "ee7c8621b2e8e637a3f13b422c2d31c9c4c5946df99343c9ac5f7710ebf54f3d",
+          "normalized_char_count": 783
+        },
+        {
+          "chunk_id": "ea12b902-3fa4-47dd-acb5-f4b2e829cd8e:1",
+          "content_sha256": "53dca649b07972da9af9268662bc0341f921b2cf9b9e69ca5ed450c07b326752",
+          "normalized_char_count": 558
+        },
+        {
+          "chunk_id": "ea12b902-3fa4-47dd-acb5-f4b2e829cd8e:2",
+          "content_sha256": "58f9e69e869c83822ba591150ee1079914858e9903f983e36e5b5e7616b42362",
+          "normalized_char_count": 347
+        }
+      ]
+    },
+    {
+      "document_id": "8eca1ee2-5c84-4993-8184-69247b3cde44",
+      "original_name": "25_家庭健康档案与慢病随访.txt",
+      "stored_name": "8eca1ee2-5c84-4993-8184-69247b3cde44.txt",
+      "content_sha256": "0614e3e2b6302bdc219aee5fb7b92efc66cfbfb9a81e7dae77d6ef78d86cc5c5",
+      "size_bytes": 3930,
+      "chunk_count": 3,
+      "chunks": [
+        {
+          "chunk_id": "8eca1ee2-5c84-4993-8184-69247b3cde44:0",
+          "content_sha256": "d67bc990192c8dcedc97c40b0e20ded82104735a71febc605de9092e15553d0b",
+          "normalized_char_count": 711
+        },
+        {
+          "chunk_id": "8eca1ee2-5c84-4993-8184-69247b3cde44:1",
+          "content_sha256": "25fd84bac083ae3956ca92a46b872d487ba5c306427c3850d6c002952cd9ae8a",
+          "normalized_char_count": 510
+        },
+        {
+          "chunk_id": "8eca1ee2-5c84-4993-8184-69247b3cde44:2",
+          "content_sha256": "9a2fda96ef1a9cb729311bd9836c057d5f1c809ef6a45bc6928d9412965c61c8",
+          "normalized_char_count": 504
+        }
+      ]
+    },
+    {
+      "document_id": "3b5eb5f6-4a1f-4db5-94bc-fa1158b17f10",
+      "original_name": "26_住院手术检查与患者安全.txt",
+      "stored_name": "3b5eb5f6-4a1f-4db5-94bc-fa1158b17f10.txt",
+      "content_sha256": "b2da04bfe562a57d6c84e0bcfa36e758f9215cca073c6dd7b980850a2a50a515",
+      "size_bytes": 4423,
+      "chunk_count": 3,
+      "chunks": [
+        {
+          "chunk_id": "3b5eb5f6-4a1f-4db5-94bc-fa1158b17f10:0",
+          "content_sha256": "eca459535664bf4876d29c39e2c65070e47f2f0a7acbcc0d8a5bc361973b8d8f",
+          "normalized_char_count": 736
+        },
+        {
+          "chunk_id": "3b5eb5f6-4a1f-4db5-94bc-fa1158b17f10:1",
+          "content_sha256": "044ebaba6871df897e46e9e4889678aae5b835a791feeca25908b981e9f32b94",
+          "normalized_char_count": 617
+        },
+        {
+          "chunk_id": "3b5eb5f6-4a1f-4db5-94bc-fa1158b17f10:2",
+          "content_sha256": "86dbdf2d857b6b51381540f979f9c700dcb84817e0e46b6c9e13804ae7b5a752",
+          "normalized_char_count": 556
+        }
+      ]
+    }
+  ]
+}

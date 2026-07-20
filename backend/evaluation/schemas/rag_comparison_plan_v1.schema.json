@@ -1,0 +1,521 @@
+{
+  "$defs": {
+    "CandidateAnswerConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "title": "Adapter",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "prompt_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Prompt Sha256",
+          "type": "string"
+        },
+        "max_output_tokens": {
+          "exclusiveMinimum": 0,
+          "title": "Max Output Tokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "adapter",
+        "model",
+        "prompt_sha256",
+        "max_output_tokens"
+      ],
+      "title": "CandidateAnswerConfiguration",
+      "type": "object"
+    },
+    "CandidateProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "pattern": "^[a-z0-9_]+_v[0-9]+$",
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "display_name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "configuration": {
+          "$ref": "#/$defs/CandidateTechnicalConfiguration"
+        },
+        "configuration_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Configuration Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "display_name",
+        "configuration",
+        "configuration_fingerprint"
+      ],
+      "title": "CandidateProfile",
+      "type": "object"
+    },
+    "CandidateRerankConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "adapter": {
+          "title": "Adapter",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "max_candidates": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Max Candidates",
+          "type": "integer"
+        },
+        "timeout_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 30,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "max_input_tokens": {
+          "maximum": 120000,
+          "minimum": 1,
+          "title": "Max Input Tokens",
+          "type": "integer"
+        },
+        "input_price_per_million_tokens_cny": {
+          "minimum": 0,
+          "title": "Input Price Per Million Tokens Cny",
+          "type": "number"
+        },
+        "max_estimated_cost_cny": {
+          "minimum": 0,
+          "title": "Max Estimated Cost Cny",
+          "type": "number"
+        }
+      },
+      "required": [
+        "enabled",
+        "adapter",
+        "model",
+        "max_candidates",
+        "timeout_seconds",
+        "max_input_tokens",
+        "input_price_per_million_tokens_cny",
+        "max_estimated_cost_cny"
+      ],
+      "title": "CandidateRerankConfiguration",
+      "type": "object"
+    },
+    "CandidateRetrievalConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "query_builder_version": {
+          "title": "Query Builder Version",
+          "type": "string"
+        },
+        "vector_adapter": {
+          "title": "Vector Adapter",
+          "type": "string"
+        },
+        "embedding_model": {
+          "title": "Embedding Model",
+          "type": "string"
+        },
+        "chroma_collection": {
+          "title": "Chroma Collection",
+          "type": "string"
+        },
+        "top_k": {
+          "const": 4,
+          "title": "Top K",
+          "type": "integer"
+        },
+        "minimum_relevance_score": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Minimum Relevance Score"
+        },
+        "metadata_filters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Metadata Filters",
+          "type": "object"
+        },
+        "hybrid_enabled": {
+          "title": "Hybrid Enabled",
+          "type": "boolean"
+        },
+        "keyword_adapter": {
+          "title": "Keyword Adapter",
+          "type": "string"
+        },
+        "vector_weight": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Vector Weight",
+          "type": "number"
+        },
+        "keyword_weight": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Keyword Weight",
+          "type": "number"
+        },
+        "rrf_k": {
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Rrf K",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "query_builder_version",
+        "vector_adapter",
+        "embedding_model",
+        "chroma_collection",
+        "top_k",
+        "metadata_filters",
+        "hybrid_enabled",
+        "keyword_adapter",
+        "vector_weight",
+        "keyword_weight",
+        "rrf_k"
+      ],
+      "title": "CandidateRetrievalConfiguration",
+      "type": "object"
+    },
+    "CandidateTechnicalConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "profile_version": {
+          "const": "rag_candidate_profile_v1",
+          "title": "Profile Version",
+          "type": "string"
+        },
+        "retrieval": {
+          "$ref": "#/$defs/CandidateRetrievalConfiguration"
+        },
+        "rerank": {
+          "$ref": "#/$defs/CandidateRerankConfiguration"
+        },
+        "answer": {
+          "$ref": "#/$defs/CandidateAnswerConfiguration"
+        }
+      },
+      "required": [
+        "profile_version",
+        "retrieval",
+        "rerank",
+        "answer"
+      ],
+      "title": "CandidateTechnicalConfiguration",
+      "type": "object"
+    },
+    "ComparisonHardLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_cases_per_new_candidate": {
+          "const": 40,
+          "title": "Max Cases Per New Candidate",
+          "type": "integer"
+        },
+        "new_candidate_run_count": {
+          "const": 2,
+          "title": "New Candidate Run Count",
+          "type": "integer"
+        },
+        "max_embedding_calls": {
+          "const": 80,
+          "title": "Max Embedding Calls",
+          "type": "integer"
+        },
+        "max_answer_calls": {
+          "const": 80,
+          "title": "Max Answer Calls",
+          "type": "integer"
+        },
+        "max_rerank_calls": {
+          "const": 40,
+          "title": "Max Rerank Calls",
+          "type": "integer"
+        },
+        "automatic_retries": {
+          "const": 0,
+          "title": "Automatic Retries",
+          "type": "integer"
+        },
+        "max_total_tokens": {
+          "const": 1480000,
+          "title": "Max Total Tokens",
+          "type": "integer"
+        },
+        "max_estimated_cost_cny": {
+          "const": 4.4,
+          "title": "Max Estimated Cost Cny",
+          "type": "number"
+        },
+        "stop_conditions": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Stop Conditions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "max_cases_per_new_candidate",
+        "new_candidate_run_count",
+        "max_embedding_calls",
+        "max_answer_calls",
+        "max_rerank_calls",
+        "automatic_retries",
+        "max_total_tokens",
+        "max_estimated_cost_cny",
+        "stop_conditions"
+      ],
+      "title": "ComparisonHardLimits",
+      "type": "object"
+    },
+    "ComparisonPricingSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "verified_on": {
+          "const": "2026-07-19",
+          "title": "Verified On",
+          "type": "string"
+        },
+        "deployment_scope": {
+          "const": "中国内地",
+          "title": "Deployment Scope",
+          "type": "string"
+        },
+        "official_pricing_url": {
+          "title": "Official Pricing Url",
+          "type": "string"
+        },
+        "qwen_model": {
+          "const": "qwen3-max",
+          "title": "Qwen Model",
+          "type": "string"
+        },
+        "qwen_input_price_per_million_tokens_cny": {
+          "const": 2.5,
+          "title": "Qwen Input Price Per Million Tokens Cny",
+          "type": "number"
+        },
+        "qwen_output_price_per_million_tokens_cny": {
+          "const": 10.0,
+          "title": "Qwen Output Price Per Million Tokens Cny",
+          "type": "number"
+        },
+        "embedding_model": {
+          "const": "text-embedding-v4",
+          "title": "Embedding Model",
+          "type": "string"
+        },
+        "embedding_price_per_million_tokens_cny": {
+          "const": 0.5,
+          "title": "Embedding Price Per Million Tokens Cny",
+          "type": "number"
+        },
+        "rerank_model": {
+          "const": "gte-rerank-v2",
+          "title": "Rerank Model",
+          "type": "string"
+        },
+        "rerank_price_per_million_tokens_cny": {
+          "const": 0.8,
+          "title": "Rerank Price Per Million Tokens Cny",
+          "type": "number"
+        },
+        "expected_cost_min_cny": {
+          "const": 0.6,
+          "title": "Expected Cost Min Cny",
+          "type": "number"
+        },
+        "expected_cost_max_cny": {
+          "const": 1.0,
+          "title": "Expected Cost Max Cny",
+          "type": "number"
+        }
+      },
+      "required": [
+        "verified_on",
+        "deployment_scope",
+        "official_pricing_url",
+        "qwen_model",
+        "qwen_input_price_per_million_tokens_cny",
+        "qwen_output_price_per_million_tokens_cny",
+        "embedding_model",
+        "embedding_price_per_million_tokens_cny",
+        "rerank_model",
+        "rerank_price_per_million_tokens_cny",
+        "expected_cost_min_cny",
+        "expected_cost_max_cny"
+      ],
+      "title": "ComparisonPricingSnapshot",
+      "type": "object"
+    },
+    "FrozenComparisonArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "baseline",
+            "human_review_capture"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "relative_path",
+        "sha256"
+      ],
+      "title": "FrozenComparisonArtifact",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "rag_comparison_plan_v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "plan_version": {
+      "pattern": "^[a-z0-9_]+_v[0-9]+$",
+      "title": "Plan Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "dataset_version": {
+      "title": "Dataset Version",
+      "type": "string"
+    },
+    "evaluation_checksum": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Evaluation Checksum",
+      "type": "string"
+    },
+    "corpus_version": {
+      "title": "Corpus Version",
+      "type": "string"
+    },
+    "corpus_checksum": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Corpus Checksum",
+      "type": "string"
+    },
+    "frozen_artifacts": {
+      "items": {
+        "$ref": "#/$defs/FrozenComparisonArtifact"
+      },
+      "minItems": 2,
+      "title": "Frozen Artifacts",
+      "type": "array"
+    },
+    "baseline_candidate_id": {
+      "title": "Baseline Candidate Id",
+      "type": "string"
+    },
+    "new_candidate_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "title": "New Candidate Ids",
+      "type": "array"
+    },
+    "candidate_profiles": {
+      "items": {
+        "$ref": "#/$defs/CandidateProfile"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "title": "Candidate Profiles",
+      "type": "array"
+    },
+    "hard_limits": {
+      "$ref": "#/$defs/ComparisonHardLimits"
+    },
+    "pricing": {
+      "$ref": "#/$defs/ComparisonPricingSnapshot"
+    },
+    "paid_execution_available": {
+      "const": true,
+      "title": "Paid Execution Available",
+      "type": "boolean"
+    },
+    "requires_new_user_confirmation": {
+      "const": true,
+      "title": "Requires New User Confirmation",
+      "type": "boolean"
+    },
+    "production_flags_changed": {
+      "const": false,
+      "title": "Production Flags Changed",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "plan_version",
+    "generated_at",
+    "dataset_version",
+    "evaluation_checksum",
+    "corpus_version",
+    "corpus_checksum",
+    "frozen_artifacts",
+    "baseline_candidate_id",
+    "new_candidate_ids",
+    "candidate_profiles",
+    "hard_limits",
+    "pricing",
+    "paid_execution_available",
+    "requires_new_user_confirmation",
+    "production_flags_changed"
+  ],
+  "title": "ComparisonRunPlan",
+  "type": "object"
+}

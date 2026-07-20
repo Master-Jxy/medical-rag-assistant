@@ -28,6 +28,7 @@ backend/backups/
 backend/data/uploads/
 backend/data/documents.json
 backend/chroma_db/
+backend/evaluation/local_reviews/
 
 # Local learning/reference material
 reference/

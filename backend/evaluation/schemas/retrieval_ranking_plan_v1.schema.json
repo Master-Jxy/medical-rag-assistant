@@ -1,0 +1,425 @@
+{
+  "$defs": {
+    "FrozenRankingArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "baseline",
+            "human_review",
+            "rag_v1_2_comparison",
+            "ranking_mock",
+            "invalid_vector_port_attempt"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "relative_path",
+        "sha256"
+      ],
+      "title": "FrozenRankingArtifact",
+      "type": "object"
+    },
+    "RankingHardLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_cases": {
+          "const": 40,
+          "title": "Max Cases",
+          "type": "integer"
+        },
+        "max_embedding_calls": {
+          "const": 40,
+          "title": "Max Embedding Calls",
+          "type": "integer"
+        },
+        "max_keyword_scans": {
+          "const": 40,
+          "title": "Max Keyword Scans",
+          "type": "integer"
+        },
+        "max_rerank_calls": {
+          "const": 40,
+          "title": "Max Rerank Calls",
+          "type": "integer"
+        },
+        "max_answer_calls": {
+          "const": 0,
+          "title": "Max Answer Calls",
+          "type": "integer"
+        },
+        "automatic_retries": {
+          "const": 0,
+          "title": "Automatic Retries",
+          "type": "integer"
+        },
+        "embedding_tokens_reserved_per_call": {
+          "const": 512,
+          "title": "Embedding Tokens Reserved Per Call",
+          "type": "integer"
+        },
+        "rerank_tokens_reserved_per_call": {
+          "const": 30000,
+          "title": "Rerank Tokens Reserved Per Call",
+          "type": "integer"
+        },
+        "max_total_tokens": {
+          "const": 1220480,
+          "title": "Max Total Tokens",
+          "type": "integer"
+        },
+        "max_estimated_cost_cny": {
+          "const": 1.1,
+          "title": "Max Estimated Cost Cny",
+          "type": "number"
+        },
+        "stop_conditions": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Stop Conditions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "max_cases",
+        "max_embedding_calls",
+        "max_keyword_scans",
+        "max_rerank_calls",
+        "max_answer_calls",
+        "automatic_retries",
+        "embedding_tokens_reserved_per_call",
+        "rerank_tokens_reserved_per_call",
+        "max_total_tokens",
+        "max_estimated_cost_cny",
+        "stop_conditions"
+      ],
+      "title": "RankingHardLimits",
+      "type": "object"
+    },
+    "RankingPricingSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "verified_on": {
+          "const": "2026-07-20",
+          "title": "Verified On",
+          "type": "string"
+        },
+        "deployment_scope": {
+          "const": "中国内地",
+          "title": "Deployment Scope",
+          "type": "string"
+        },
+        "official_pricing_url": {
+          "title": "Official Pricing Url",
+          "type": "string"
+        },
+        "official_rerank_limits_url": {
+          "title": "Official Rerank Limits Url",
+          "type": "string"
+        },
+        "embedding_model": {
+          "const": "text-embedding-v4",
+          "title": "Embedding Model",
+          "type": "string"
+        },
+        "embedding_price_per_million_tokens_cny": {
+          "const": 0.5,
+          "title": "Embedding Price Per Million Tokens Cny",
+          "type": "number"
+        },
+        "rerank_model": {
+          "const": "gte-rerank-v2",
+          "title": "Rerank Model",
+          "type": "string"
+        },
+        "rerank_price_per_million_tokens_cny": {
+          "const": 0.8,
+          "title": "Rerank Price Per Million Tokens Cny",
+          "type": "number"
+        },
+        "expected_cost_min_cny": {
+          "const": 0.2,
+          "title": "Expected Cost Min Cny",
+          "type": "number"
+        },
+        "expected_cost_max_cny": {
+          "const": 0.6,
+          "title": "Expected Cost Max Cny",
+          "type": "number"
+        }
+      },
+      "required": [
+        "verified_on",
+        "deployment_scope",
+        "official_pricing_url",
+        "official_rerank_limits_url",
+        "embedding_model",
+        "embedding_price_per_million_tokens_cny",
+        "rerank_model",
+        "rerank_price_per_million_tokens_cny",
+        "expected_cost_min_cny",
+        "expected_cost_max_cny"
+      ],
+      "title": "RankingPricingSnapshot",
+      "type": "object"
+    },
+    "RetrievalRankingConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "profile_version": {
+          "const": "retrieval_ranking_profile_v1",
+          "title": "Profile Version",
+          "type": "string"
+        },
+        "candidate_pool_size": {
+          "const": 12,
+          "title": "Candidate Pool Size",
+          "type": "integer"
+        },
+        "max_chunks_per_document": {
+          "const": 2,
+          "title": "Max Chunks Per Document",
+          "type": "integer"
+        },
+        "final_top_k": {
+          "const": 4,
+          "title": "Final Top K",
+          "type": "integer"
+        },
+        "vector_adapter": {
+          "title": "Vector Adapter",
+          "type": "string"
+        },
+        "keyword_adapter": {
+          "title": "Keyword Adapter",
+          "type": "string"
+        },
+        "retrieval_mode": {
+          "enum": [
+            "vector",
+            "hybrid_rrf"
+          ],
+          "title": "Retrieval Mode",
+          "type": "string"
+        },
+        "vector_weight": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Vector Weight",
+          "type": "number"
+        },
+        "keyword_weight": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Keyword Weight",
+          "type": "number"
+        },
+        "rrf_k": {
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Rrf K",
+          "type": "integer"
+        },
+        "document_diversity_enabled": {
+          "title": "Document Diversity Enabled",
+          "type": "boolean"
+        },
+        "rerank_enabled": {
+          "title": "Rerank Enabled",
+          "type": "boolean"
+        },
+        "rerank_adapter": {
+          "title": "Rerank Adapter",
+          "type": "string"
+        },
+        "rerank_model": {
+          "title": "Rerank Model",
+          "type": "string"
+        },
+        "shared_vector_and_keyword_inputs": {
+          "const": true,
+          "title": "Shared Vector And Keyword Inputs",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "profile_version",
+        "candidate_pool_size",
+        "max_chunks_per_document",
+        "final_top_k",
+        "vector_adapter",
+        "keyword_adapter",
+        "retrieval_mode",
+        "vector_weight",
+        "keyword_weight",
+        "rrf_k",
+        "document_diversity_enabled",
+        "rerank_enabled",
+        "rerank_adapter",
+        "rerank_model",
+        "shared_vector_and_keyword_inputs"
+      ],
+      "title": "RetrievalRankingConfiguration",
+      "type": "object"
+    },
+    "RetrievalRankingProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "enum": [
+            "vector_top4_reference",
+            "vector_wide_diverse_v1",
+            "hybrid_wide_diverse_v1",
+            "hybrid_wide_diverse_rerank_v1"
+          ],
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "display_name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "configuration": {
+          "$ref": "#/$defs/RetrievalRankingConfiguration"
+        },
+        "configuration_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Configuration Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "display_name",
+        "configuration",
+        "configuration_fingerprint"
+      ],
+      "title": "RetrievalRankingProfile",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "retrieval_ranking_plan_v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "plan_version": {
+      "enum": [
+        "retrieval_ranking_preflight_v1",
+        "retrieval_ranking_recovery_preflight_v2"
+      ],
+      "title": "Plan Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "dataset_version": {
+      "title": "Dataset Version",
+      "type": "string"
+    },
+    "evaluation_checksum": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Evaluation Checksum",
+      "type": "string"
+    },
+    "corpus_version": {
+      "title": "Corpus Version",
+      "type": "string"
+    },
+    "corpus_checksum": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Corpus Checksum",
+      "type": "string"
+    },
+    "frozen_artifacts": {
+      "items": {
+        "$ref": "#/$defs/FrozenRankingArtifact"
+      },
+      "maxItems": 5,
+      "minItems": 4,
+      "title": "Frozen Artifacts",
+      "type": "array"
+    },
+    "candidate_profiles": {
+      "items": {
+        "$ref": "#/$defs/RetrievalRankingProfile"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "title": "Candidate Profiles",
+      "type": "array"
+    },
+    "hard_limits": {
+      "$ref": "#/$defs/RankingHardLimits"
+    },
+    "pricing": {
+      "$ref": "#/$defs/RankingPricingSnapshot"
+    },
+    "prior_attempt_estimated_cost_cny": {
+      "default": 0.0,
+      "minimum": 0,
+      "title": "Prior Attempt Estimated Cost Cny",
+      "type": "number"
+    },
+    "cumulative_hard_ceiling_cny": {
+      "default": 1.1,
+      "exclusiveMinimum": 0,
+      "title": "Cumulative Hard Ceiling Cny",
+      "type": "number"
+    },
+    "paid_execution_available": {
+      "const": true,
+      "title": "Paid Execution Available",
+      "type": "boolean"
+    },
+    "requires_new_user_confirmation": {
+      "const": true,
+      "title": "Requires New User Confirmation",
+      "type": "boolean"
+    },
+    "production_flags_changed": {
+      "const": false,
+      "title": "Production Flags Changed",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "plan_version",
+    "generated_at",
+    "dataset_version",
+    "evaluation_checksum",
+    "corpus_version",
+    "corpus_checksum",
+    "frozen_artifacts",
+    "candidate_profiles",
+    "hard_limits",
+    "pricing",
+    "paid_execution_available",
+    "requires_new_user_confirmation",
+    "production_flags_changed"
+  ],
+  "title": "RetrievalRankingRunPlan",
+  "type": "object"
+}

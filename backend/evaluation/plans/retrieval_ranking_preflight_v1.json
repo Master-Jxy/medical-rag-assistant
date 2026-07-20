@@ -1,0 +1,154 @@
+{
+  "schema_version": "retrieval_ranking_plan_v1",
+  "plan_version": "retrieval_ranking_preflight_v1",
+  "generated_at": "2026-07-20T00:00:00Z",
+  "dataset_version": "eval_v1",
+  "evaluation_checksum": "61aacb4b0c3a1e3f8df951c31bf7d9836af45b1f12e0ff7c05521a0b8709f6f0",
+  "corpus_version": "corpus_v1",
+  "corpus_checksum": "f97a8befb45f8f85136a3205ffcde15b739b13b6a23d4050e9c6c34ddd440d9a",
+  "frozen_artifacts": [
+    {
+      "role": "baseline",
+      "relative_path": "reports/current_baseline_v1.json",
+      "sha256": "598952a8772fde26eac428cdad0335f889241f61d12b9c55bfabed5329a26ed5"
+    },
+    {
+      "role": "human_review",
+      "relative_path": "reports/human_review_capture_v1.json",
+      "sha256": "db4a9afc6ed4404a17512dcf5ac39017bf3fb64cf6b8da06dc874c416b6f0a84"
+    },
+    {
+      "role": "rag_v1_2_comparison",
+      "relative_path": "reports/rag_v1_2_real_comparison_v1.json",
+      "sha256": "f54e86a1b39518d998e861c101b225b160188d373488bca4fa821913c09e2893"
+    },
+    {
+      "role": "ranking_mock",
+      "relative_path": "reports/retrieval_ranking_mock_v1.json",
+      "sha256": "2ca18667421937937247ebd40d502fda9d07e884a026e1795017d86e9d12f773"
+    }
+  ],
+  "candidate_profiles": [
+    {
+      "candidate_id": "vector_top4_reference",
+      "display_name": "同一次向量前12直接截取前4",
+      "configuration": {
+        "profile_version": "retrieval_ranking_profile_v1",
+        "candidate_pool_size": 12,
+        "max_chunks_per_document": 2,
+        "final_top_k": 4,
+        "vector_adapter": "current_chroma_read_only_v1",
+        "keyword_adapter": "chroma_bm25_style_v1",
+        "retrieval_mode": "vector",
+        "vector_weight": 0.7,
+        "keyword_weight": 0.3,
+        "rrf_k": 60,
+        "document_diversity_enabled": false,
+        "rerank_enabled": false,
+        "rerank_adapter": "dashscope_text_rerank_v1",
+        "rerank_model": "gte-rerank-v2",
+        "shared_vector_and_keyword_inputs": true
+      },
+      "configuration_fingerprint": "1d4051f139bd51d4a2a3eed63cbd84039ea426d49cbacca0732d45f983a872b3"
+    },
+    {
+      "candidate_id": "vector_wide_diverse_v1",
+      "display_name": "向量宽召回与文档配额",
+      "configuration": {
+        "profile_version": "retrieval_ranking_profile_v1",
+        "candidate_pool_size": 12,
+        "max_chunks_per_document": 2,
+        "final_top_k": 4,
+        "vector_adapter": "current_chroma_read_only_v1",
+        "keyword_adapter": "chroma_bm25_style_v1",
+        "retrieval_mode": "vector",
+        "vector_weight": 0.7,
+        "keyword_weight": 0.3,
+        "rrf_k": 60,
+        "document_diversity_enabled": true,
+        "rerank_enabled": false,
+        "rerank_adapter": "dashscope_text_rerank_v1",
+        "rerank_model": "gte-rerank-v2",
+        "shared_vector_and_keyword_inputs": true
+      },
+      "configuration_fingerprint": "e7ed625ee79914883923844ac8a6e7b2cf74b0744e3a4394d70c88b7fe399e61"
+    },
+    {
+      "candidate_id": "hybrid_wide_diverse_v1",
+      "display_name": "宽候选混合RRF与文档配额",
+      "configuration": {
+        "profile_version": "retrieval_ranking_profile_v1",
+        "candidate_pool_size": 12,
+        "max_chunks_per_document": 2,
+        "final_top_k": 4,
+        "vector_adapter": "current_chroma_read_only_v1",
+        "keyword_adapter": "chroma_bm25_style_v1",
+        "retrieval_mode": "hybrid_rrf",
+        "vector_weight": 0.7,
+        "keyword_weight": 0.3,
+        "rrf_k": 60,
+        "document_diversity_enabled": true,
+        "rerank_enabled": false,
+        "rerank_adapter": "dashscope_text_rerank_v1",
+        "rerank_model": "gte-rerank-v2",
+        "shared_vector_and_keyword_inputs": true
+      },
+      "configuration_fingerprint": "d7822fda39b0a6e423b7bec1fd32767c646852ea4fb81fae0be60ea018941fdb"
+    },
+    {
+      "candidate_id": "hybrid_wide_diverse_rerank_v1",
+      "display_name": "宽候选混合RRF、文档配额与重排",
+      "configuration": {
+        "profile_version": "retrieval_ranking_profile_v1",
+        "candidate_pool_size": 12,
+        "max_chunks_per_document": 2,
+        "final_top_k": 4,
+        "vector_adapter": "current_chroma_read_only_v1",
+        "keyword_adapter": "chroma_bm25_style_v1",
+        "retrieval_mode": "hybrid_rrf",
+        "vector_weight": 0.7,
+        "keyword_weight": 0.3,
+        "rrf_k": 60,
+        "document_diversity_enabled": true,
+        "rerank_enabled": true,
+        "rerank_adapter": "dashscope_text_rerank_v1",
+        "rerank_model": "gte-rerank-v2",
+        "shared_vector_and_keyword_inputs": true
+      },
+      "configuration_fingerprint": "328207f88a9603e9ab2e6b1f1ca769fe97c74567a529b30dbb657c4cf8cb15d2"
+    }
+  ],
+  "hard_limits": {
+    "max_cases": 40,
+    "max_embedding_calls": 40,
+    "max_keyword_scans": 40,
+    "max_rerank_calls": 40,
+    "max_answer_calls": 0,
+    "automatic_retries": 0,
+    "embedding_tokens_reserved_per_call": 512,
+    "rerank_tokens_reserved_per_call": 30000,
+    "max_total_tokens": 1220480,
+    "max_estimated_cost_cny": 1.1,
+    "stop_conditions": [
+      "任何下一次付费调用超过调用、Token或费用上限前立即停止",
+      "成功调用缺少Token或费用计量时立即停止",
+      "计划哈希、冻结产物、eval_v1或corpus_v1不一致时禁止开始",
+      "正式输出已存在时禁止覆盖"
+    ]
+  },
+  "pricing": {
+    "verified_on": "2026-07-20",
+    "deployment_scope": "中国内地",
+    "official_pricing_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+    "official_rerank_limits_url": "https://help.aliyun.com/en/model-studio/rerank",
+    "embedding_model": "text-embedding-v4",
+    "embedding_price_per_million_tokens_cny": 0.5,
+    "rerank_model": "gte-rerank-v2",
+    "rerank_price_per_million_tokens_cny": 0.8,
+    "expected_cost_min_cny": 0.2,
+    "expected_cost_max_cny": 0.6
+  },
+  "paid_execution_available": true,
+  "requires_new_user_confirmation": true,
+  "production_flags_changed": false
+}

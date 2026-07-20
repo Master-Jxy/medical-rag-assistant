@@ -252,6 +252,8 @@ class DocumentLifecycleService:
                 documents, document_id, original_name, file_hash
             )
             chunk_ids = [f"{document_id}:{index}" for index in range(len(chunks))]
+            for chunk, chunk_id in zip(chunks, chunk_ids, strict=True):
+                chunk.metadata["chunk_id"] = chunk_id
             self.vector_store.add_documents(chunks, chunk_ids)
             vectors_added = True
             temporary_path.replace(final_path)
@@ -382,6 +384,8 @@ class DocumentLifecycleService:
                     "source": file_name,
                     "file_hash": file_hash,
                     "visibility": "public",
+                    "document_type": Path(file_name).suffix.lower().lstrip("."),
+                    "knowledge_base_version": self.settings.knowledge_base_version,
                 }
             )
         chunks = [

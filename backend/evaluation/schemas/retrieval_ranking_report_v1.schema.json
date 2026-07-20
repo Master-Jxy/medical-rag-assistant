@@ -1,0 +1,681 @@
+{
+  "$defs": {
+    "EvaluationCategory": {
+      "enum": [
+        "single_document",
+        "multi_document",
+        "conversational_follow_up",
+        "insufficient_knowledge",
+        "safety_boundary"
+      ],
+      "title": "EvaluationCategory",
+      "type": "string"
+    },
+    "RetrievalRankingAggregateMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "case_count": {
+          "minimum": 0,
+          "title": "Case Count",
+          "type": "integer"
+        },
+        "scored_case_count": {
+          "minimum": 0,
+          "title": "Scored Case Count",
+          "type": "integer"
+        },
+        "mean_source_recall_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Source Recall At 4"
+        },
+        "mean_source_recall_at_10": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Source Recall At 10"
+        },
+        "full_source_hit_rate_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Full Source Hit Rate At 4"
+        },
+        "full_source_hit_rate_at_10": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Full Source Hit Rate At 10"
+        },
+        "mean_mrr_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Mrr At 4"
+        },
+        "mean_ndcg_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Ndcg At 4"
+        },
+        "mean_unique_document_count_at_4": {
+          "anyOf": [
+            {
+              "maximum": 4,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Unique Document Count At 4"
+        },
+        "mean_duplicate_chunk_ratio_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Duplicate Chunk Ratio At 4"
+        }
+      },
+      "required": [
+        "case_count",
+        "scored_case_count"
+      ],
+      "title": "RetrievalRankingAggregateMetrics",
+      "type": "object"
+    },
+    "RetrievalRankingCandidateResult": {
+      "additionalProperties": false,
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/RetrievalRankingProfile"
+        },
+        "metrics": {
+          "$ref": "#/$defs/RetrievalRankingAggregateMetrics"
+        },
+        "category_metrics": {
+          "items": {
+            "$ref": "#/$defs/RetrievalRankingCategoryMetrics"
+          },
+          "title": "Category Metrics",
+          "type": "array"
+        },
+        "cases": {
+          "items": {
+            "$ref": "#/$defs/RetrievalRankingCaseResult"
+          },
+          "title": "Cases",
+          "type": "array"
+        }
+      },
+      "required": [
+        "profile",
+        "metrics",
+        "category_metrics",
+        "cases"
+      ],
+      "title": "RetrievalRankingCandidateResult",
+      "type": "object"
+    },
+    "RetrievalRankingCaseMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "source_recall_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Recall At 4"
+        },
+        "source_recall_at_10": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Recall At 10"
+        },
+        "full_source_hit_at_4": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Full Source Hit At 4"
+        },
+        "full_source_hit_at_10": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Full Source Hit At 10"
+        },
+        "mrr_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mrr At 4"
+        },
+        "ndcg_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ndcg At 4"
+        },
+        "unique_document_count_at_4": {
+          "anyOf": [
+            {
+              "maximum": 4,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unique Document Count At 4"
+        },
+        "duplicate_chunk_ratio_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duplicate Chunk Ratio At 4"
+        }
+      },
+      "title": "RetrievalRankingCaseMetrics",
+      "type": "object"
+    },
+    "RetrievalRankingCaseResult": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "pattern": "^eval_[0-9]{3}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "category": {
+          "$ref": "#/$defs/EvaluationCategory"
+        },
+        "expected_source_document_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Expected Source Document Ids",
+          "type": "array"
+        },
+        "ranked_document_ids_at_10": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Ranked Document Ids At 10",
+          "type": "array"
+        },
+        "final_chunk_document_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Final Chunk Document Ids",
+          "type": "array"
+        },
+        "metrics": {
+          "$ref": "#/$defs/RetrievalRankingCaseMetrics"
+        }
+      },
+      "required": [
+        "case_id",
+        "category",
+        "expected_source_document_ids",
+        "ranked_document_ids_at_10",
+        "final_chunk_document_ids",
+        "metrics"
+      ],
+      "title": "RetrievalRankingCaseResult",
+      "type": "object"
+    },
+    "RetrievalRankingCategoryMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "case_count": {
+          "minimum": 0,
+          "title": "Case Count",
+          "type": "integer"
+        },
+        "scored_case_count": {
+          "minimum": 0,
+          "title": "Scored Case Count",
+          "type": "integer"
+        },
+        "mean_source_recall_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Source Recall At 4"
+        },
+        "mean_source_recall_at_10": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Source Recall At 10"
+        },
+        "full_source_hit_rate_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Full Source Hit Rate At 4"
+        },
+        "full_source_hit_rate_at_10": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Full Source Hit Rate At 10"
+        },
+        "mean_mrr_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Mrr At 4"
+        },
+        "mean_ndcg_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Ndcg At 4"
+        },
+        "mean_unique_document_count_at_4": {
+          "anyOf": [
+            {
+              "maximum": 4,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Unique Document Count At 4"
+        },
+        "mean_duplicate_chunk_ratio_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Duplicate Chunk Ratio At 4"
+        },
+        "category": {
+          "$ref": "#/$defs/EvaluationCategory"
+        }
+      },
+      "required": [
+        "case_count",
+        "scored_case_count",
+        "category"
+      ],
+      "title": "RetrievalRankingCategoryMetrics",
+      "type": "object"
+    },
+    "RetrievalRankingConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "profile_version": {
+          "const": "retrieval_ranking_profile_v1",
+          "title": "Profile Version",
+          "type": "string"
+        },
+        "candidate_pool_size": {
+          "const": 12,
+          "title": "Candidate Pool Size",
+          "type": "integer"
+        },
+        "max_chunks_per_document": {
+          "const": 2,
+          "title": "Max Chunks Per Document",
+          "type": "integer"
+        },
+        "final_top_k": {
+          "const": 4,
+          "title": "Final Top K",
+          "type": "integer"
+        },
+        "vector_adapter": {
+          "title": "Vector Adapter",
+          "type": "string"
+        },
+        "keyword_adapter": {
+          "title": "Keyword Adapter",
+          "type": "string"
+        },
+        "retrieval_mode": {
+          "enum": [
+            "vector",
+            "hybrid_rrf"
+          ],
+          "title": "Retrieval Mode",
+          "type": "string"
+        },
+        "vector_weight": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Vector Weight",
+          "type": "number"
+        },
+        "keyword_weight": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Keyword Weight",
+          "type": "number"
+        },
+        "rrf_k": {
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Rrf K",
+          "type": "integer"
+        },
+        "document_diversity_enabled": {
+          "title": "Document Diversity Enabled",
+          "type": "boolean"
+        },
+        "rerank_enabled": {
+          "title": "Rerank Enabled",
+          "type": "boolean"
+        },
+        "rerank_adapter": {
+          "title": "Rerank Adapter",
+          "type": "string"
+        },
+        "rerank_model": {
+          "title": "Rerank Model",
+          "type": "string"
+        },
+        "shared_vector_and_keyword_inputs": {
+          "const": true,
+          "title": "Shared Vector And Keyword Inputs",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "profile_version",
+        "candidate_pool_size",
+        "max_chunks_per_document",
+        "final_top_k",
+        "vector_adapter",
+        "keyword_adapter",
+        "retrieval_mode",
+        "vector_weight",
+        "keyword_weight",
+        "rrf_k",
+        "document_diversity_enabled",
+        "rerank_enabled",
+        "rerank_adapter",
+        "rerank_model",
+        "shared_vector_and_keyword_inputs"
+      ],
+      "title": "RetrievalRankingConfiguration",
+      "type": "object"
+    },
+    "RetrievalRankingProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "enum": [
+            "vector_top4_reference",
+            "vector_wide_diverse_v1",
+            "hybrid_wide_diverse_v1",
+            "hybrid_wide_diverse_rerank_v1"
+          ],
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "display_name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "configuration": {
+          "$ref": "#/$defs/RetrievalRankingConfiguration"
+        },
+        "configuration_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Configuration Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "display_name",
+        "configuration",
+        "configuration_fingerprint"
+      ],
+      "title": "RetrievalRankingProfile",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "retrieval_ranking_report_v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "report_version": {
+      "const": "retrieval_ranking_mock_v1",
+      "title": "Report Version",
+      "type": "string"
+    },
+    "run_kind": {
+      "const": "mock_retrieval_ranking",
+      "title": "Run Kind",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "dataset_version": {
+      "title": "Dataset Version",
+      "type": "string"
+    },
+    "evaluation_checksum": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Evaluation Checksum",
+      "type": "string"
+    },
+    "corpus_version": {
+      "title": "Corpus Version",
+      "type": "string"
+    },
+    "corpus_checksum": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Corpus Checksum",
+      "type": "string"
+    },
+    "candidates": {
+      "items": {
+        "$ref": "#/$defs/RetrievalRankingCandidateResult"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "title": "Candidates",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "report_version",
+    "run_kind",
+    "generated_at",
+    "dataset_version",
+    "evaluation_checksum",
+    "corpus_version",
+    "corpus_checksum",
+    "candidates"
+  ],
+  "title": "RetrievalRankingReport",
+  "type": "object"
+}

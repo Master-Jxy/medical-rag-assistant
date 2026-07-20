@@ -118,6 +118,12 @@ def test_txt_upload_is_saved_split_and_registered_in_mysql(tmp_path) -> None:
         assert saved is not None and saved.uploader_id == owner.id
         assert len(vector_store.added_documents) == result.chunk_count
         assert vector_store.added_documents[0].metadata["visibility"] == "public"
+        assert vector_store.added_documents[0].metadata["document_type"] == "txt"
+        assert (
+            vector_store.added_documents[0].metadata["knowledge_base_version"]
+            == "live_v1"
+        )
+        assert vector_store.added_documents[0].metadata["chunk_id"].endswith(":0")
         assert len(list((tmp_path / "uploads").glob("*.txt"))) == 1
         assert not (tmp_path / "documents.json").exists()
     finally:

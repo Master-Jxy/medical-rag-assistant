@@ -23,9 +23,56 @@ class VectorStoreService:
         result = self.vector_store.get(limit=1, include=[])
         return bool(result.get("ids"))
 
-    def similarity_search(self, query: str, top_k: int) -> list[Document]:
+    def similarity_search(
+        self,
+        query: str,
+        top_k: int,
+        metadata_filter: dict | None = None,
+    ) -> list[Document]:
         """把问题向量化，并返回最相关的 top_k 个知识片段。"""
+        if metadata_filter:
+            return self.vector_store.similarity_search(
+                query=query, k=top_k, filter=metadata_filter
+            )
         return self.vector_store.similarity_search(query=query, k=top_k)
+
+    def similarity_search_with_relevance_scores(
+        self,
+        query: str,
+        top_k: int,
+        metadata_filter: dict | None = None,
+    ) -> list[tuple[Document, float]]:
+        """只在显式启用最低相关度时读取归一化相关度分数。"""
+        kwargs = {"query": query, "k": top_k}
+        if metadata_filter:
+            kwargs["filter"] = metadata_filter
+        return self.vector_store.similarity_search_with_relevance_scores(**kwargs)
+
+    def list_documents(
+        self,
+        metadata_filter: dict | None = None,
+    ) -> list[tuple[str, Document]]:
+        """只读列出匹配片段，供本地关键词检索使用，不调用Embedding。"""
+        kwargs = {"include": ["documents", "metadatas"]}
+        if metadata_filter:
+            kwargs["where"] = metadata_filter
+        result = self.vector_store.get(**kwargs)
+        ids = result.get("ids") or []
+        documents = result.get("documents") or []
+        metadatas = result.get("metadatas") or []
+        return [
+            (
+                str(chunk_id),
+                Document(
+                    page_content=str(content or ""),
+                    metadata=dict(metadata or {}),
+                ),
+            )
+            for chunk_id, content, metadata in zip(
+                ids, documents, metadatas, strict=True
+            )
+            if str(content or "").strip()
+        ]
 
     def add_documents(self, documents: list[Document], ids: list[str]) -> None:
         """把已切分片段向量化后写入 Chroma。"""

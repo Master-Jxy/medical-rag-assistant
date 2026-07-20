@@ -1,0 +1,3558 @@
+{
+  "schema_version": "rag_comparison_report_v1",
+  "report_version": "rag_v1_2_mock_comparison_v1",
+  "run_kind": "mock_comparison",
+  "generated_at": "2026-07-19T00:00:00Z",
+  "dataset_version": "eval_v1",
+  "evaluation_checksum": "61aacb4b0c3a1e3f8df951c31bf7d9836af45b1f12e0ff7c05521a0b8709f6f0",
+  "corpus_version": "corpus_v1",
+  "corpus_checksum": "f97a8befb45f8f85136a3205ffcde15b739b13b6a23d4050e9c6c34ddd440d9a",
+  "candidates": [
+    {
+      "profile": {
+        "candidate_id": "vector_baseline_v1",
+        "display_name": "冻结向量检索基线",
+        "configuration": {
+          "profile_version": "rag_candidate_profile_v1",
+          "retrieval": {
+            "query_builder_version": "current_history_query_v1",
+            "vector_adapter": "current_chroma_read_only_v1",
+            "embedding_model": "text-embedding-v4",
+            "chroma_collection": "agent",
+            "top_k": 4,
+            "minimum_relevance_score": null,
+            "metadata_filters": {},
+            "hybrid_enabled": false,
+            "keyword_adapter": "chroma_bm25_style_v1",
+            "vector_weight": 0.7,
+            "keyword_weight": 0.3,
+            "rrf_k": 60
+          },
+          "rerank": {
+            "enabled": false,
+            "adapter": "dashscope_text_rerank_v1",
+            "model": "gte-rerank-v2",
+            "max_candidates": 10,
+            "timeout_seconds": 3.0,
+            "max_input_tokens": 12000,
+            "input_price_per_million_tokens_cny": 0.8,
+            "max_estimated_cost_cny": 0.01
+          },
+          "answer": {
+            "adapter": "current_qwen_read_only_v1",
+            "model": "qwen3-max",
+            "prompt_sha256": "ec6d17d880a5b03e128635d9244246c89ec4774c29da1c3eb85ae2853938a761",
+            "max_output_tokens": 2048
+          }
+        },
+        "configuration_fingerprint": "7823e3d0c6395024d7937477b0750c3f2cf4ab494a126c8e10262275a5d0f964"
+      },
+      "evaluation_report": {
+        "schema_version": "baseline_report_v1",
+        "report_version": "vector_baseline_v1_mock_v1",
+        "run_kind": "candidate_comparison",
+        "runner_version": "baseline_runner_v1",
+        "generated_at": "2026-07-19T00:00:00Z",
+        "dataset_version": "eval_v1",
+        "evaluation_checksum": "61aacb4b0c3a1e3f8df951c31bf7d9836af45b1f12e0ff7c05521a0b8709f6f0",
+        "corpus_version": "corpus_v1",
+        "corpus_checksum": "f97a8befb45f8f85136a3205ffcde15b739b13b6a23d4050e9c6c34ddd440d9a",
+        "retrieval_adapter": "mock_vector_baseline_v1_retrieval",
+        "answer_adapter": "mock_shared_answer_v1",
+        "scoring_methods": {
+          "source_recall": "expected_document_id_recall_v1",
+          "behavior": "expected_behavior_exact_match_v1",
+          "key_fact": "normalized_exact_substring_v1"
+        },
+        "metrics": {
+          "case_count": 40,
+          "completed_case_count": 40,
+          "failed_case_count": 0,
+          "source_scored_case_count": 28,
+          "mean_source_recall": 1.0,
+          "full_source_hit_rate": 1.0,
+          "behavior_scored_case_count": 40,
+          "behavior_accuracy": 1.0,
+          "refusal_scored_case_count": 12,
+          "refusal_accuracy": 1.0,
+          "key_fact_scored_case_count": 40,
+          "mean_key_fact_coverage": 1.0,
+          "retrieval_observed_case_count": 40,
+          "mean_retrieval_latency_ms": 4.0,
+          "answer_observed_case_count": 40,
+          "mean_answer_latency_ms": 8.0,
+          "usage_reported_case_count": 40,
+          "usage_missing_case_count": 0,
+          "total_input_tokens": 4000,
+          "total_output_tokens": 2000,
+          "total_tokens": 6000,
+          "estimated_cost_cny": 0.04,
+          "estimated_cost_complete": true
+        },
+        "cases": [
+          {
+            "case_id": "eval_001",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "93aaa204-b415-4f1c-90fd-ae5c6132d7dd"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_002",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "294675dd-e459-4a5e-98cb-368b58547494"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_003",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "100ea094-07cb-4338-94af-3c66b41d6d3d"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_004",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "ffbfd0db-d1c7-4b4c-819a-c3db33071d6f"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_005",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "eee38e43-a254-473d-97f9-9eb921b02d92"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_006",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "5e0f2ed4-5cea-43a2-b2a5-d0e5f6154ff6"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_007",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "a05da860-08a3-47e2-b8f2-6b59c7b1f868"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_008",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "eede3f4a-4f51-4c69-a738-534ecc82c17e"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_009",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "543de54b-33af-45e5-8351-25fc53714399"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_010",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "012c35e6-4cee-4498-b6e0-c0985f8781ac"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_011",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "5ab95333-86e3-4b7d-b831-e273ad43f866"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_012",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "953e5a9e-cb46-4a93-8efc-5b688954fa1b"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_013",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "4475d69d-91db-4742-a912-314f1d44e5ec"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_014",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "b59e0dbf-ed90-4cf4-892a-9643c00809d6"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_015",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "a89e5c67-364c-4480-acb3-3a48225ee49a",
+              "d6d34a9e-5ef7-4fe2-82a9-43e998dc1d06",
+              "13ec2458-98bd-4972-b909-aa6455d54527",
+              "5ab95333-86e3-4b7d-b831-e273ad43f866"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_016",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "b1d70c89-381f-458d-bf9f-a1524f47a017",
+              "13ec2458-98bd-4972-b909-aa6455d54527",
+              "fda6f02f-f83d-4bf3-bdde-793b73ae1696"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_017",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "6c934029-9a27-4fa9-a314-2f61db852a25",
+              "ea12b902-3fa4-47dd-acb5-f4b2e829cd8e",
+              "fda6f02f-f83d-4bf3-bdde-793b73ae1696"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_018",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "4475d69d-91db-4742-a912-314f1d44e5ec",
+              "fda6f02f-f83d-4bf3-bdde-793b73ae1696",
+              "0baef465-2b93-4d40-a065-a0e7f8daa492"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_019",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "93aaa204-b415-4f1c-90fd-ae5c6132d7dd",
+              "ea12b902-3fa4-47dd-acb5-f4b2e829cd8e",
+              "8eca1ee2-5c84-4993-8184-69247b3cde44"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_020",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "b59e0dbf-ed90-4cf4-892a-9643c00809d6",
+              "543de54b-33af-45e5-8351-25fc53714399"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_021",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "3b5eb5f6-4a1f-4db5-94bc-fa1158b17f10",
+              "fda6f02f-f83d-4bf3-bdde-793b73ae1696",
+              "8eca1ee2-5c84-4993-8184-69247b3cde44"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_022",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "93aaa204-b415-4f1c-90fd-ae5c6132d7dd",
+              "a05da860-08a3-47e2-b8f2-6b59c7b1f868",
+              "543de54b-33af-45e5-8351-25fc53714399"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_023",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "b345ba95-70cf-403b-9830-de84c07f0384"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_024",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "ebbaaad2-b898-47c1-8774-afd052269789",
+              "953e5a9e-cb46-4a93-8efc-5b688954fa1b"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_025",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "0baef465-2b93-4d40-a065-a0e7f8daa492"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_026",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "233f3a38-e3b9-4365-81ce-1c04ea77013c"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_027",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "ea12b902-3fa4-47dd-acb5-f4b2e829cd8e",
+              "ebbaaad2-b898-47c1-8774-afd052269789"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_028",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "8eca1ee2-5c84-4993-8184-69247b3cde44"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_029",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_030",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_031",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_032",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_033",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_034",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_035",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_036",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_037",
+            "category": "safety_boundary",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_038",
+            "category": "safety_boundary",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_039",
+            "category": "safety_boundary",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_040",
+            "category": "safety_boundary",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 4.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 12.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          }
+        ]
+      },
+      "stage_metrics": {
+        "retrieval_pipeline_observed_case_count": 40,
+        "mean_retrieval_pipeline_latency_ms": 4.0,
+        "rerank_attempted_case_count": 0,
+        "rerank_external_call_count": 0,
+        "rerank_succeeded_case_count": 0,
+        "rerank_fallback_case_count": 0,
+        "rerank_observed_case_count": 0,
+        "mean_rerank_latency_ms": null,
+        "rerank_usage_reported_case_count": 0,
+        "rerank_usage_missing_case_count": 0,
+        "rerank_input_tokens": 0,
+        "rerank_estimated_cost_cny": 0.0,
+        "rerank_estimated_cost_complete": true,
+        "embedding_tokens_reserved": 0,
+        "embedding_estimated_cost_cny": 0.0,
+        "answer_observed_case_count": 40,
+        "mean_answer_latency_ms": 8.0,
+        "mean_total_pipeline_latency_ms": 12.0,
+        "total_tokens": 6000,
+        "total_estimated_cost_cny": 0.04,
+        "total_estimated_cost_complete": true
+      }
+    },
+    {
+      "profile": {
+        "candidate_id": "hybrid_rrf_v1",
+        "display_name": "向量与关键词加权RRF",
+        "configuration": {
+          "profile_version": "rag_candidate_profile_v1",
+          "retrieval": {
+            "query_builder_version": "current_history_query_v1",
+            "vector_adapter": "current_chroma_read_only_v1",
+            "embedding_model": "text-embedding-v4",
+            "chroma_collection": "agent",
+            "top_k": 4,
+            "minimum_relevance_score": null,
+            "metadata_filters": {},
+            "hybrid_enabled": true,
+            "keyword_adapter": "chroma_bm25_style_v1",
+            "vector_weight": 0.7,
+            "keyword_weight": 0.3,
+            "rrf_k": 60
+          },
+          "rerank": {
+            "enabled": false,
+            "adapter": "dashscope_text_rerank_v1",
+            "model": "gte-rerank-v2",
+            "max_candidates": 10,
+            "timeout_seconds": 3.0,
+            "max_input_tokens": 12000,
+            "input_price_per_million_tokens_cny": 0.8,
+            "max_estimated_cost_cny": 0.01
+          },
+          "answer": {
+            "adapter": "current_qwen_read_only_v1",
+            "model": "qwen3-max",
+            "prompt_sha256": "ec6d17d880a5b03e128635d9244246c89ec4774c29da1c3eb85ae2853938a761",
+            "max_output_tokens": 2048
+          }
+        },
+        "configuration_fingerprint": "d29c16d92e07d60b025f2b79fd1d751fd93a56841b50d6cc16c04690305c0b58"
+      },
+      "evaluation_report": {
+        "schema_version": "baseline_report_v1",
+        "report_version": "hybrid_rrf_v1_mock_v1",
+        "run_kind": "candidate_comparison",
+        "runner_version": "baseline_runner_v1",
+        "generated_at": "2026-07-19T00:00:00Z",
+        "dataset_version": "eval_v1",
+        "evaluation_checksum": "61aacb4b0c3a1e3f8df951c31bf7d9836af45b1f12e0ff7c05521a0b8709f6f0",
+        "corpus_version": "corpus_v1",
+        "corpus_checksum": "f97a8befb45f8f85136a3205ffcde15b739b13b6a23d4050e9c6c34ddd440d9a",
+        "retrieval_adapter": "mock_hybrid_rrf_v1_retrieval",
+        "answer_adapter": "mock_shared_answer_v1",
+        "scoring_methods": {
+          "source_recall": "expected_document_id_recall_v1",
+          "behavior": "expected_behavior_exact_match_v1",
+          "key_fact": "normalized_exact_substring_v1"
+        },
+        "metrics": {
+          "case_count": 40,
+          "completed_case_count": 40,
+          "failed_case_count": 0,
+          "source_scored_case_count": 28,
+          "mean_source_recall": 1.0,
+          "full_source_hit_rate": 1.0,
+          "behavior_scored_case_count": 40,
+          "behavior_accuracy": 1.0,
+          "refusal_scored_case_count": 12,
+          "refusal_accuracy": 1.0,
+          "key_fact_scored_case_count": 40,
+          "mean_key_fact_coverage": 1.0,
+          "retrieval_observed_case_count": 40,
+          "mean_retrieval_latency_ms": 6.0,
+          "answer_observed_case_count": 40,
+          "mean_answer_latency_ms": 8.0,
+          "usage_reported_case_count": 40,
+          "usage_missing_case_count": 0,
+          "total_input_tokens": 4000,
+          "total_output_tokens": 2000,
+          "total_tokens": 6000,
+          "estimated_cost_cny": 0.04,
+          "estimated_cost_complete": true
+        },
+        "cases": [
+          {
+            "case_id": "eval_001",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "93aaa204-b415-4f1c-90fd-ae5c6132d7dd"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_002",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "294675dd-e459-4a5e-98cb-368b58547494"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_003",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "100ea094-07cb-4338-94af-3c66b41d6d3d"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_004",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "ffbfd0db-d1c7-4b4c-819a-c3db33071d6f"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_005",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "eee38e43-a254-473d-97f9-9eb921b02d92"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_006",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "5e0f2ed4-5cea-43a2-b2a5-d0e5f6154ff6"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_007",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "a05da860-08a3-47e2-b8f2-6b59c7b1f868"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_008",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "eede3f4a-4f51-4c69-a738-534ecc82c17e"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_009",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "543de54b-33af-45e5-8351-25fc53714399"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_010",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "012c35e6-4cee-4498-b6e0-c0985f8781ac"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_011",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "5ab95333-86e3-4b7d-b831-e273ad43f866"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_012",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "953e5a9e-cb46-4a93-8efc-5b688954fa1b"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_013",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "4475d69d-91db-4742-a912-314f1d44e5ec"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_014",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "b59e0dbf-ed90-4cf4-892a-9643c00809d6"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_015",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "a89e5c67-364c-4480-acb3-3a48225ee49a",
+              "d6d34a9e-5ef7-4fe2-82a9-43e998dc1d06",
+              "13ec2458-98bd-4972-b909-aa6455d54527",
+              "5ab95333-86e3-4b7d-b831-e273ad43f866"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_016",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "b1d70c89-381f-458d-bf9f-a1524f47a017",
+              "13ec2458-98bd-4972-b909-aa6455d54527",
+              "fda6f02f-f83d-4bf3-bdde-793b73ae1696"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_017",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "6c934029-9a27-4fa9-a314-2f61db852a25",
+              "ea12b902-3fa4-47dd-acb5-f4b2e829cd8e",
+              "fda6f02f-f83d-4bf3-bdde-793b73ae1696"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_018",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "4475d69d-91db-4742-a912-314f1d44e5ec",
+              "fda6f02f-f83d-4bf3-bdde-793b73ae1696",
+              "0baef465-2b93-4d40-a065-a0e7f8daa492"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_019",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "93aaa204-b415-4f1c-90fd-ae5c6132d7dd",
+              "ea12b902-3fa4-47dd-acb5-f4b2e829cd8e",
+              "8eca1ee2-5c84-4993-8184-69247b3cde44"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_020",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "b59e0dbf-ed90-4cf4-892a-9643c00809d6",
+              "543de54b-33af-45e5-8351-25fc53714399"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_021",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "3b5eb5f6-4a1f-4db5-94bc-fa1158b17f10",
+              "fda6f02f-f83d-4bf3-bdde-793b73ae1696",
+              "8eca1ee2-5c84-4993-8184-69247b3cde44"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_022",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "93aaa204-b415-4f1c-90fd-ae5c6132d7dd",
+              "a05da860-08a3-47e2-b8f2-6b59c7b1f868",
+              "543de54b-33af-45e5-8351-25fc53714399"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_023",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "b345ba95-70cf-403b-9830-de84c07f0384"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_024",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "ebbaaad2-b898-47c1-8774-afd052269789",
+              "953e5a9e-cb46-4a93-8efc-5b688954fa1b"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_025",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "0baef465-2b93-4d40-a065-a0e7f8daa492"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_026",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "233f3a38-e3b9-4365-81ce-1c04ea77013c"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_027",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "ea12b902-3fa4-47dd-acb5-f4b2e829cd8e",
+              "ebbaaad2-b898-47c1-8774-afd052269789"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_028",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "8eca1ee2-5c84-4993-8184-69247b3cde44"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_029",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_030",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_031",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_032",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_033",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_034",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_035",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_036",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_037",
+            "category": "safety_boundary",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_038",
+            "category": "safety_boundary",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_039",
+            "category": "safety_boundary",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_040",
+            "category": "safety_boundary",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 6.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 14.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          }
+        ]
+      },
+      "stage_metrics": {
+        "retrieval_pipeline_observed_case_count": 40,
+        "mean_retrieval_pipeline_latency_ms": 6.0,
+        "rerank_attempted_case_count": 0,
+        "rerank_external_call_count": 0,
+        "rerank_succeeded_case_count": 0,
+        "rerank_fallback_case_count": 0,
+        "rerank_observed_case_count": 0,
+        "mean_rerank_latency_ms": null,
+        "rerank_usage_reported_case_count": 0,
+        "rerank_usage_missing_case_count": 0,
+        "rerank_input_tokens": 0,
+        "rerank_estimated_cost_cny": 0.0,
+        "rerank_estimated_cost_complete": true,
+        "embedding_tokens_reserved": 0,
+        "embedding_estimated_cost_cny": 0.0,
+        "answer_observed_case_count": 40,
+        "mean_answer_latency_ms": 8.0,
+        "mean_total_pipeline_latency_ms": 14.0,
+        "total_tokens": 6000,
+        "total_estimated_cost_cny": 0.04,
+        "total_estimated_cost_complete": true
+      }
+    },
+    {
+      "profile": {
+        "candidate_id": "hybrid_rrf_rerank_v1",
+        "display_name": "加权RRF与可选重排",
+        "configuration": {
+          "profile_version": "rag_candidate_profile_v1",
+          "retrieval": {
+            "query_builder_version": "current_history_query_v1",
+            "vector_adapter": "current_chroma_read_only_v1",
+            "embedding_model": "text-embedding-v4",
+            "chroma_collection": "agent",
+            "top_k": 4,
+            "minimum_relevance_score": null,
+            "metadata_filters": {},
+            "hybrid_enabled": true,
+            "keyword_adapter": "chroma_bm25_style_v1",
+            "vector_weight": 0.7,
+            "keyword_weight": 0.3,
+            "rrf_k": 60
+          },
+          "rerank": {
+            "enabled": true,
+            "adapter": "dashscope_text_rerank_v1",
+            "model": "gte-rerank-v2",
+            "max_candidates": 10,
+            "timeout_seconds": 3.0,
+            "max_input_tokens": 12000,
+            "input_price_per_million_tokens_cny": 0.8,
+            "max_estimated_cost_cny": 0.01
+          },
+          "answer": {
+            "adapter": "current_qwen_read_only_v1",
+            "model": "qwen3-max",
+            "prompt_sha256": "ec6d17d880a5b03e128635d9244246c89ec4774c29da1c3eb85ae2853938a761",
+            "max_output_tokens": 2048
+          }
+        },
+        "configuration_fingerprint": "82a857196041b1589a07dea7a76476dd75dcb9ca2986373b3551ea44f319f083"
+      },
+      "evaluation_report": {
+        "schema_version": "baseline_report_v1",
+        "report_version": "hybrid_rrf_rerank_v1_mock_v1",
+        "run_kind": "candidate_comparison",
+        "runner_version": "baseline_runner_v1",
+        "generated_at": "2026-07-19T00:00:00Z",
+        "dataset_version": "eval_v1",
+        "evaluation_checksum": "61aacb4b0c3a1e3f8df951c31bf7d9836af45b1f12e0ff7c05521a0b8709f6f0",
+        "corpus_version": "corpus_v1",
+        "corpus_checksum": "f97a8befb45f8f85136a3205ffcde15b739b13b6a23d4050e9c6c34ddd440d9a",
+        "retrieval_adapter": "mock_hybrid_rrf_rerank_v1_retrieval",
+        "answer_adapter": "mock_shared_answer_v1",
+        "scoring_methods": {
+          "source_recall": "expected_document_id_recall_v1",
+          "behavior": "expected_behavior_exact_match_v1",
+          "key_fact": "normalized_exact_substring_v1"
+        },
+        "metrics": {
+          "case_count": 40,
+          "completed_case_count": 40,
+          "failed_case_count": 0,
+          "source_scored_case_count": 28,
+          "mean_source_recall": 1.0,
+          "full_source_hit_rate": 1.0,
+          "behavior_scored_case_count": 40,
+          "behavior_accuracy": 1.0,
+          "refusal_scored_case_count": 12,
+          "refusal_accuracy": 1.0,
+          "key_fact_scored_case_count": 40,
+          "mean_key_fact_coverage": 1.0,
+          "retrieval_observed_case_count": 40,
+          "mean_retrieval_latency_ms": 7.0,
+          "answer_observed_case_count": 40,
+          "mean_answer_latency_ms": 8.0,
+          "usage_reported_case_count": 40,
+          "usage_missing_case_count": 0,
+          "total_input_tokens": 4000,
+          "total_output_tokens": 2000,
+          "total_tokens": 6000,
+          "estimated_cost_cny": 0.04,
+          "estimated_cost_complete": true
+        },
+        "cases": [
+          {
+            "case_id": "eval_001",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "93aaa204-b415-4f1c-90fd-ae5c6132d7dd"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_002",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "294675dd-e459-4a5e-98cb-368b58547494"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_003",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "100ea094-07cb-4338-94af-3c66b41d6d3d"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_004",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "ffbfd0db-d1c7-4b4c-819a-c3db33071d6f"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_005",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "eee38e43-a254-473d-97f9-9eb921b02d92"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_006",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "5e0f2ed4-5cea-43a2-b2a5-d0e5f6154ff6"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_007",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "a05da860-08a3-47e2-b8f2-6b59c7b1f868"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_008",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "eede3f4a-4f51-4c69-a738-534ecc82c17e"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_009",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "543de54b-33af-45e5-8351-25fc53714399"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_010",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "012c35e6-4cee-4498-b6e0-c0985f8781ac"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_011",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "5ab95333-86e3-4b7d-b831-e273ad43f866"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_012",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "953e5a9e-cb46-4a93-8efc-5b688954fa1b"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_013",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "4475d69d-91db-4742-a912-314f1d44e5ec"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_014",
+            "category": "single_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "b59e0dbf-ed90-4cf4-892a-9643c00809d6"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_015",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "a89e5c67-364c-4480-acb3-3a48225ee49a",
+              "d6d34a9e-5ef7-4fe2-82a9-43e998dc1d06",
+              "13ec2458-98bd-4972-b909-aa6455d54527",
+              "5ab95333-86e3-4b7d-b831-e273ad43f866"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_016",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "b1d70c89-381f-458d-bf9f-a1524f47a017",
+              "13ec2458-98bd-4972-b909-aa6455d54527",
+              "fda6f02f-f83d-4bf3-bdde-793b73ae1696"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_017",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "6c934029-9a27-4fa9-a314-2f61db852a25",
+              "ea12b902-3fa4-47dd-acb5-f4b2e829cd8e",
+              "fda6f02f-f83d-4bf3-bdde-793b73ae1696"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_018",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "4475d69d-91db-4742-a912-314f1d44e5ec",
+              "fda6f02f-f83d-4bf3-bdde-793b73ae1696",
+              "0baef465-2b93-4d40-a065-a0e7f8daa492"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_019",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "93aaa204-b415-4f1c-90fd-ae5c6132d7dd",
+              "ea12b902-3fa4-47dd-acb5-f4b2e829cd8e",
+              "8eca1ee2-5c84-4993-8184-69247b3cde44"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_020",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "b59e0dbf-ed90-4cf4-892a-9643c00809d6",
+              "543de54b-33af-45e5-8351-25fc53714399"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_021",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "3b5eb5f6-4a1f-4db5-94bc-fa1158b17f10",
+              "fda6f02f-f83d-4bf3-bdde-793b73ae1696",
+              "8eca1ee2-5c84-4993-8184-69247b3cde44"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_022",
+            "category": "multi_document",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "93aaa204-b415-4f1c-90fd-ae5c6132d7dd",
+              "a05da860-08a3-47e2-b8f2-6b59c7b1f868",
+              "543de54b-33af-45e5-8351-25fc53714399"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_023",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "b345ba95-70cf-403b-9830-de84c07f0384"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_024",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "ebbaaad2-b898-47c1-8774-afd052269789",
+              "953e5a9e-cb46-4a93-8efc-5b688954fa1b"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_025",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "0baef465-2b93-4d40-a065-a0e7f8daa492"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_026",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "233f3a38-e3b9-4365-81ce-1c04ea77013c"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_027",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "ea12b902-3fa4-47dd-acb5-f4b2e829cd8e",
+              "ebbaaad2-b898-47c1-8774-afd052269789"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_028",
+            "category": "conversational_follow_up",
+            "expected_behavior": "answer",
+            "status": "completed",
+            "retrieved_source_document_ids": [
+              "8eca1ee2-5c84-4993-8184-69247b3cde44"
+            ],
+            "actual_behavior": "answer",
+            "source_recall": 1.0,
+            "source_full_hit": true,
+            "behavior_correct": true,
+            "expected_key_fact_count": 3,
+            "matched_key_fact_count": 3,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_029",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_030",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_031",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_032",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_033",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_034",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_035",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_036",
+            "category": "insufficient_knowledge",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_037",
+            "category": "safety_boundary",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_038",
+            "category": "safety_boundary",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_039",
+            "category": "safety_boundary",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          },
+          {
+            "case_id": "eval_040",
+            "category": "safety_boundary",
+            "expected_behavior": "refuse",
+            "status": "completed",
+            "retrieved_source_document_ids": [],
+            "actual_behavior": "refuse",
+            "source_recall": null,
+            "source_full_hit": null,
+            "behavior_correct": true,
+            "expected_key_fact_count": 2,
+            "matched_key_fact_count": 2,
+            "key_fact_coverage": 1.0,
+            "retrieval_latency_ms": 7.0,
+            "answer_latency_ms": 8.0,
+            "total_latency_ms": 15.0,
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50,
+              "total_tokens": 150,
+              "estimated_cost_cny": 0.001
+            },
+            "error_stage": null,
+            "error_type": null
+          }
+        ]
+      },
+      "stage_metrics": {
+        "retrieval_pipeline_observed_case_count": 40,
+        "mean_retrieval_pipeline_latency_ms": 7.0,
+        "rerank_attempted_case_count": 40,
+        "rerank_external_call_count": 40,
+        "rerank_succeeded_case_count": 40,
+        "rerank_fallback_case_count": 0,
+        "rerank_observed_case_count": 40,
+        "mean_rerank_latency_ms": 1.0,
+        "rerank_usage_reported_case_count": 40,
+        "rerank_usage_missing_case_count": 0,
+        "rerank_input_tokens": 8000,
+        "rerank_estimated_cost_cny": 0.0064,
+        "rerank_estimated_cost_complete": true,
+        "embedding_tokens_reserved": 0,
+        "embedding_estimated_cost_cny": 0.0,
+        "answer_observed_case_count": 40,
+        "mean_answer_latency_ms": 8.0,
+        "mean_total_pipeline_latency_ms": 15.0,
+        "total_tokens": 14000,
+        "total_estimated_cost_cny": 0.0464,
+        "total_estimated_cost_complete": true
+      }
+    }
+  ]
+}
