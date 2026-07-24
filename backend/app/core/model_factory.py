@@ -7,13 +7,13 @@ from app.core.config import Settings, get_settings
 
 
 def create_chat_model(settings: Settings | None = None) -> ChatTongyi:
-    """创建聊天模型；限制重试次数，防止异常时循环请求产生额外费用。"""
+    """创建聊天模型；重试次数由受限配置控制。"""
     current_settings = settings or get_settings()
     return ChatTongyi(
         model=current_settings.chat_model_name,
         api_key=current_settings.require_dashscope_api_key(),
         streaming=True,
-        max_retries=2,
+        max_retries=current_settings.dashscope_max_retries,
     )
 
 
@@ -23,5 +23,5 @@ def create_embedding_model(settings: Settings | None = None) -> DashScopeEmbeddi
     return DashScopeEmbeddings(
         model=current_settings.embedding_model_name,
         dashscope_api_key=current_settings.require_dashscope_api_key(),
-        max_retries=2,
+        max_retries=current_settings.dashscope_max_retries,
     )

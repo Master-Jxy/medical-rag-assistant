@@ -9,7 +9,7 @@ from app.core.config import Settings, get_settings
 
 
 class DashScopeAsyncChatModel:
-    """直接使用 SDK 的异步 HTTP 流，取消任务时会关闭正在读取的连接。"""
+    """直接调用一次SDK异步流；失败不重试，取消时关闭正在读取的连接。"""
 
     def __init__(self, settings: Settings | None = None) -> None:
         current_settings = settings or get_settings()

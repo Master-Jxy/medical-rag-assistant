@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = Field(default=30, gt=0, le=24 * 60)
     chat_model_name: str = "qwen3-max"
     embedding_model_name: str = "text-embedding-v4"
+    dashscope_max_retries: int = Field(default=2, ge=0, le=10)
     chroma_persist_dir: Path = BACKEND_DIR / "chroma_db"
     chroma_collection_name: str = "agent"
     upload_dir: Path = BACKEND_DIR / "data" / "uploads"
