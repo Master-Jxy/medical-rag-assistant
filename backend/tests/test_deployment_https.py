@@ -56,6 +56,7 @@ def test_enable_https_requires_dns_confirmation_and_has_http_fallback() -> None:
     assert 'if ((staging)); then\n  state="complete"' in script
     assert 'state="finalizing"' in script
     assert "restoring the HTTP ACME configuration" in script
+    assert script.count("--wait --wait-timeout 60 web") == 3
     assert "down -v" not in script
 
 

@@ -137,13 +137,13 @@ restore_http_on_error() {
   exit_code=$?
   if [[ "$state" == "finalizing" ]]; then
     echo "HTTPS activation failed; restoring the HTTP ACME configuration." >&2
-    "${bootstrap_compose[@]}" up -d --force-recreate web || true
+    "${bootstrap_compose[@]}" up -d --force-recreate --wait --wait-timeout 60 web || true
   fi
   exit "$exit_code"
 }
 trap restore_http_on_error ERR
 
-"${bootstrap_compose[@]}" up -d --force-recreate web
+"${bootstrap_compose[@]}" up -d --force-recreate --wait --wait-timeout 60 web
 state="bootstrap"
 
 probe_name="medical-rag-https-precheck-$$"
@@ -190,7 +190,7 @@ if ((staging)); then
 fi
 
 state="finalizing"
-"${https_compose[@]}" up -d --force-recreate web
+"${https_compose[@]}" up -d --force-recreate --wait --wait-timeout 60 web
 
 https_probe_args=(
   --fail
