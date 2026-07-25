@@ -12,18 +12,18 @@
 
 下一任务定向阅读：
 
-- `docs/release-audit-rag-v1.3.md`
-- `docs/development-roadmap.md` 的阶段8完成状态
-- 只有准备部署时才读取 `docs/deployment.md`
+- `docs/development-roadmap.md` 的阶段9任务9.1
+- `docs/technical-design.md` 第12节
+- 只有发布、回滚或复核线上证据时才读取 `docs/release-audit-rag-v1.3.md` 和 `docs/deployment.md`
 
 ## 2. 当前状态
 
 项目是 Vue 3 + FastAPI + MySQL + Chroma + Redis + DashScope 的模块化单体。
 
 - 阶段7已经完成：`RAG v1.2.1`已部署，最终受控线上验收通过。
-- 阶段8的任务8.1～8.5已经完成，并作为`RAG v1.3`提交和推送。
-- 阶段8尚未部署，服务器仍运行提交`70f5c5ac1a5adde77130c560a01e83d953217bfb`。
-- 本轮阶段8收尾没有调用真实Embedding、Reranker或Qwen，没有产生模型费用，也没有修改服务器和业务数据。
+- 阶段8的任务8.1～8.5已经完成，并作为`RAG v1.3`提交、推送和部署。
+- 服务器运行`RAG v1.3`代码提交`1ca9bc059b499b69fd0b9d82d2f2df36e4cfe228`，四个容器健康。
+- 本轮阶段8部署没有调用真实Embedding、Reranker或Qwen，没有产生模型费用；临时验收账号已删除，业务数据恢复原基线。
 
 ## 3. 阶段7最终证据
 
@@ -61,11 +61,19 @@ Telemetry只观察业务，不记录完整问题、回答、Prompt、密码、JW
 - 架构边界、日志脱敏、轮转/关闭和故障注入：通过。
 - 新增内容敏感信息扫描和`git diff --check`：通过。
 
-限制：未使用已保存的浏览器登录信息代替用户提交，因此只取得未登录重定向证据；管理员统计页的登录后真实浏览器视觉验收尚未完成。组件测试和正式构建不能替代该视觉证据。
+2026-07-25服务器部署与验收：
+
+- 部署前服务器提交为`70f5c5a`，工作树干净，27份文档、103个Chroma片段、27个文件、4个账号、5个会话和40条消息。
+- MySQL、`app_data`、`chroma_data`、Redis、`deploy/.env`和旧前端均已备份并通过SHA-256校验；后端和Web旧镜像保留回滚标签。
+- 服务器快进到`1ca9bc0`，只重建`backend`和`web`，MySQL、Redis及命名卷没有删除或重建。
+- 首次上传的前端包缺少生产`VITE_API_BASE_URL=/api/v1`，真实浏览器显示后端连接失败；验收立即捕获后重新按部署手册构建，只重建Web，最终首页显示“运行正常”。
+- 未登录统计接口401、普通用户403、管理员200；登录后的`/admin/telemetry`页面真实浏览器验收通过，聚合卡片、未知Token/费用、阶段耗时和错误类型正常展示。
+- Telemetry写入`/app/data/logs/telemetry.jsonl`，当前只有1个受控日志文件；临时邮箱和密码均未进入日志。
+- 临时管理员账号已删除，最终恢复27/103/27、4账号/5会话/40消息，四容器健康、Redis `PONG`、服务器工作树干净。
 
 ## 6. 工作区与禁止事项
 
-- 当前分支为`main`，`HEAD`与`origin/main`均为`70f5c5a`。
+- 当前分支为`main`；`RAG v1.3`代码提交为`1ca9bc0`。
 - 阶段8代码、阶段7最终验收校验器、测试和文档已按`docs/release-audit-rag-v1.3.md`精确提交并推送。
 - `backend/tests/test_auth_api.py`在`git status`中可能因Windows换行显示修改，但内容与HEAD一致，不属于发布范围。
 - 不得清理、覆盖或回退现有修改；禁止`git reset --hard`和批量清理。
@@ -73,4 +81,4 @@ Telemetry只观察业务，不记录完整问题、回答、Prompt、密码、JW
 
 ## 7. 唯一下一任务
 
-**执行`RAG v1.3`部署前L3免费预检，说明服务器实时状态、备份、回滚和验收边界后，等待用户单独确认是否部署。**
+**任务9.1：建立`modules/agent`骨架、Tool Protocol、Tool Registry和默认关闭的功能开关，只用Mock验证，不调用真实模型。**

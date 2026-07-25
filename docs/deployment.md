@@ -11,7 +11,7 @@
 - 内部服务：FastAPI、MySQL 8.0、Redis 6.2，不映射公网端口。
 - 持久数据：`mysql_data`、`redis_data`、`app_data`、`chroma_data` 四个 Docker 卷。
 - 外部模型：通义千问和 DashScope Embedding，密钥由 `deploy/.env` 注入。
-- 当前限制：仅有 HTTP；域名、HTTPS、自动备份和整机重启恢复尚未完成。RAG v1.2.1指定提交已同步，付费RAG业务验收和后端容器重启恢复已通过。
+- 当前限制：仅有 HTTP；域名、HTTPS、自动备份和整机重启恢复尚未完成。RAG v1.3已同步，阶段8管理员统计页面和Telemetry免费线上验收已通过。
 
 ## 2. 服务器首次准备
 
@@ -65,6 +65,7 @@ D:\Nodejs\npm.cmd --prefix frontend run build
 ```
 
 将生成的 `frontend/dist` 上传到服务器仓库的同名位置。`dist` 不提交 Git，但构建 Nginx 镜像时必须存在。
+上传前必须检查生产JavaScript包含`/api/v1`且不包含`127.0.0.1:8000`；否则公网浏览器会错误访问访问者本机后端。
 
 ## 5. 启动和检查
 
