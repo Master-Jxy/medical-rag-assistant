@@ -4,13 +4,13 @@ set -Eeuo pipefail
 APPLICATION_ROOT="${APPLICATION_ROOT:-/home/deploy/medical-rag-assistant}"
 ENV_FILE="${ENV_FILE:-$APPLICATION_ROOT/deploy/.env}"
 LETSENCRYPT_DIR="${LETSENCRYPT_DIR:-/etc/letsencrypt}"
-domain=""
+identifier=""
 confirm_disable=""
 
 while (($#)); do
   case "$1" in
-    --domain)
-      domain="${2:-}"
+    --identifier)
+      identifier="${2:-}"
       shift 2
       ;;
     --confirm-disable)
@@ -24,8 +24,8 @@ while (($#)); do
   esac
 done
 
-if [[ -z "$domain" ]] || [[ "$confirm_disable" != "$domain" ]]; then
-  echo "--confirm-disable must exactly match --domain." >&2
+if [[ -z "$identifier" ]] || [[ "$confirm_disable" != "$identifier" ]]; then
+  echo "--confirm-disable must exactly match --identifier." >&2
   exit 2
 fi
 
@@ -35,4 +35,4 @@ docker compose \
   -f compose.yaml \
   up -d --force-recreate web
 
-echo "HTTPS_DISABLE_OK domain=$domain certificates_preserved=$LETSENCRYPT_DIR"
+echo "HTTPS_DISABLE_OK identifier=$identifier certificates_preserved=$LETSENCRYPT_DIR"

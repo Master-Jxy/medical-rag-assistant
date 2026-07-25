@@ -16,7 +16,7 @@ def test_https_nginx_keeps_acme_redirect_security_and_sse_contract() -> None:
     assert "/.well-known/acme-challenge/" in bootstrap
     assert "proxy_pass http://backend:8000;" in bootstrap
     assert "listen 443 ssl http2 default_server;" in https
-    assert "https://${HTTPS_DOMAIN}$request_uri" in https
+    assert "https://${HTTPS_IDENTIFIER}$request_uri" in https
     assert "ssl_protocols TLSv1.2 TLSv1.3;" in https
     assert "ssl_session_tickets off;" in https
     assert "proxy_buffering off;" in https
@@ -45,9 +45,13 @@ def test_enable_https_requires_dns_confirmation_and_has_http_fallback() -> None:
     script = (DEPLOY / "enable_https.sh").read_text(encoding="utf-8")
 
     assert "set -Eeuo pipefail" in script
-    assert '--confirm-issue must exactly match --domain.' in script
+    assert "Use exactly one of --domain or --ip-address." in script
+    assert "--confirm-issue must exactly match the requested identifier." in script
     assert "Use exactly one of --email or --no-email." in script
     assert "--register-unsafely-without-email" in script
+    assert "--preferred-profile shortlived" in script
+    assert '--ip-address "$identifier"' in script
+    assert "IP certificates require Certbot 5.4 or newer." in script
     assert 'getent ahostsv4 "$domain"' in script
     assert "certbot_args=(" in script
     assert "--keep-until-expiring" in script
@@ -66,7 +70,7 @@ def test_disable_and_renewal_preserve_certificates_and_reload_only_web() -> None
         encoding="utf-8"
     )
 
-    assert "--confirm-disable must exactly match --domain." in disable
+    assert "--confirm-disable must exactly match --identifier." in disable
     assert "certificates_preserved=" in disable
     assert "down -v" not in disable
     assert "nginx -s reload" in renewal

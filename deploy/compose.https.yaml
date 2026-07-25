@@ -1,7 +1,7 @@
 services:
   web:
     environment:
-      HTTPS_DOMAIN: ${HTTPS_DOMAIN:?HTTPS_DOMAIN is required}
+      HTTPS_IDENTIFIER: ${HTTPS_IDENTIFIER:?HTTPS_IDENTIFIER is required}
     ports:
       - "443:443"
     volumes:

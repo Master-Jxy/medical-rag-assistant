@@ -228,64 +228,68 @@ HTTPS继续由现有Nginx终止，不暴露FastAPI、MySQL或Redis。两个Compo
 - `compose.https.yaml`：挂载证书、增加443、把所有HTTP业务请求固定跳转到HTTPS。
 
 不要在证书尚不存在时直接启用最终覆盖层，否则Nginx会因证书文件缺失而启动失败。
-启用脚本先核对DNS、显式确认域名、验证本机挑战路径，再签发证书；只有证书存在后才
-切换443。如果最终Nginx检查失败，脚本自动恢复HTTP挑战配置，不删除证书或数据卷。
+启用脚本先核对DNS或公网IP、显式确认标识符、验证本机挑战路径，再签发证书；只有
+证书存在后才切换443。如果最终Nginx检查失败，脚本自动恢复HTTP挑战配置，不删除
+证书或数据卷。
 
-Ubuntu 22.04先安装Certbot，并在云安全组开放TCP 443；80必须继续开放用于HTTP-01和
-自动续期：
+域名模式可使用常规Certbot。公网IP证书要求Certbot 5.4或更高，并且证书只能使用
+Let’s Encrypt的`shortlived`配置，有效期约6天；因此必须使用自动续期。Ubuntu 22.04
+仓库自带的1.21版本不支持该能力，安装官方Snap稳定版并显式传入路径：
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y certbot
+sudo snap install --classic certbot
+/snap/bin/certbot --version
 
 cd /home/deploy/medical-rag-assistant
-sudo bash deploy/enable_https.sh \
-  --domain demo.example.com \
+sudo CERTBOT_BIN=/snap/bin/certbot bash deploy/enable_https.sh \
+  --ip-address 203.0.113.10 \
   --email operator@example.com \
   --expected-ip 203.0.113.10 \
-  --confirm-issue demo.example.com
+  --confirm-issue 203.0.113.10
 ```
 
 首次签发前可以增加`--staging`验证流程；测试证书写入独立目录，脚本保持HTTP业务，
 不会把浏览器不信任的测试证书切到公网。正式启用仍需再执行一次不带`--staging`的
-命令。域名、邮箱和公网IP不是密钥，但真实联系人不写入Git。
-用户未提供自有域名时，可使用形如`203-0-113-10.sslip.io`的临时演示别名；文档和简历
-必须明确其非自有正式域名。
+命令。域名、邮箱和公网IP不是密钥，但真实联系人不写入Git。自有且完成所需备案的
+域名仍可改用`--domain demo.example.com`；用户没有自有域名时，公网IP证书提供受信任
+HTTPS，但文档和简历必须明确它不是正式品牌域名。大陆云主机上的未备案`sslip.io`
+临时别名可能被多视角HTTP-01验证拦截，不应无限重试。
 
 如果当前对话没有获准提交的运维邮箱，可以用`--no-email`替代`--email`，脚本不会读取
 或外传数据库中的用户邮箱。该模式仍可自动续期，但无法接收到期通知；正式自有域名
 应改用可用的运维邮箱。
 
-安装续期部署钩子并确认Ubuntu自带计时器：
+安装续期部署钩子并确认Snap续期计时器。公网IP证书约6天有效，监控中必须始终留有
+至少24小时余量：
 
 ```bash
 sudo install -d -m 755 /etc/letsencrypt/renewal-hooks/deploy
 sudo install -m 755 deploy/reload_nginx_after_renewal.sh \
   /etc/letsencrypt/renewal-hooks/deploy/reload-medical-rag-nginx.sh
-sudo systemctl enable --now certbot.timer
-sudo certbot renew --dry-run
+sudo systemctl enable --now snap.certbot.renew.timer
+sudo /snap/bin/certbot renew --dry-run
 ```
 
 验收至少包括：
 
 ```bash
-curl -I http://demo.example.com/
-curl -fsS https://demo.example.com/api/v1/health
-openssl s_client -connect demo.example.com:443 \
-  -servername demo.example.com -verify_return_error </dev/null
+curl -I http://203.0.113.10/
+curl -fsS https://203.0.113.10/api/v1/health
+openssl s_client -connect 203.0.113.10:443 \
+  -verify_return_error </dev/null
 docker compose --env-file deploy/.env \
   -f compose.yaml -f deploy/compose.https.yaml ps
 ```
 
-必须确认HTTP返回308且`Location`指向固定域名，证书SAN匹配、证书链验证通过，HTTPS
-健康接口200，SSE没有被缓冲。然后重启`web`以及整台服务器各一次，复查证书和四类
-持久数据。
+必须确认HTTP返回308且`Location`指向固定域名或IP，证书SAN匹配、证书链验证通过，
+HTTPS健康接口200，SSE没有被缓冲。然后重启`web`以及整台服务器各一次，复查证书、
+剩余有效期和四类持久数据。
 
 需要恢复纯HTTP时使用显式确认命令。它只重建`web`为基础Compose配置，保留证书、
 ACME目录、backend和四个数据卷：
 
 ```bash
 sudo bash deploy/disable_https.sh \
-  --domain demo.example.com \
-  --confirm-disable demo.example.com
+  --identifier 203.0.113.10 \
+  --confirm-disable 203.0.113.10
 ```

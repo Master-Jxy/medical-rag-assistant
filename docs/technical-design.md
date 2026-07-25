@@ -1369,10 +1369,14 @@ Chroma、上传文件、MySQL 和 Redis 使用独立持久卷。2 核 2G 服务�
 
 HTTPS继续由Nginx终止，不增加业务服务。证书签发分两步：HTTP覆盖层先提供
 `/.well-known/acme-challenge/`和原业务，Certbot完成HTTP-01后才切换到TLS覆盖层；
-TLS层只新增443和固定域名跳转，继续保留SSE关闭代理缓冲、650秒读写超时以及转发协议
-头。证书和ACME挑战目录位于仓库及Docker命名卷之外，续期只热重载Nginx。临时
-`sslip.io`入口只能作为演示DNS别名，不能宣称为自有正式域名。具体启用、续期和纯HTTP
-回滚命令见`docs/deployment.md`第11节。
+TLS层只新增443和固定标识符跳转，继续保留SSE关闭代理缓冲、650秒读写超时以及转发
+协议头。证书和ACME挑战目录位于仓库及Docker命名卷之外，续期只热重载Nginx。
+
+自有域名是正式产品入口；缺少自有域名时，Certbot 5.4+可以为公网IP申请Let’s Encrypt
+短期证书，提供可信HTTPS但不能宣称为正式品牌域名。IP证书有效期约6天，必须由高频
+续期计时器管理，并在续期后热重载Nginx。大陆云主机上的未备案临时DNS别名可能在
+多视角HTTP-01验证中被拦截，因此失败后切换公网IP证书，不无限重试。具体启用、续期和
+纯HTTP回滚命令见`docs/deployment.md`第11节。
 
 ## 18. 架构变更规则
 
