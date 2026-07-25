@@ -1,13 +1,16 @@
 """普通 RAG 应用服务：编排查询构造、知识检索和回答生成。"""
 
-from functools import lru_cache
+import asyncio
 from pathlib import Path
+from time import monotonic
 
+from fastapi import Request
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage
 
 from app.core.exceptions import ConfigurationError, RagServiceError
 from app.core.config import get_settings
+from app.core.request_context import get_request_id
 from app.modules.rag.adapters import (
     RAG_SYSTEM_PROMPT,
     CurrentQueryBuilderAdapter,
@@ -29,6 +32,7 @@ from app.modules.rag.policies import (
 from app.modules.rag.hybrid_search import create_current_knowledge_search
 from app.modules.rag.rerank import RerankStage, create_current_rerank_stage
 from app.schemas.chat import SourceItem
+from app.ports.telemetry import NullTelemetry, TelemetryEvent, TelemetryPort, emit_safely
 
 INSUFFICIENT_KNOWLEDGE_MESSAGE = DEFAULT_INSUFFICIENT_KNOWLEDGE_MESSAGE
 
@@ -43,6 +47,7 @@ class RagService:
         answer_generator: AnswerGeneratorPort | None = None,
         retrieval_policy: RagRetrievalPolicy | None = None,
         rerank_stage: RerankStage | None = None,
+        telemetry: TelemetryPort | None = None,
     ) -> None:
         try:
             settings = get_settings()
@@ -57,6 +62,8 @@ class RagService:
                 settings
             )
             self.rerank_stage = rerank_stage or create_current_rerank_stage(settings)
+            self.telemetry = telemetry or NullTelemetry()
+            self.model_name = settings.chat_model_name
         except ValueError as exc:
             raise ConfigurationError(str(exc)) from exc
 
@@ -71,7 +78,24 @@ class RagService:
             chunks = self._retrieve_chunks(question, top_k, history)
             if not chunks:
                 return self.retrieval_policy.insufficient_knowledge_message, []
-            answer = self.answer_generator.answer(question, history, chunks)
+            started = monotonic()
+            result = "failure"
+            error_type = None
+            try:
+                answer = self.answer_generator.answer(question, history, chunks)
+                result = "success"
+            except Exception as exc:
+                error_type = type(exc).__name__
+                raise
+            finally:
+                self._emit_stage(
+                    "model_generation",
+                    started,
+                    result,
+                    error_type=error_type,
+                    model_name=self.model_name,
+                    token_measurement="unknown",
+                )
             return answer, [self._chunk_to_source_item(chunk) for chunk in chunks]
         except ConfigurationError:
             raise
@@ -97,9 +121,29 @@ class RagService:
                 yield {"event": "sources", "data": {"sources": []}}
                 return
 
-            for chunk in self.answer_generator.stream_answer(question, history, chunks):
-                if chunk:
-                    yield {"event": "token", "data": {"content": chunk}}
+            started = monotonic()
+            result = "failure"
+            error_type = None
+            try:
+                for chunk in self.answer_generator.stream_answer(
+                    question, history, chunks
+                ):
+                    if chunk:
+                        yield {"event": "token", "data": {"content": chunk}}
+                result = "success"
+            except BaseException as exc:
+                error_type = type(exc).__name__
+                result = "stopped" if isinstance(exc, GeneratorExit) else "failure"
+                raise
+            finally:
+                self._emit_stage(
+                    "model_generation",
+                    started,
+                    result,
+                    error_type=error_type,
+                    model_name=self.model_name,
+                    token_measurement="unknown",
+                )
             yield {
                 "event": "sources",
                 "data": {
@@ -133,10 +177,32 @@ class RagService:
                 yield {"event": "sources", "data": {"sources": []}}
                 return
 
-            async for chunk in self.answer_generator.astream_answer(
-                question, history, chunks
-            ):
-                yield {"event": "token", "data": {"content": chunk}}
+            started = monotonic()
+            result = "failure"
+            error_type = None
+            try:
+                async for chunk in self.answer_generator.astream_answer(
+                    question, history, chunks
+                ):
+                    yield {"event": "token", "data": {"content": chunk}}
+                result = "success"
+            except BaseException as exc:
+                error_type = type(exc).__name__
+                result = (
+                    "stopped"
+                    if isinstance(exc, (asyncio.CancelledError, GeneratorExit))
+                    else "failure"
+                )
+                raise
+            finally:
+                self._emit_stage(
+                    "model_generation",
+                    started,
+                    result,
+                    error_type=error_type,
+                    model_name=self.model_name,
+                    token_measurement="unknown",
+                )
             yield {
                 "event": "sources",
                 "data": {
@@ -157,13 +223,76 @@ class RagService:
         top_k: int,
         history: ChatHistory | None,
     ) -> list[RetrievedChunk]:
-        query = self.query_builder.build(question, history)
+        started = monotonic()
+        try:
+            query = self.query_builder.build(question, history)
+        except Exception as exc:
+            self._emit_stage(
+                "query_construction",
+                started,
+                "failure",
+                error_type=type(exc).__name__,
+            )
+            raise
+        self._emit_stage("query_construction", started, "success")
         options = self.retrieval_policy.search_options
-        if options.is_disabled:
-            chunks = self.knowledge_search.search(query, top_k)
-        else:
-            chunks = self.knowledge_search.search(query, top_k, options)
-        return self.rerank_stage.apply(query, chunks, top_k)
+        started = monotonic()
+        try:
+            if options.is_disabled:
+                chunks = self.knowledge_search.search(query, top_k)
+            else:
+                chunks = self.knowledge_search.search(query, top_k, options)
+        except Exception as exc:
+            self._emit_stage(
+                "knowledge_retrieval",
+                started,
+                "failure",
+                error_type=type(exc).__name__,
+            )
+            raise
+        self._emit_stage(
+            "knowledge_retrieval",
+            started,
+            "success",
+            retrieved_chunk_count=len(chunks),
+        )
+        started = monotonic()
+        try:
+            reranked = self.rerank_stage.apply(query, chunks, top_k)
+        except Exception as exc:
+            self._emit_stage(
+                "rerank",
+                started,
+                "failure",
+                error_type=type(exc).__name__,
+            )
+            raise
+        self._emit_stage(
+            "rerank",
+            started,
+            "success" if self.rerank_stage.policy.enabled else "skipped",
+            retrieved_chunk_count=len(reranked),
+        )
+        return reranked
+
+    def _emit_stage(
+        self,
+        stage: str,
+        started: float,
+        result: str,
+        **fields,
+    ) -> None:
+        emit_safely(
+            self.telemetry,
+            TelemetryEvent.create(
+                request_id=get_request_id(),
+                event_name="rag_stage",
+                result=result,
+                stage=stage,
+                duration_ms=round((monotonic() - started) * 1000, 3),
+                **fields,
+            ),
+        )
 
     @staticmethod
     def _chunk_to_source_item(chunk: RetrievedChunk) -> SourceItem:
@@ -213,7 +342,10 @@ class RagService:
         )
 
 
-@lru_cache
-def get_rag_service() -> RagService:
+def get_rag_service(request: Request) -> RagService:
     """第一次聊天请求时创建服务，之后复用模型和 Chroma 连接。"""
-    return RagService()
+    service = getattr(request.app.state, "rag_service", None)
+    if service is None:
+        service = RagService(telemetry=request.app.state.telemetry)
+        request.app.state.rag_service = service
+    return service

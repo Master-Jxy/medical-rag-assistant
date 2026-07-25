@@ -1,12 +1,11 @@
 """普通与 SSE 流式 RAG 问答接口。"""
 
-from uuid import uuid4
-
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from app.core.exceptions import AppError, RagServiceError
 from app.core.sse import format_sse
+from app.core.request_context import get_request_id
 from app.modules.auth.dependencies import get_current_user
 from app.modules.auth.schemas import UserResponse
 from app.schemas.chat import ChatRequest, ChatResponse, ErrorResponse
@@ -32,7 +31,7 @@ def chat(
     rag_service: RagService = Depends(get_rag_service),
 ) -> ChatResponse:
     """把已校验的问题交给 RAG 服务，不在路由中编写检索和模型逻辑。"""
-    request_id = str(uuid4())
+    request_id = get_request_id()
     rate_limiter.check(current_user.id)
     answer, sources = rag_service.ask(request.question, request.top_k)
     return ChatResponse(answer=answer, sources=sources, request_id=request_id)
@@ -50,7 +49,7 @@ def stream_chat(
     rag_service: RagService = Depends(get_rag_service),
 ) -> StreamingResponse:
     """路由只负责把服务层事件转换为 SSE，不编写检索和模型逻辑。"""
-    request_id = str(uuid4())
+    request_id = get_request_id()
     rate_limiter.check(current_user.id)
 
     def event_generator():

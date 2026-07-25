@@ -48,6 +48,7 @@ def _normalize_address(value: str | None, fallback: str = "unknown") -> str:
 
 
 def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     session: Session = Depends(get_db_session),
     token_service: TokenService = Depends(get_token_service),
@@ -59,6 +60,7 @@ def get_current_user(
     user = UserRepository(session).get_by_id(user_id)
     if user is None or not user.is_active:
         raise InvalidAuthTokenError()
+    request.state.user_id = user.id
     return UserResponse.model_validate(user)
 
 

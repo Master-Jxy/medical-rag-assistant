@@ -26,6 +26,7 @@ async function logout() {
         <router-link to="/chat">知识问答</router-link>
         <router-link to="/knowledge">知识库</router-link>
         <router-link v-if="auth.user?.role === 'admin'" to="/admin/knowledge">系统管理</router-link>
+        <router-link v-if="auth.user?.role === 'admin'" to="/admin/telemetry">运行统计</router-link>
         <div v-if="auth.user" class="account-menu">
           <span :title="auth.user.email">{{ userLabel }}</span>
           <button @click="logout">退出</button>

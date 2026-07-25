@@ -77,12 +77,23 @@ class Settings(BaseSettings):
     rag_rerank_max_estimated_cost_cny: float = Field(
         default=0.01, ge=0, le=100
     )
+    telemetry_enabled: bool = True
+    telemetry_log_path: Path = BACKEND_DIR / "logs" / "telemetry.jsonl"
+    telemetry_log_max_bytes: int = Field(
+        default=5 * 1024 * 1024, ge=1024, le=100 * 1024 * 1024
+    )
+    telemetry_log_backup_count: int = Field(default=5, ge=1, le=30)
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
 
-    @field_validator("chroma_persist_dir", "upload_dir", "document_registry_path")
+    @field_validator(
+        "chroma_persist_dir",
+        "upload_dir",
+        "document_registry_path",
+        "telemetry_log_path",
+    )
     @classmethod
     def resolve_backend_path(cls, value: Path) -> Path:
         """相对路径始终以 backend 为基准，不受启动命令所在目录影响。"""

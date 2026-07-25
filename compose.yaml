@@ -69,6 +69,10 @@ services:
       CHROMA_COLLECTION_NAME: ${CHROMA_COLLECTION_NAME:-agent}
       UPLOAD_DIR: /app/data/uploads
       DOCUMENT_REGISTRY_PATH: /app/data/documents.json
+      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-true}
+      TELEMETRY_LOG_PATH: ${TELEMETRY_LOG_PATH:-/app/data/logs/telemetry.jsonl}
+      TELEMETRY_LOG_MAX_BYTES: ${TELEMETRY_LOG_MAX_BYTES:-5242880}
+      TELEMETRY_LOG_BACKUP_COUNT: ${TELEMETRY_LOG_BACKUP_COUNT:-5}
       CORS_ORIGINS: '[]'
       TRUSTED_PROXY_IPS: '["172.30.0.10"]'
       TZ: Asia/Shanghai

@@ -1,8 +1,6 @@
 """会话创建、列表、详情、改名和删除接口。"""
 
 from typing import Annotated
-from uuid import uuid4
-
 from fastapi import APIRouter, Depends, Header, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -10,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db_session
 from app.core.exceptions import AppError, RagServiceError
 from app.core.sse import format_sse
+from app.core.request_context import get_request_id
 from app.modules.auth.dependencies import get_current_user
 from app.modules.auth.schemas import UserResponse
 from app.schemas.chat import ChatRequest
@@ -172,7 +171,7 @@ async def stream_chat_in_conversation(
     session: Session = Depends(get_db_session),
     rag_service: RagService = Depends(get_rag_service),
 ) -> StreamingResponse:
-    request_id = str(uuid4())
+    request_id = get_request_id()
     rate_limiter.check(current_user.id)
     service_iterator = ConversationChatService(
         session, rag_service, generation_lock, idempotency, cancellation

@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from app.ports.telemetry import NullTelemetry, TelemetryEvent, emit_safely
 
 
 class AppError(Exception):
@@ -99,6 +100,23 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
         request_id = getattr(request.state, "request_id", str(uuid4()))
+        persistence_codes = {"CONVERSATION_STORE_ERROR", "DOCUMENT_STORE_ERROR"}
+        emit_safely(
+            getattr(request.app.state, "telemetry", NullTelemetry()),
+            TelemetryEvent.create(
+                request_id=request_id,
+                event_name=(
+                    "persistence_failure"
+                    if exc.code in persistence_codes
+                    else "application_error"
+                ),
+                result="failure",
+                route=request.url.path,
+                user_id=getattr(request.state, "user_id", None),
+                status_code=exc.status_code,
+                error_type=exc.code,
+            ),
+        )
         return JSONResponse(
             status_code=exc.status_code,
             headers=exc.headers,

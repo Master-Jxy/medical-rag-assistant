@@ -7,6 +7,8 @@ from threading import Lock
 from fastapi import Request
 
 from app.infrastructure.redis import RedisHealthStatus
+from app.core.request_context import get_request_id
+from app.ports.telemetry import NullTelemetry, TelemetryEvent, TelemetryPort, emit_safely
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +44,12 @@ class _MutableProtectionState:
 class ProtectionObservability:
     """记录短期运行状态；不保存用户、请求或业务正文。"""
 
-    def __init__(self, *, redis_configured: bool) -> None:
+    def __init__(
+        self,
+        *,
+        redis_configured: bool,
+        telemetry: TelemetryPort | None = None,
+    ) -> None:
         fallback_mode = "redis" if redis_configured else "local_fallback"
         strict_mode = "available" if redis_configured else "unavailable"
         self._states = {
@@ -54,6 +61,7 @@ class ProtectionObservability:
             IDEMPOTENCY: _MutableProtectionState(FAIL_CLOSED_POLICY, strict_mode),
         }
         self._lock = Lock()
+        self.telemetry = telemetry or NullTelemetry()
 
     def record_success(self, feature: str) -> None:
         with self._lock:
@@ -100,6 +108,16 @@ class ProtectionObservability:
                     "protection_mode": target_mode,
                     "protection_error_type": error_type,
                 },
+            )
+            emit_safely(
+                self.telemetry,
+                TelemetryEvent.create(
+                    request_id=get_request_id(),
+                    event_name="redis_degraded",
+                    result="failure",
+                    stage=feature,
+                    error_type=error_type,
+                ),
             )
 
     def snapshot(

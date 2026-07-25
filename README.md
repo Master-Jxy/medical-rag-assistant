@@ -32,12 +32,15 @@
 - 后端 pytest、Vue 组件测试、SSE UTF-8 分片测试和生产构建验证。
 - Docker Compose 编排 MySQL、Redis、FastAPI 和 Vue/Nginx，具备持久卷、健康检查、资源上限和统一公网入口。
 - 已在 Ubuntu 22.04、2 核 2G 阿里云 ECS 完成 HTTP 部署基线与注册、登录、会话链路验收。
+- 版本化 `corpus_v1` / `eval_v1`、只读真实基线、人工复核、检索排序指标和费用闸门。
+- 默认关闭的混合检索与Reranker实验能力；真实评估没有证明整体收益，因此生产继续使用冻结向量基线。
+- `RAG v1.2.1` 已发布到GitHub并同步演示服务器，服务器免费验收和后端容器重启恢复通过。
+- 已完成结构化JSON日志、阶段耗时、聚合指标、日志轮转以及管理员只读统计接口和页面，并作为`RAG v1.3`提交和推送；尚未部署服务器。
 
 尚未实现，不能当作当前功能宣传：
 
-- 前端稳定错误提示与真实 Redis 幂等/冲突验收。
-- 混合检索、Reranker 和正式评估体系。
-- 独立 Agent、HTTPS/域名、自动备份和完整的线上问答验收。
+- 独立受控资料整理 Agent。
+- HTTPS/域名、自动备份恢复和整机重启恢复。
 
 ## 系统架构
 
@@ -213,19 +216,16 @@ npm --prefix frontend run build
 
 1. 新开发窗口先读 `AGENTS.md`。
 2. 再读 `docs/handoff.md`，只执行其中的唯一下一任务。
-3. `docs/development-roadmap.md` 提供分阶段任务和验收标准。
-4. `docs/technical-design.md` 规定当前与目标架构、权限和模块边界。
-5. `docs/project-vision.md` 规定产品目标和明确不做的内容。
-6. `docs/deployment.md` 记录服务器部署、更新、检查和数据备份步骤。
+3. 按handoff定向读取 `docs/development-roadmap.md` 的当前阶段和 `docs/technical-design.md` 的相关章节，不全文回放。
+4. `docs/project-vision.md` 只在产品范围变化时读取。
+5. `docs/deployment.md` 与发布审计只在部署、验收或回滚任务中读取。
 
 ## 下一步
 
-当前认证、用户隔离、管理员系统文档、Redis 连接基线、认证/聊天/上传保护、会话生成锁、请求幂等和 Redis 故障可观测状态已完成，后续顺序为：
+当前唯一下一任务始终以 `docs/handoff.md` 为准。当前总体顺序为：
 
 ```text
-Redis 前端提示与真实环境验收
--> RAG 固定评估集与检索优化
--> 结构化日志和可观测性
+审查并发布RAG v1.3可观测性里程碑
 -> 独立受控的资料整理 Agent
 -> HTTPS、备份恢复与云端完整验收
 ```

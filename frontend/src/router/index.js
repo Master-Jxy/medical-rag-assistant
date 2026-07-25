@@ -4,6 +4,7 @@ import ChatView from '../views/ChatView.vue'
 import KnowledgeView from '../views/KnowledgeView.vue'
 import LoginView from '../views/LoginView.vue'
 import AdminKnowledgeView from '../views/AdminKnowledgeView.vue'
+import AdminTelemetryView from '../views/AdminTelemetryView.vue'
 import { initializeAuth, useAuthSession } from '../auth/session.js'
 
 const router = createRouter({
@@ -17,6 +18,12 @@ const router = createRouter({
       path: '/admin/knowledge',
       name: 'admin-knowledge',
       component: AdminKnowledgeView,
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
+    {
+      path: '/admin/telemetry',
+      name: 'admin-telemetry',
+      component: AdminTelemetryView,
       meta: { requiresAuth: true, requiresAdmin: true },
     },
   ],

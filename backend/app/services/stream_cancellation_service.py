@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from threading import Event, Lock
 
 from fastapi import Request
+from app.core.request_context import get_request_id
+from app.ports.telemetry import NullTelemetry, TelemetryEvent, TelemetryPort, emit_safely
 
 
 @dataclass(frozen=True)
@@ -16,9 +18,10 @@ class StreamCancellationLease:
 class StreamCancellationService:
     """登记当前进程的流式任务；业务键只保存摘要。"""
 
-    def __init__(self) -> None:
+    def __init__(self, telemetry: TelemetryPort | None = None) -> None:
         self._active: dict[str, Event] = {}
         self._lock = Lock()
+        self.telemetry = telemetry or NullTelemetry()
 
     @staticmethod
     def _key(user_id: str, conversation_id: str, client_request_id: str) -> str:
@@ -44,6 +47,15 @@ class StreamCancellationService:
         if event is None:
             return False
         event.set()
+        emit_safely(
+            self.telemetry,
+            TelemetryEvent.create(
+                request_id=get_request_id(),
+                event_name="generation_stopped",
+                result="success",
+                user_id=user_id,
+            ),
+        )
         return True
 
     def unregister(self, lease: StreamCancellationLease) -> None:
