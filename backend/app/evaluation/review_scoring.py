@@ -2,7 +2,8 @@
 
 import re
 from dataclasses import dataclass
-from enum import StrEnum
+
+from app.core.enums import StrEnum
 
 BASELINE_V1_INSUFFICIENT_MESSAGE = "知识库资料不足，无法根据现有资料回答。"
 

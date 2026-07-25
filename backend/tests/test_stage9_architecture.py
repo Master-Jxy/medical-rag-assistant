@@ -31,3 +31,14 @@ def test_review_service_uses_job_port_instead_of_job_model() -> None:
     )
     assert "app.modules.jobs.ports" in imported
     assert "app.modules.jobs.models" not in imported
+
+
+def test_application_uses_python_310_compatible_str_enum_shim() -> None:
+    offenders = []
+    for path in APP_ROOT.rglob("*.py"):
+        if path == APP_ROOT / "core" / "enums.py":
+            continue
+        if "from enum import StrEnum" in path.read_text(encoding="utf-8"):
+            offenders.append(path.relative_to(APP_ROOT).as_posix())
+
+    assert offenders == []

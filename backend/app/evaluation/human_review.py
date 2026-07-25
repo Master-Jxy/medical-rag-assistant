@@ -3,11 +3,12 @@
 import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, model_validator
+
+from app.core.enums import StrEnum
 
 from app.evaluation.report_schemas import BaselineReport
 from app.evaluation.schemas import EvaluationSet, StrictModel

@@ -1,9 +1,10 @@
 """版本化语料清单与评估集的数据契约。"""
 
-from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.core.enums import StrEnum
 
 
 class StrictModel(BaseModel):

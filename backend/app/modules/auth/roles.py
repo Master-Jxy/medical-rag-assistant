@@ -1,7 +1,8 @@
 """认证模块的固定角色集合与集中授权策略。"""
 
-from enum import StrEnum
 from typing import Iterable
+
+from app.core.enums import StrEnum
 
 
 class UserRole(StrEnum):
