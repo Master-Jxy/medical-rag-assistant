@@ -12,10 +12,10 @@
 
 下一任务定向阅读：
 
-- `docs/development-roadmap.md` 的阶段10任务10.4和10.5
-- `docs/technical-design.md` 第17节
-- `docs/deployment.md` 的备份、恢复、重启、域名和HTTPS章节
-- `docs/release-audit-rag-v1.3.md`只用于核对当前线上基线和回滚入口
+- `docs/development-roadmap.md` 的阶段11任务11.1
+- `docs/technical-design.md` 第13节
+- `docs/product-and-ui-design.md` 第4.5节只用于理解后续页面方向；任务11.1不开发页面
+- 只读`app/modules/rag/ports.py`、现有配置注入方式和最接近的Mock测试
 
 ## 2. 当前状态
 
@@ -39,6 +39,8 @@
 - 任务9.8已完成：三层权限矩阵、审核状态机、跨存储补偿、旧数据迁移、架构边界和响应式浏览器验收通过，阶段9已作为`Platform v1.4`发布。
 - 任务10.4a已完成：备份/恢复脚本、校验清单、保留策略和systemd定时已建立；四类数据隔离恢复演练与生产首份自动备份通过。
 - 任务10.5a已完成：整台服务器重启后四容器、HTTP健康和MySQL/文件/Chroma/Redis基线完整恢复。
+- 阶段10已完成并冻结为`Cloud v2.1`：公网IP受信任HTTPS、HTTP 308、短期证书自动
+  续期、续期热重载、HTTPS SSE、web和整机重启恢复均通过；当前没有自有品牌域名。
 
 ## 3. 阶段7最终证据
 
@@ -169,9 +171,20 @@ Telemetry只观察业务，不记录完整问题、回答、Prompt、密码、JW
 - 费用预检后使用0重试执行1次`text-embedding-v4`和1次`qwen3-max`，0次Reranker，返回19个token事件、119字和4个来源；来源主题偏泛，不改变冻结向量基线策略。
 - 临时账号和限流键已清理；最终为4账号、5会话、42消息、27文档、27 submission、27版本、103片段、0任务、0审计和2个原Redis键，四容器健康。
 
+2026-07-26 `Cloud v2.1` HTTPS与恢复验收：
+
+- HTTPS实现提交`b323d18`至`21cda0e`已推送并通过校验Git bundle快进服务器；完整后端280项、前端31项、SSE和构建通过。
+- 新全量备份`backup-20260725T182511Z`完成；HTTP配置备份
+  `/home/deploy/medical-rag-config-backups/https-20260726T023000Z`的5项SHA-256通过。
+- 未备案sslip临时域名的多视角验证失败后没有无限重试；使用Certbot 5.7和Let’s Encrypt短期配置为公网IP`112.124.9.120`签发受信任证书。
+- 证书SAN精确匹配公网IP、链验证OK、HTTP固定308跳转、外部443和HTTPS健康200；Snap续期timer enabled/active，dry-run和Nginx热重载通过。
+- HTTPS真实SSE使用1次Embedding和1次Qwen、0次重试、0次Reranker，收到13个token事件、4个来源、`done=1`和`error=0`。
+- 临时账号及3个限流键清理后，web和整机重启均保持4账号、5会话、42消息、27文档、27 submission、27版本、103片段和2个Redis键，四容器healthy。
+- 真实浏览器打开`https://112.124.9.120/`显示“运行正常”且没有证书警告；公网IP是可信演示入口，但不是自有品牌域名。
+
 ## 6. 工作区与禁止事项
 
-- 当前分支为`main`；线上`Platform v1.4`运行提交为`46e39f1`。
+- 当前分支为`main`；线上业务运行`Platform v1.4`，部署脚本提交为`21cda0e`。
 - 阶段8代码、阶段7最终验收校验器、测试和文档已按`docs/release-audit-rag-v1.3.md`精确提交并推送。
 - `backend/tests/test_auth_api.py`在`git status`中可能因Windows换行显示修改，但内容与HEAD一致，不属于发布范围。
 - `Platform v1.4`应用、迁移、测试、前端和部署恢复修改已经整体发布，后续文档提交不得夹带业务行为变化。
@@ -180,12 +193,13 @@ Telemetry只观察业务，不记录完整问题、回答、Prompt、密码、JW
 
 ## 7. 唯一下一任务
 
-**为已部署的`Platform v1.4`配置独立域名入口和HTTPS，并冻结`Cloud v2.1`。**
+**执行阶段11任务11.1：建立默认关闭、仅Mock的受控Agent模块骨架。**
 
 本小步边界：
 
-- 先只读核对`docs/deployment.md`第10节、当前Nginx拓扑、80/443端口、安全组可达性和可用域名条件。
-- 域名/证书变更必须独立备份当前Nginx配置，保留纯HTTP回滚入口，不修改backend/web业务镜像或数据卷。
-- 证书签发前验证DNS解析；签发后验证HTTP到HTTPS跳转、证书链、健康接口、注册登录和SSE代理。
-- 若没有用户拥有的正式域名，必须明确区分临时DNS别名与正式域名，不能把`sslip.io`一类入口写成正式域名。
-- 完成后更新部署手册、发布证据和handoff，并把唯一下一任务切换到阶段11的受控Agent最小骨架。
+- 只新增`app/modules/agent`骨架、显式状态类型、Tool Protocol、Tool Registry和配置开关。
+- 开关默认关闭；本步只用Mock，不安装或调用真实模型，不新增数据库表、API、SSE或前端页面。
+- LangGraph只负责状态流转契约；工具只能依赖公开应用Port，禁止直接访问Repository、
+  SQLAlchemy、Chroma、Redis、第三方SDK或系统命令。
+- 固定第一版最多5步、后续预算/超时字段的占位契约，但本步不提前实现运行流程。
+- 增加架构和Mock单测，完整后端回归；完成后唯一下一任务切到11.2持久化运行记录。
