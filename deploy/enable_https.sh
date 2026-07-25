@@ -8,6 +8,7 @@ LETSENCRYPT_DIR="${LETSENCRYPT_DIR:-/etc/letsencrypt}"
 
 domain=""
 email=""
+no_email=0
 expected_ip=""
 confirm_issue=""
 staging=0
@@ -21,6 +22,9 @@ Usage:
     --expected-ip 203.0.113.10 \
     --confirm-issue demo.example.com \
     [--staging]
+
+Use --no-email instead of --email only when no authorized ACME contact address
+is available. Certificate renewal will still work, but expiry notices are lost.
 EOF
 }
 
@@ -33,6 +37,10 @@ while (($#)); do
     --email)
       email="${2:-}"
       shift 2
+      ;;
+    --no-email)
+      no_email=1
+      shift
       ;;
     --expected-ip)
       expected_ip="${2:-}"
@@ -62,8 +70,12 @@ if [[ ! "$domain" =~ ^[A-Za-z0-9.-]+$ ]] || [[ "$domain" != *.* ]]; then
   echo "A valid DNS hostname is required." >&2
   exit 2
 fi
-if [[ ! "$email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]; then
-  echo "A valid ACME contact email is required." >&2
+if ((no_email)) && [[ -n "$email" ]]; then
+  echo "Use exactly one of --email or --no-email." >&2
+  exit 2
+fi
+if ((!no_email)) && [[ ! "$email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]; then
+  echo "A valid ACME contact email or --no-email is required." >&2
   exit 2
 fi
 if [[ ! "$expected_ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
@@ -155,11 +167,14 @@ certbot_args=(
   --webroot-path "$ACME_WEBROOT"
   --non-interactive
   --agree-tos
-  --email "$email"
-  --no-eff-email
   --keep-until-expiring
   --domain "$domain"
 )
+if ((no_email)); then
+  certbot_args+=(--register-unsafely-without-email)
+else
+  certbot_args+=(--email "$email" --no-eff-email)
+fi
 if ((staging)); then
   certbot_args+=(--staging)
 fi

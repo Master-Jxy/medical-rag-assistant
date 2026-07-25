@@ -46,6 +46,8 @@ def test_enable_https_requires_dns_confirmation_and_has_http_fallback() -> None:
 
     assert "set -Eeuo pipefail" in script
     assert '--confirm-issue must exactly match --domain.' in script
+    assert "Use exactly one of --email or --no-email." in script
+    assert "--register-unsafely-without-email" in script
     assert 'getent ahostsv4 "$domain"' in script
     assert "certbot_args=(" in script
     assert "--keep-until-expiring" in script
