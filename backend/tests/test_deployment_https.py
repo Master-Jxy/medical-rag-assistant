@@ -52,7 +52,8 @@ def test_enable_https_requires_dns_confirmation_and_has_http_fallback() -> None:
     assert "certbot_args=(" in script
     assert "--keep-until-expiring" in script
     assert 'LETSENCRYPT_DIR="$LETSENCRYPT_DIR/staging"' in script
-    assert "https_probe_args+=(--insecure)" in script
+    assert "HTTPS_STAGING_OK" in script
+    assert 'if ((staging)); then\n  state="complete"' in script
     assert 'state="finalizing"' in script
     assert "restoring the HTTP ACME configuration" in script
     assert "down -v" not in script

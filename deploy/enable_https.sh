@@ -183,6 +183,12 @@ certbot "${certbot_args[@]}"
 test -s "$LETSENCRYPT_DIR/live/$domain/fullchain.pem"
 test -s "$LETSENCRYPT_DIR/live/$domain/privkey.pem"
 
+if ((staging)); then
+  state="complete"
+  echo "HTTPS_STAGING_OK domain=$domain expected_ip=$expected_ip"
+  exit 0
+fi
+
 state="finalizing"
 "${https_compose[@]}" up -d --force-recreate web
 
@@ -193,9 +199,6 @@ https_probe_args=(
   --max-time 15
   --resolve "$domain:443:127.0.0.1"
 )
-if ((staging)); then
-  https_probe_args+=(--insecure)
-fi
 curl "${https_probe_args[@]}" "https://$domain/api/v1/health" >/dev/null
 
 state="complete"
