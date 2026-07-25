@@ -1022,7 +1022,7 @@ Router / Application Service
 
 自动化故障注入覆盖Redis不可用、Chroma检索失败、模型超时、Telemetry适配器失败、SSE主动停止、未知Token计量和管理员越权。日志轮转大小/数量、敏感输入不落盘以及Telemetry关闭后的问答回归均有测试。以后接入OpenTelemetry、Prometheus或Grafana时，只替换适配器，不改业务Service。
 
-## 12. 阶段九：用户治理、资料审核与管理中台 `[已完成，待部署]`
+## 12. 阶段九：用户治理、资料审核与管理中台 `[已完成并部署]`
 
 阶段九把现有“登录用户可以直接上传公共资料”的简单规则，演进为“用户提交、管理员审核、发布后公共检索”的企业知识治理流程。它不修改普通问答的输入输出，只改变哪些资料有资格进入生产知识库。
 
@@ -1363,7 +1363,16 @@ Chroma、上传文件、MySQL 和 Redis 使用独立持久卷。2 核 2G 服务�
 
 上线后继续开发的推荐方式：本地开发和测试通过后构建版本镜像，再更新服务器；线上数据卷不随代码发布覆盖。高风险数据库迁移先备份，再单独执行，失败时回退应用版本。
 
-当前阿里云基线使用 Ubuntu 22.04 和 HTTP 端口 80，只开放 Nginx；FastAPI、MySQL 和 Redis 均不映射公网端口。真实秘密由服务器本地 `deploy/.env` 注入。`RAG v1.3`指定提交已经同步，付费RAG业务验收、可观测性页面和后端容器重启恢复已通过，MySQL、Chroma、上传文件和Redis数据保持不变；域名、HTTPS、自动备份和整机重启恢复仍是待完成项，具体操作见 `docs/deployment.md`。
+当前阿里云基线使用 Ubuntu 22.04，FastAPI、MySQL 和 Redis 均不映射公网端口，真实
+秘密由服务器本地`deploy/.env`注入。`Platform v1.4`已部署，自动备份、隔离恢复演练、
+整机重启和受控付费RAG验收通过，MySQL、Chroma、上传文件和Redis基线保持一致。
+
+HTTPS继续由Nginx终止，不增加业务服务。证书签发分两步：HTTP覆盖层先提供
+`/.well-known/acme-challenge/`和原业务，Certbot完成HTTP-01后才切换到TLS覆盖层；
+TLS层只新增443和固定域名跳转，继续保留SSE关闭代理缓冲、650秒读写超时以及转发协议
+头。证书和ACME挑战目录位于仓库及Docker命名卷之外，续期只热重载Nginx。临时
+`sslip.io`入口只能作为演示DNS别名，不能宣称为自有正式域名。具体启用、续期和纯HTTP
+回滚命令见`docs/deployment.md`第11节。
 
 ## 18. 架构变更规则
 

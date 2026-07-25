@@ -1,0 +1,10 @@
+services:
+  web:
+    environment:
+      HTTPS_DOMAIN: ${HTTPS_DOMAIN:?HTTPS_DOMAIN is required}
+    ports:
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.https.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ${ACME_WEBROOT:-/var/lib/medical-rag/acme}:/var/www/certbot:ro
+      - ${LETSENCRYPT_DIR:-/etc/letsencrypt}:/etc/letsencrypt:ro

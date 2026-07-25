@@ -1,0 +1,7 @@
+services:
+  web:
+    environment:
+      HTTPS_DOMAIN: ${HTTPS_DOMAIN:?HTTPS_DOMAIN is required}
+    volumes:
+      - ./deploy/nginx.acme.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ${ACME_WEBROOT:-/var/lib/medical-rag/acme}:/var/www/certbot:ro

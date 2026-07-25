@@ -11,7 +11,9 @@
 - 内部服务：FastAPI、MySQL 8.0、Redis 6.2，不映射公网端口。
 - 持久数据：`mysql_data`、`redis_data`、`app_data`、`chroma_data` 四个 Docker 卷。
 - 外部模型：通义千问和 DashScope Embedding，密钥由 `deploy/.env` 注入。
-- 当前限制：仅有 HTTP；域名、HTTPS、自动备份和整机重启恢复尚未完成。RAG v1.3已同步，阶段8管理员统计页面和Telemetry免费线上验收已通过。
+- 当前生产运行`Platform v1.4`；自动备份、隔离恢复演练和整机重启恢复已经通过。
+- 当前限制：仅有 HTTP，域名和HTTPS尚未完成；正式域名必须由用户持有，`sslip.io`
+  只能作为临时演示DNS别名。
 
 ## 2. 服务器首次准备
 
@@ -153,10 +155,11 @@ free -h
 ## 9. 尚未完成的上线验收
 
 - 配置域名和 HTTPS，之后才使用正式密码或向他人开放注册。
-- `deploy/backup.sh`和`deploy/restore.sh`已经提供备份恢复入口，正式服务器演练证据完成前仍不得宣称自动恢复已验收。
+- `deploy/backup.sh`和`deploy/restore.sh`已经提供备份恢复入口；隔离恢复演练、生产备份
+  校验和整机重启恢复已经通过。
 - 真实RAG流式问答、引用、主动停止和清理恢复已按独立费用确认完成；详细证据见发布审计。
-- 重启整台服务器后验证用户、会话、文档、向量和 Redis 数据仍存在；当前只验证了后端容器重启恢复。
-- 固化版本回滚步骤，完成后再冻结 `Cloud v2.1`。
+- HTTPS启用后验证证书链、HTTP跳转、API、SSE代理、容器重启和证书续期演练，再冻结
+  `Cloud v2.1`。
 
 ## 10. 自动备份与受控恢复
 
@@ -215,3 +218,69 @@ sudo systemctl list-timers medical-rag-backup.timer --no-pager
 首次手工触发后必须检查最新`backup-*`中的`SHA256SUMS`，并确认生产四个容器仍为
 `healthy`。定时服务使用`deploy`账号；该账号必须只通过`docker`组访问本机Docker，
 备份目录权限保持700，备份文件保持600。
+
+## 11. 域名、HTTPS、续期和回滚
+
+HTTPS继续由现有Nginx终止，不暴露FastAPI、MySQL或Redis。两个Compose覆盖层只改变
+`web`服务：
+
+- `compose.https-bootstrap.yaml`：保持HTTP业务可用，同时开放HTTP-01挑战目录。
+- `compose.https.yaml`：挂载证书、增加443、把所有HTTP业务请求固定跳转到HTTPS。
+
+不要在证书尚不存在时直接启用最终覆盖层，否则Nginx会因证书文件缺失而启动失败。
+启用脚本先核对DNS、显式确认域名、验证本机挑战路径，再签发证书；只有证书存在后才
+切换443。如果最终Nginx检查失败，脚本自动恢复HTTP挑战配置，不删除证书或数据卷。
+
+Ubuntu 22.04先安装Certbot，并在云安全组开放TCP 443；80必须继续开放用于HTTP-01和
+自动续期：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y certbot
+
+cd /home/deploy/medical-rag-assistant
+sudo bash deploy/enable_https.sh \
+  --domain demo.example.com \
+  --email operator@example.com \
+  --expected-ip 203.0.113.10 \
+  --confirm-issue demo.example.com
+```
+
+首次签发前可以增加`--staging`验证流程，但测试证书不受浏览器信任，正式启用仍需再
+执行一次不带`--staging`的命令。域名、邮箱和公网IP不是密钥，但真实联系人不写入Git。
+用户未提供自有域名时，可使用形如`203-0-113-10.sslip.io`的临时演示别名；文档和简历
+必须明确其非自有正式域名。
+
+安装续期部署钩子并确认Ubuntu自带计时器：
+
+```bash
+sudo install -d -m 755 /etc/letsencrypt/renewal-hooks/deploy
+sudo install -m 755 deploy/reload_nginx_after_renewal.sh \
+  /etc/letsencrypt/renewal-hooks/deploy/reload-medical-rag-nginx.sh
+sudo systemctl enable --now certbot.timer
+sudo certbot renew --dry-run
+```
+
+验收至少包括：
+
+```bash
+curl -I http://demo.example.com/
+curl -fsS https://demo.example.com/api/v1/health
+openssl s_client -connect demo.example.com:443 \
+  -servername demo.example.com -verify_return_error </dev/null
+docker compose --env-file deploy/.env \
+  -f compose.yaml -f deploy/compose.https.yaml ps
+```
+
+必须确认HTTP返回308且`Location`指向固定域名，证书SAN匹配、证书链验证通过，HTTPS
+健康接口200，SSE没有被缓冲。然后重启`web`以及整台服务器各一次，复查证书和四类
+持久数据。
+
+需要恢复纯HTTP时使用显式确认命令。它只重建`web`为基础Compose配置，保留证书、
+ACME目录、backend和四个数据卷：
+
+```bash
+sudo bash deploy/disable_https.sh \
+  --domain demo.example.com \
+  --confirm-disable demo.example.com
+```
