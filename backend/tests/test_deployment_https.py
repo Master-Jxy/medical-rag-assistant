@@ -56,6 +56,9 @@ def test_enable_https_requires_dns_confirmation_and_has_http_fallback() -> None:
     assert "certbot_args=(" in script
     assert "--keep-until-expiring" in script
     assert 'LETSENCRYPT_DIR="$LETSENCRYPT_DIR/staging"' in script
+    assert '--config-dir "$LETSENCRYPT_DIR"' in script
+    assert '--work-dir "$LETSENCRYPT_DIR/work"' in script
+    assert '--logs-dir "$LETSENCRYPT_DIR/logs"' in script
     assert "HTTPS_STAGING_OK" in script
     assert 'if ((staging)); then\n  state="complete"' in script
     assert 'state="finalizing"' in script

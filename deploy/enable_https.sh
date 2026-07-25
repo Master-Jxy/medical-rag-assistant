@@ -199,6 +199,9 @@ fi
 
 certbot_args=(
   certonly
+  --config-dir "$LETSENCRYPT_DIR"
+  --work-dir "$LETSENCRYPT_DIR/work"
+  --logs-dir "$LETSENCRYPT_DIR/logs"
   --webroot
   --webroot-path "$ACME_WEBROOT"
   --non-interactive
