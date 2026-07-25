@@ -40,6 +40,11 @@ class AdminRequiredError(AppError):
         super().__init__("需要管理员权限", code="ADMIN_REQUIRED", status_code=403)
 
 
+class RoleRequiredError(AppError):
+    def __init__(self) -> None:
+        super().__init__("当前账号没有所需权限", code="ROLE_REQUIRED", status_code=403)
+
+
 class UserService:
     def __init__(self, session: Session) -> None:
         self.session = session

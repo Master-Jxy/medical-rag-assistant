@@ -79,7 +79,7 @@ async function startUpload() {
       uploadProgress.value = progress
     })
     uploadProgress.value = 100
-    successMessage.value = `${result.file_name} 已成功入库，共 ${result.chunk_count} 个片段。`
+    successMessage.value = `${result.file_name} 已提交，等待管理员审核。`
     clearSelectedFile()
     await loadDocuments()
   } catch (error) {
@@ -136,7 +136,7 @@ onMounted(loadDocuments)
       <div>
         <span>KNOWLEDGE BASE</span>
         <h1>知识库管理</h1>
-        <p>上传医疗资料，系统会自动解析、切分并写入本地向量库。</p>
+        <p>提交医疗资料供管理员审核，审核通过后才会进入公共知识库。</p>
       </div>
       <div class="summary-cards">
         <div><strong>{{ documents.length }}</strong><small>已上传文档</small></div>
@@ -172,7 +172,7 @@ onMounted(loadDocuments)
       >
         <div class="upload-symbol">↑</div>
         <strong>点击选择或拖放文件到这里</strong>
-        <p>系统会根据文件内容计算 SHA-256，避免重复向量化和重复计费。</p>
+        <p>系统会先校验并生成解析预览，提交阶段不会调用向量模型。</p>
       </div>
 
       <div v-if="selectedFile" class="selected-file">
@@ -188,9 +188,9 @@ onMounted(loadDocuments)
       </div>
 
       <div class="upload-actions">
-        <span>上传成功后即可在“知识问答”页面检索内容。</span>
-        <el-button type="primary" round :loading="uploading" :disabled="!selectedFile" @click="startUpload">
-          开始入库
+        <span>提交成功表示进入审核队列，并不表示已经发布。</span>
+        <el-button class="upload-button" type="primary" round :loading="uploading" :disabled="!selectedFile" @click="startUpload">
+          提交审核
         </el-button>
       </div>
     </section>

@@ -153,7 +153,65 @@ free -h
 ## 9. 尚未完成的上线验收
 
 - 配置域名和 HTTPS，之后才使用正式密码或向他人开放注册。
-- 将本次已校验的 MySQL、Chroma、上传文件和 Redis 手工备份流程固化为可重复的备份及恢复脚本。
+- `deploy/backup.sh`和`deploy/restore.sh`已经提供备份恢复入口，正式服务器演练证据完成前仍不得宣称自动恢复已验收。
 - 真实RAG流式问答、引用、主动停止和清理恢复已按独立费用确认完成；详细证据见发布审计。
 - 重启整台服务器后验证用户、会话、文档、向量和 Redis 数据仍存在；当前只验证了后端容器重启恢复。
 - 固化版本回滚步骤，完成后再冻结 `Cloud v2.1`。
+
+## 10. 自动备份与受控恢复
+
+备份目录必须位于仓库和Docker卷之外。脚本默认写入
+`/home/deploy/medical-rag-backups`，保留最近7份；可以通过环境变量调整：
+
+```bash
+cd /home/deploy/medical-rag-assistant
+BACKUP_ROOT=/home/deploy/medical-rag-backups \
+BACKUP_RETENTION_COUNT=7 \
+bash deploy/backup.sh
+```
+
+每份成功备份包含：
+
+- MySQL单事务逻辑转储。
+- `app_data`、`chroma_data`和执行`SAVE`后的`redis_data`卷归档。
+- 当次`deploy/.env`、`compose.yaml`、Git提交与工作区脏状态。
+- `manifest.txt`和覆盖全部文件的`SHA256SUMS`。
+
+备份先写入`.incomplete-*`目录，任一步失败会删除本次未完成目录；全部校验通过后才
+原子改名为`backup-*`并执行保留策略。脚本不输出`.env`内容，也不调用模型。
+
+恢复会清空目标项目的MySQL业务库和三个数据卷，属于破坏性操作。正常场景默认先再做
+一份`pre-restore`安全备份；只有全新空项目或独立演练环境才允许显式跳过。必须同时
+确认备份目录、目标Compose项目名和恢复动作：
+
+```bash
+bash deploy/restore.sh \
+  --backup /home/deploy/medical-rag-backups/backup-YYYYmmddTHHMMSSZ \
+  --confirm-project medical-rag \
+  --confirm-restore
+```
+
+恢复脚本先校验清单和全部SHA-256，再停止`backend/web/redis`，恢复三个卷，重建
+MySQL业务库并导入逻辑转储，最后等待四个服务恢复健康。`deploy.env`只作为灾难恢复
+材料随备份保存，不会自动覆盖当前`deploy/.env`；在新服务器恢复时应先人工确认权限
+为600并放置该文件。不得对唯一生产实例使用`--skip-safety-backup`。
+
+服务器使用systemd每天执行一次，定时器带最多10分钟随机延迟并在关机错过后补跑：
+
+```bash
+sudo install -d -m 755 /usr/local/lib/medical-rag
+sudo install -m 755 deploy/backup.sh /usr/local/lib/medical-rag/backup.sh
+sudo install -m 644 deploy/systemd/medical-rag-backup.service \
+  /etc/systemd/system/medical-rag-backup.service
+sudo install -m 644 deploy/systemd/medical-rag-backup.timer \
+  /etc/systemd/system/medical-rag-backup.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now medical-rag-backup.timer
+sudo systemctl start medical-rag-backup.service
+sudo systemctl status medical-rag-backup.service --no-pager
+sudo systemctl list-timers medical-rag-backup.timer --no-pager
+```
+
+首次手工触发后必须检查最新`backup-*`中的`SHA256SUMS`，并确认生产四个容器仍为
+`healthy`。定时服务使用`deploy`账号；该账号必须只通过`docker`组访问本机Docker，
+备份目录权限保持700，备份文件保持600。

@@ -11,7 +11,7 @@ from app.modules.auth.maintenance import AdminRoleMaintenanceService
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="设置已有用户的数据库授权角色")
     parser.add_argument("email", help="已注册邮箱")
-    parser.add_argument("role", choices=("user", "admin"), help="目标角色")
+    parser.add_argument("role", choices=("user", "admin"), help="目标角色；不允许设置超级管理员")
     parser.add_argument(
         "--confirm",
         action="store_true",

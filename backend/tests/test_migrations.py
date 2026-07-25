@@ -32,6 +32,10 @@ def test_empty_database_upgrades_to_owned_conversation_schema(tmp_path) -> None:
     tables = set(inspector.get_table_names())
     assert {
         "alembic_version",
+        "audit_events",
+        "knowledge_submissions",
+        "processing_jobs",
+        "document_versions",
         "conversations",
         "messages",
         "message_sources",
@@ -62,6 +66,24 @@ def test_empty_database_upgrades_to_owned_conversation_schema(tmp_path) -> None:
     )
     user_columns = {column["name"]: column for column in inspector.get_columns("users")}
     assert user_columns["role"]["nullable"] is False
+    user_checks = {
+        constraint["name"]: constraint["sqltext"]
+        for constraint in inspector.get_check_constraints("users")
+    }
+    assert "super_admin" in user_checks["ck_users_role"]
+    audit_columns = {
+        column["name"] for column in inspector.get_columns("audit_events")
+    }
+    assert {
+        "actor_user_id",
+        "action",
+        "object_type",
+        "object_id",
+        "result",
+        "request_id",
+        "details",
+        "created_at",
+    } <= audit_columns
 
 
 def test_upgrade_clears_unowned_conversations_but_preserves_users(tmp_path) -> None:
@@ -134,6 +156,109 @@ def test_upgrade_clears_unowned_conversations_but_preserves_users(tmp_path) -> N
         assert connection.scalar(
             text("SELECT COUNT(*) FROM users WHERE id = 'preserved-user'")
         ) == 1
+
+
+def test_super_admin_role_migration_preserves_users_and_has_safe_downgrade(
+    tmp_path,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'roles.db'}"
+    config = build_alembic_config(database_url)
+    command.upgrade(config, "0005_user_role")
+    engine = build_engine(database_url)
+    now = datetime.now(timezone.utc)
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users "
+                "(id, email, password_hash, is_active, role, created_at, updated_at) "
+                "VALUES ('admin-user', 'admin@example.com', 'hash', 1, 'admin', :now, :now)"
+            ),
+            {"now": now},
+        )
+
+    command.upgrade(config, "head")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE users SET role = 'super_admin' "
+                "WHERE id = 'admin-user'"
+            )
+        )
+        assert connection.scalar(
+            text("SELECT role FROM users WHERE id = 'admin-user'")
+        ) == "super_admin"
+
+    command.downgrade(config, "0005_user_role")
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text("SELECT role FROM users WHERE id = 'admin-user'")
+        ) == "admin"
+
+
+def test_stage9_upgrade_registers_legacy_documents_without_duplicate_publication(
+    tmp_path,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'stage9-upgrade.db'}"
+    config = build_alembic_config(database_url)
+    command.upgrade(config, "0007_audit_events")
+    engine = build_engine(database_url)
+    now = datetime.now(timezone.utc)
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users "
+                "(id, email, password_hash, is_active, role, created_at, updated_at) "
+                "VALUES ('legacy-owner', 'owner@example.com', 'hash', 1, 'user', :now, :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO documents "
+                "(id, original_name, stored_name, content_hash, size_bytes, chunk_count, "
+                "chunk_ids, uploader_id, is_system, status, created_at) VALUES "
+                "('system-doc', '系统资料.txt', 'system.txt', :system_hash, 10, 1, "
+                " :chunks, NULL, 1, 'ready', :now), "
+                "('user-doc', '用户资料.txt', 'user.txt', :user_hash, 10, 1, "
+                " :chunks, 'legacy-owner', 0, 'ready', :now)"
+            ),
+            {
+                "system_hash": "a" * 64,
+                "user_hash": "b" * 64,
+                "chunks": '["chunk-1"]',
+                "now": now,
+            },
+        )
+
+    command.upgrade(config, "head")
+    command.upgrade(config, "head")
+
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text("SELECT COUNT(*) FROM knowledge_submissions")
+        ) == 2
+        assert connection.scalar(text("SELECT COUNT(*) FROM document_versions")) == 2
+        assert connection.execute(
+            text("SELECT id, status FROM documents ORDER BY id")
+        ).all() == [("system-doc", "published"), ("user-doc", "published")]
+        assert connection.execute(
+            text(
+                "SELECT document_id, source, version FROM document_versions "
+                "ORDER BY document_id"
+            )
+        ).all() == [
+            ("system-doc", "system", 1),
+            ("user-doc", "legacy_upload", 1),
+        ]
+        assert connection.scalar(
+            text(
+                "SELECT COUNT(*) FROM knowledge_submissions "
+                "WHERE status = 'published' AND document_id = id"
+            )
+        ) == 2
+
 
 
 def test_legacy_json_import_creates_idempotent_system_documents(tmp_path) -> None:

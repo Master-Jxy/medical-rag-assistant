@@ -9,7 +9,7 @@ export async function uploadDocument(file, onProgress) {
   const formData = new FormData()
   formData.append('file', file)
 
-  const response = await http.post('/documents', formData, {
+  const response = await http.post('/knowledge/submissions', formData, {
     onUploadProgress(event) {
       if (!event.total) return
       onProgress?.(Math.round((event.loaded * 100) / event.total))

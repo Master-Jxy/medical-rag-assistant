@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr, field_validator
 
+from app.modules.auth.roles import UserRole
+
 
 class UserCreate(BaseModel):
     email: EmailStr
@@ -47,6 +49,28 @@ class UserResponse(BaseModel):
     email: str
     display_name: str | None
     is_active: bool
-    role: str
+    role: UserRole
     created_at: datetime
     updated_at: datetime
+
+
+class UserListResponse(BaseModel):
+    items: list[UserResponse]
+    total: int
+    offset: int
+    limit: int
+
+
+class UserRoleUpdate(BaseModel):
+    role: UserRole
+
+    @field_validator("role")
+    @classmethod
+    def allow_http_managed_roles(cls, value: UserRole) -> UserRole:
+        if value is UserRole.SUPER_ADMIN:
+            raise ValueError("HTTP接口不允许授予super_admin")
+        return value
+
+
+class UserStatusUpdate(BaseModel):
+    is_active: bool

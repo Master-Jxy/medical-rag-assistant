@@ -10,6 +10,7 @@ from app.db.base import Base
 from app.core.config import Settings
 from app.db.session import build_engine
 from app.modules.auth.models import User
+from app.modules.auth.roles import UserRole
 from app.modules.auth.passwords import hash_password, verify_password
 from app.modules.auth.schemas import UserCreate
 from app.modules.auth.service import EmailAlreadyRegisteredError, UserService
@@ -71,6 +72,30 @@ def test_database_unique_constraint_is_the_final_duplicate_guard() -> None:
                 User(email="same@example.com", password_hash="hash-1"),
                 User(email="same@example.com", password_hash="hash-2"),
             ]
+        )
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+
+def test_database_role_constraint_accepts_three_fixed_roles_and_rejects_unknown() -> None:
+    engine = build_auth_engine()
+    with Session(engine) as session:
+        for index, role in enumerate(UserRole):
+            session.add(
+                User(
+                    email=f"role-{index}@example.com",
+                    password_hash="hash",
+                    role=role,
+                )
+            )
+        session.commit()
+
+        session.add(
+            User(
+                email="invalid-role@example.com",
+                password_hash="hash",
+                role="owner",
+            )
         )
         with pytest.raises(IntegrityError):
             session.commit()

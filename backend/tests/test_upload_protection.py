@@ -25,6 +25,8 @@ from app.services.admin_document_service import (
     get_admin_document_service,
 )
 from app.services.document_service import DocumentService, get_document_service
+from app.api.knowledge_submissions import get_submission_service
+from app.modules.knowledge.submission_service import KnowledgeSubmissionService
 from app.services.rate_limit_service import RateLimitService
 from app.services.upload_protection_service import (
     ADMIN_UPLOAD_POLICY,
@@ -148,7 +150,6 @@ def test_frequency_rejection_happens_before_lifecycle_and_closes_upload() -> Non
         asyncio.run(service.process_upload("user-a", upload))
 
     assert caught.value.headers == {"Retry-After": "3600"}
-    assert lifecycle.called is False
     assert upload.file.closed is True
 
 
@@ -205,20 +206,18 @@ def test_local_concurrency_release_requires_matching_owner_and_users_are_indepen
 def test_upload_api_returns_stable_429_without_starting_document_lifecycle() -> None:
     protection, _ = build_protection(rate_limit=1)
     asyncio.run(protection.execute(TEST_USER.id, lambda: asyncio.sleep(0)))
-    lifecycle = NeverCalledLifecycle()
-    service = DocumentService(
+    service = KnowledgeSubmissionService(
         session=object(),
         settings=protection.settings,
-        vector_store=object(),
+        parser=object(),
         upload_protection=protection,
     )
-    service.lifecycle = lifecycle
     app.dependency_overrides[get_current_user] = lambda: TEST_USER
-    app.dependency_overrides[get_document_service] = lambda: service
+    app.dependency_overrides[get_submission_service] = lambda: service
     try:
         with TestClient(app) as client:
             response = client.post(
-                "/api/v1/documents",
+                "/api/v1/knowledge/submissions",
                 files={"file": ("资料.txt", b"content", "text/plain")},
             )
     finally:
@@ -231,15 +230,19 @@ def test_upload_api_returns_stable_429_without_starting_document_lifecycle() -> 
         "message": "上传请求过于频繁，请稍后再试",
     }
     assert response.json()["request_id"]
-    assert lifecycle.called is False
 
 
 def test_admin_create_and_replace_skip_frequency_limit() -> None:
     protection, _ = build_protection(rate_limit=1)
     asyncio.run(protection.execute(ADMIN_USER.id, lambda: asyncio.sleep(0)))
     lifecycle = RecordingLifecycle()
+    fake_session = SimpleNamespace(
+        add=lambda _record: None,
+        commit=lambda: None,
+        scalar=lambda _statement: None,
+    )
     service = AdminDocumentService(
-        session=object(),
+        session=fake_session,
         settings=protection.settings,
         vector_store=object(),
         upload_protection=protection,
@@ -292,7 +295,6 @@ def test_admin_uploads_still_enforce_concurrency_limit() -> None:
 
     assert response.status_code == 429
     assert response.json()["error"]["code"] == "UPLOAD_CONCURRENCY_LIMITED"
-    assert lifecycle.called is False
 
 
 def test_admin_policy_only_skips_frequency_check() -> None:

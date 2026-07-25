@@ -1,0 +1,11 @@
+<script setup>
+import { onMounted, ref } from 'vue'
+import { getUsers, updateUserRole, updateUserStatus } from '../api/adminPlatform'
+import { getApiErrorMessage } from '../api/http'
+const items = ref([]); const loading = ref(true); const errorMessage = ref(''); const actingId = ref('')
+async function load() { loading.value = true; try { items.value = (await getUsers()).items; errorMessage.value = '' } catch (e) { errorMessage.value = getApiErrorMessage(e) } finally { loading.value = false } }
+async function changeRole(item) { const role = item.role === 'admin' ? 'user' : 'admin'; if (!window.confirm(`确认将 ${item.email} 设置为 ${role}？`)) return; actingId.value = item.id; try { await updateUserRole(item.id, role); await load() } catch (e) { errorMessage.value = getApiErrorMessage(e) } finally { actingId.value = '' } }
+async function changeStatus(item) { if (!window.confirm(`确认${item.is_active ? '停用' : '启用'} ${item.email}？`)) return; actingId.value = item.id; try { await updateUserStatus(item.id, !item.is_active); await load() } catch (e) { errorMessage.value = getApiErrorMessage(e) } finally { actingId.value = '' } }
+onMounted(load)
+</script>
+<template><section class="platform-page"><header class="page-toolbar"><div><span>SUPER ADMIN</span><h1>用户与角色</h1><p>只有超级管理员能授予管理员或停用账号。</p></div><el-button :loading="loading" @click="load">刷新</el-button></header><div v-if="errorMessage" class="state-panel error">{{ errorMessage }}</div><div v-if="loading" class="state-panel">正在加载用户…</div><div v-else class="table-panel responsive-table"><div class="table-head-row"><span>账号</span><span>角色</span><span>状态</span><span>注册时间</span><span>操作</span></div><div v-for="item in items" :key="item.id" class="table-data-row"><strong :title="item.email">{{ item.email }}</strong><span class="status-badge">{{ item.role }}</span><span>{{ item.is_active ? '正常' : '停用' }}</span><span>{{ new Date(item.created_at).toLocaleDateString() }}</span><span v-if="item.role !== 'super_admin'"><el-button :loading="actingId === item.id" @click="changeRole(item)">{{ item.role === 'admin' ? '撤销管理员' : '设为管理员' }}</el-button><el-button :loading="actingId === item.id" @click="changeStatus(item)">{{ item.is_active ? '停用' : '启用' }}</el-button></span><span v-else>受保护</span></div></div></section></template>

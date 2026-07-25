@@ -39,7 +39,7 @@ def import_legacy_registry(session: Session, registry_path: Path) -> int:
                 chunk_ids=chunk_ids,
                 uploader_id=None,
                 is_system=True,
-                status=record.get("status", "ready"),
+                status="published",
                 created_at=datetime.fromisoformat(record["created_at"]),
             )
         )

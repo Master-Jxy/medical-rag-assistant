@@ -1,0 +1,20 @@
+[Unit]
+Description=Medical RAG verified data backup
+Requires=docker.service
+After=docker.service
+ConditionPathExists=/usr/local/lib/medical-rag/backup.sh
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+WorkingDirectory=/home/deploy/medical-rag-assistant
+Environment=APPLICATION_ROOT=/home/deploy/medical-rag-assistant
+Environment=ENV_FILE=/home/deploy/medical-rag-assistant/deploy/.env
+Environment=COMPOSE_FILE=/home/deploy/medical-rag-assistant/compose.yaml
+Environment=BACKUP_ROOT=/home/deploy/medical-rag-backups
+Environment=BACKUP_RETENTION_COUNT=7
+ExecStart=/usr/bin/bash /usr/local/lib/medical-rag/backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

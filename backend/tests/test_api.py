@@ -17,6 +17,8 @@ from app.schemas.document import (
     DocumentListResponse,
     DocumentUploadResponse,
 )
+from app.api.knowledge_submissions import get_submission_service
+from app.modules.knowledge.schemas import SubmissionCreateResponse
 from app.services.document_service import get_document_service
 from app.services.chat_rate_limit_service import get_chat_rate_limit_service
 from app.services.rag_service import get_rag_service
@@ -90,6 +92,20 @@ class FakeDocumentService:
         assert user_id == "test-user-id"
         assert document_id == "test-document-id"
         return DocumentDeleteResponse(document_id=document_id)
+
+
+class FakeSubmissionService:
+    async def submit(self, user_id, upload_file) -> SubmissionCreateResponse:
+        assert user_id == "test-user-id"
+        assert upload_file.filename == "资料.txt"
+        await upload_file.close()
+        return SubmissionCreateResponse(
+            submission_id="test-submission-id",
+            file_name="资料.txt",
+            status="pending_review",
+            can_withdraw=True,
+            submitted_at=datetime.now(timezone.utc),
+        )
 
 
 TEST_USER = UserResponse(
@@ -262,20 +278,20 @@ def test_plain_chat_requires_authentication() -> None:
 
 
 def test_document_upload_endpoint() -> None:
-    app.dependency_overrides[get_document_service] = lambda: FakeDocumentService()
+    app.dependency_overrides[get_submission_service] = lambda: FakeSubmissionService()
     app.dependency_overrides[get_current_user] = lambda: TEST_USER
     try:
         with TestClient(app) as client:
             response = client.post(
-                "/api/v1/documents",
+                "/api/v1/knowledge/submissions",
                 files={"file": ("资料.txt", b"test content", "text/plain")},
             )
     finally:
         app.dependency_overrides.clear()
 
-    assert response.status_code == 201
-    assert response.json()["document_id"] == "test-document-id"
-    assert response.json()["status"] == "ready"
+    assert response.status_code == 202
+    assert response.json()["submission_id"] == "test-submission-id"
+    assert response.json()["status"] == "pending_review"
 
 
 def test_document_list_and_delete_endpoints() -> None:

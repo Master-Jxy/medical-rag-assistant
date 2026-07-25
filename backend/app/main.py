@@ -9,9 +9,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.chat import router as chat_router
 from app.api.admin_documents import router as admin_documents_router
 from app.api.admin_telemetry import router as admin_telemetry_router
+from app.api.admin_reviews import router as admin_reviews_router
+from app.api.admin_knowledge_assets import router as admin_knowledge_assets_router
+from app.api.admin_operations import router as admin_operations_router
+from app.api.super_admin_users import router as super_admin_users_router
 from app.api.conversations import router as conversations_router
 from app.api.documents import router as documents_router
 from app.api.health import router as health_router
+from app.api.knowledge_submissions import router as knowledge_submissions_router
+from app.api.profile import router as profile_router
 from app.core.config import Settings, get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.request_context import new_request_id, reset_request_id, set_request_id
@@ -159,6 +165,12 @@ def create_app(
     application.include_router(auth_router, prefix="/api/v1")
     application.include_router(admin_documents_router, prefix="/api/v1")
     application.include_router(admin_telemetry_router, prefix="/api/v1")
+    application.include_router(admin_reviews_router, prefix="/api/v1")
+    application.include_router(admin_knowledge_assets_router, prefix="/api/v1")
+    application.include_router(admin_operations_router, prefix="/api/v1")
+    application.include_router(super_admin_users_router, prefix="/api/v1")
+    application.include_router(profile_router, prefix="/api/v1")
+    application.include_router(knowledge_submissions_router, prefix="/api/v1")
     register_exception_handlers(application)
     return application
 

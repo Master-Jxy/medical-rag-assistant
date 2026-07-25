@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Medical RAG backup every day
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=10m
+Persistent=true
+Unit=medical-rag-backup.service
+
+[Install]
+WantedBy=timers.target

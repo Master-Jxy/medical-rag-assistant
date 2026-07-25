@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     chroma_persist_dir: Path = BACKEND_DIR / "chroma_db"
     chroma_collection_name: str = "agent"
     upload_dir: Path = BACKEND_DIR / "data" / "uploads"
+    submission_dir: Path = BACKEND_DIR / "data" / "submissions"
     document_registry_path: Path = BACKEND_DIR / "data" / "documents.json"
     knowledge_base_version: str = "live_v1"
     max_upload_size_bytes: int = 10 * 1024 * 1024
@@ -91,6 +92,7 @@ class Settings(BaseSettings):
     @field_validator(
         "chroma_persist_dir",
         "upload_dir",
+        "submission_dir",
         "document_registry_path",
         "telemetry_log_path",
     )

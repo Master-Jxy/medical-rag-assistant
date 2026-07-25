@@ -61,4 +61,24 @@ describe('KnowledgeView 文档权限', () => {
     expect(wrapper.text()).toContain('确认删除文档？')
     expect(wrapper.text()).toContain('我的资料.txt')
   })
+
+  it('上传成功只提示已提交审核，不提示已经入库', async () => {
+    api.uploadDocument.mockResolvedValue({
+      submission_id: 'submission-1',
+      file_name: '待审核资料.txt',
+      status: 'pending_review',
+    })
+    const wrapper = mountKnowledge()
+    await flushPromises()
+
+    const input = wrapper.get('input[type="file"]')
+    const file = new File(['资料'], '待审核资料.txt', { type: 'text/plain' })
+    Object.defineProperty(input.element, 'files', { value: [file] })
+    await input.trigger('change')
+    await wrapper.get('.upload-button').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('已提交，等待管理员审核')
+    expect(wrapper.text()).not.toContain('已成功入库')
+  })
 })

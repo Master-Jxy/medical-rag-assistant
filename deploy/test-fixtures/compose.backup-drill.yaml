@@ -1,0 +1,47 @@
+name: ${COMPOSE_PROJECT_NAME}
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:6.2
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    volumes:
+      - redis_data:/data
+
+  backend:
+    image: ${DRILL_BACKEND_IMAGE:-medical-rag-backend}
+    entrypoint: ["sh", "-c"]
+    command: ["sleep infinity"]
+    volumes:
+      - app_data:/app/data
+      - chroma_data:/app/chroma_db
+
+  web:
+    image: ${DRILL_BACKEND_IMAGE:-medical-rag-backend}
+    entrypoint: ["sh", "-c"]
+    command: ["sleep infinity"]
+
+volumes:
+  mysql_data:
+  redis_data:
+  app_data:
+  chroma_data:

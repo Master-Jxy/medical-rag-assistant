@@ -90,5 +90,14 @@ describe('前端认证流程', () => {
     expect(router.currentRoute.value.name).toBe('admin-knowledge')
     await router.push('/admin/telemetry')
     expect(router.currentRoute.value.name).toBe('admin-telemetry')
+
+    await router.push('/super-admin/users')
+    expect(router.currentRoute.value.name).toBe('knowledge')
+
+    useAuthSession().user = { ...user, role: 'super_admin' }
+    await router.push('/admin/reviews')
+    expect(router.currentRoute.value.name).toBe('admin-reviews')
+    await router.push('/super-admin/users')
+    expect(router.currentRoute.value.name).toBe('super-admin-users')
   })
 })

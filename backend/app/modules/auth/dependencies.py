@@ -10,8 +10,14 @@ from app.db.session import get_db_session
 from app.core.config import Settings, get_settings
 from app.modules.auth.rate_limit import AuthRateLimitService
 from app.modules.auth.repository import UserRepository
+from app.modules.auth.roles import RolePolicy, UserRole
 from app.modules.auth.schemas import UserResponse
-from app.modules.auth.service import AdminRequiredError, InvalidAuthTokenError, UserService
+from app.modules.auth.service import (
+    AdminRequiredError,
+    InvalidAuthTokenError,
+    RoleRequiredError,
+    UserService,
+)
 from app.modules.auth.tokens import TokenService, get_token_service
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -64,8 +70,28 @@ def get_current_user(
     return UserResponse.model_validate(user)
 
 
+def require_roles(
+    *allowed_roles: UserRole,
+):
+    """创建集中角色依赖；调用方声明角色，不自行比较字符串。"""
+    if not allowed_roles:
+        raise ValueError("require_roles 至少需要一个角色")
+
+    def dependency(
+        current_user: UserResponse = Depends(get_current_user),
+    ) -> UserResponse:
+        if not RolePolicy.allows(current_user.role, allowed_roles):
+            raise RoleRequiredError()
+        return current_user
+
+    return dependency
+
+
 def require_admin(current_user: UserResponse = Depends(get_current_user)) -> UserResponse:
     """集中校验管理员权限；角色以本次请求查询到的数据库记录为准。"""
-    if current_user.role != "admin":
+    if not RolePolicy.is_admin(current_user.role):
         raise AdminRequiredError()
     return current_user
+
+
+require_super_admin = require_roles(UserRole.SUPER_ADMIN)

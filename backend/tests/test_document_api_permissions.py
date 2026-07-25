@@ -29,6 +29,29 @@ def test_document_api_requires_login_and_enforces_public_permissions(tmp_path) -
         chunk_size=30,
         chunk_overlap=5,
     )
+    settings.upload_dir.mkdir(parents=True)
+    (settings.upload_dir / "published.txt").write_text("公共医学资料", encoding="utf-8")
+    with factory() as session:
+        session.add(
+            KnowledgeDocument(
+                id="published-document",
+                original_name="公共资料.txt",
+                stored_name="published.txt",
+                content_hash="c" * 64,
+                size_bytes=18,
+                chunk_count=1,
+                chunk_ids=["published-document:0"],
+                uploader_id=owner.id,
+                is_system=False,
+                status="ready",
+            )
+        )
+        session.commit()
+    vector_store.entries["published-document:0"] = {
+        "document": "公共医学资料",
+        "metadata": {"document_id": "published-document"},
+        "embedding": [0.1],
+    }
 
     def override_session():
         with factory() as session:
@@ -51,9 +74,8 @@ def test_document_api_requires_login_and_enforces_public_permissions(tmp_path) -
                 files={"file": ("公共资料.txt", "公共医学资料".encode(), "text/plain")},
                 headers=auth_headers(owner.id),
             )
-            assert upload.status_code == 201
-            document_id = upload.json()["document_id"]
-            assert upload.json()["can_delete"] is True
+            assert upload.status_code == 405
+            document_id = "published-document"
 
             other_list = client.get(
                 "/api/v1/documents", headers=auth_headers(other.id)

@@ -31,6 +31,9 @@ class User(Base):
 
     __table_args__ = (
         UniqueConstraint("email", name="uq_users_email"),
-        CheckConstraint("role IN ('user', 'admin')", name="ck_users_role"),
+        CheckConstraint(
+            "role IN ('user', 'admin', 'super_admin')",
+            name="ck_users_role",
+        ),
         Index("ix_users_created_at", "created_at"),
     )

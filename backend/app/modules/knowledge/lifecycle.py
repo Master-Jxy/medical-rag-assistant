@@ -267,7 +267,7 @@ class DocumentLifecycleService:
                 chunk_ids=chunk_ids,
                 uploader_id=uploader_id,
                 is_system=is_system,
-                status="ready",
+                status="published",
                 created_at=datetime.now(timezone.utc),
             )
             return PreparedDocument(record, final_path, chunk_ids, vectors_added)
@@ -289,6 +289,32 @@ class DocumentLifecycleService:
             except Exception:
                 pass
         prepared.final_path.unlink(missing_ok=True)
+
+    def index_existing_document(self, record: KnowledgeDocument) -> list[str]:
+        """从保留原文件重建向量；调用方负责提交文档状态。"""
+        path = self.settings.upload_dir / record.stored_name
+        suffix = path.suffix.lower()
+        if not path.is_file():
+            raise DocumentStoreError()
+        documents = self._load_documents(path, suffix)
+        chunks = self._split_documents(
+            documents,
+            record.id,
+            record.original_name,
+            record.content_hash,
+        )
+        chunk_ids = [f"{record.id}:{index}" for index in range(len(chunks))]
+        for chunk, chunk_id in zip(chunks, chunk_ids, strict=True):
+            chunk.metadata["chunk_id"] = chunk_id
+        try:
+            self.vector_store.add_documents(chunks, chunk_ids)
+        except Exception as exc:
+            try:
+                self.vector_store.delete_documents(chunk_ids)
+            except Exception:
+                pass
+            raise DocumentStoreError() from exc
+        return chunk_ids
 
     def _restore_delete(
         self,

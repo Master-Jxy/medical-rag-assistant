@@ -1,0 +1,84 @@
+"""普通资料只进入隔离提交，不写公共文档或向量库。"""
+
+from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+from sqlalchemy.orm import sessionmaker
+
+from app.core.config import Settings
+from app.db.base import Base
+from app.db.session import build_engine, get_db_session
+from app.main import app
+from app.modules.auth.tokens import get_token_service
+from app.modules.knowledge.models import KnowledgeDocument, KnowledgeSubmission
+from app.modules.knowledge.parser import ParsedPreview
+from app.modules.knowledge.submission_service import KnowledgeSubmissionService
+from app.api.knowledge_submissions import get_submission_service
+from tests.auth_helpers import TEST_TOKEN_SERVICE, auth_headers, create_test_user
+
+
+class FakeParser:
+    def parse(self, _path, _suffix):
+        return ParsedPreview("解析预览", 1)
+
+
+def test_submit_parse_list_and_withdraw_are_isolated_without_publication(tmp_path) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'submissions.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    owner = create_test_user(factory, "submission-owner")
+    other = create_test_user(factory, "submission-other")
+    settings = Settings(_env_file=None, submission_dir=tmp_path / "isolated")
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    def override_service():
+        with factory() as session:
+            yield KnowledgeSubmissionService(session, settings, FakeParser())
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
+    app.dependency_overrides[get_submission_service] = override_service
+    try:
+        with TestClient(app) as client:
+            assert client.post(
+                "/api/v1/documents",
+                files={"file": ("旁路.txt", b"blocked", "text/plain")},
+                headers=auth_headers(owner.id),
+            ).status_code == 405
+
+            created = client.post(
+                "/api/v1/knowledge/submissions",
+                files={"file": ("待审核.txt", "医学资料".encode(), "text/plain")},
+                headers=auth_headers(owner.id),
+            )
+            assert created.status_code == 202
+            assert created.json()["status"] == "pending_review"
+            submission_id = created.json()["submission_id"]
+
+            assert client.get(
+                "/api/v1/knowledge/submissions",
+                headers=auth_headers(other.id),
+            ).json()["total"] == 0
+            assert client.post(
+                f"/api/v1/knowledge/submissions/{submission_id}/withdraw",
+                headers=auth_headers(other.id),
+            ).status_code == 404
+            withdrawn = client.post(
+                f"/api/v1/knowledge/submissions/{submission_id}/withdraw",
+                headers=auth_headers(owner.id),
+            )
+            assert withdrawn.status_code == 200
+            assert withdrawn.json()["status"] == "withdrawn"
+
+        with factory() as session:
+            saved = session.get(KnowledgeSubmission, submission_id)
+            assert saved is not None and saved.preview_text == "解析预览"
+            assert session.scalar(
+                select(func.count()).select_from(KnowledgeDocument)
+            ) == 0
+        assert not list(settings.submission_dir.glob("*"))
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()

@@ -3,6 +3,8 @@
 from fastapi import Depends, UploadFile
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from sqlalchemy import select
+from uuid import uuid4
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import (
@@ -13,6 +15,7 @@ from app.core.exceptions import (
 from app.db.session import get_db_session
 from app.infrastructure.vector_store import VectorStoreService
 from app.modules.knowledge.lifecycle import DocumentLifecycleService
+from app.modules.knowledge.models import DocumentVersion
 from app.modules.knowledge.repository import DocumentRepository
 from app.schemas.document import DocumentDeleteResponse, DocumentUploadResponse
 from app.services.document_service import document_to_item, get_vector_store_service
@@ -66,6 +69,16 @@ class AdminDocumentService:
             )
         finally:
             await upload_file.close()
+        self.session.add(
+            DocumentVersion(
+                id=str(uuid4()),
+                document_id=record.id,
+                version=1,
+                source="system",
+                tags=[],
+            )
+        )
+        self.session.commit()
         return DocumentUploadResponse(
             **document_to_item(record, can_delete=True).model_dump()
         )
@@ -89,6 +102,12 @@ class AdminDocumentService:
         *,
         actor_user_id: str | None = None,
     ) -> DocumentUploadResponse:
+        old_version = self.session.scalar(
+            select(DocumentVersion).where(DocumentVersion.document_id == document_id)
+        )
+        next_version = (old_version.version + 1) if old_version else 2
+        inherited_tags = list(old_version.tags or []) if old_version else []
+
         async def replace_document():
             return await self.lifecycle.replace_system_document(document_id, upload_file)
 
@@ -104,6 +123,17 @@ class AdminDocumentService:
             )
         finally:
             await upload_file.close()
+        self.session.add(
+            DocumentVersion(
+                id=str(uuid4()),
+                document_id=record.id,
+                version=next_version,
+                replaces_document_id=None,
+                source="system_replacement",
+                tags=inherited_tags,
+            )
+        )
+        self.session.commit()
         return DocumentUploadResponse(
             **document_to_item(record, can_delete=True).model_dump()
         )

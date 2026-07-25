@@ -13,8 +13,9 @@
 | Redis、限流、锁、幂等 | 9 |
 | RAG评估、检索、重排 | 10 |
 | 可观测性 | 11 |
-| Agent | 12 |
-| 错误、配置、测试、部署 | 13～17 |
+| 用户治理、资料审核、管理中台 | 12 |
+| LangGraph Agent | 13 |
+| 错误、配置、测试、部署 | 14～18 |
 
 不要为了确认一个小任务而读取全部历史实验段落；先查对应摘要，只有定位设计依据时再展开细节。
 
@@ -27,6 +28,7 @@ Medical RAG Assistant 是一个前后端分离的医疗资料检索与问答系�
 - MySQL 数据建模和事务处理能力。
 - RAG 检索、引用来源和效果评估能力。
 - 登录、限流、日志、部署等工程能力。
+- 用户、资料、审核、任务和审计等企业应用治理能力。
 - Agent 工具编排能力，但不让 Agent 破坏原有问答链路。
 
 本项目选择**模块化单体**，而不是微服务。所有模块仍由一个 FastAPI 应用启动，但业务边界清晰、依赖方向固定、可以独立测试。这个方案适合当前项目规模和 2 核 2G 演示服务器，也为后续拆分留下空间。
@@ -271,9 +273,11 @@ backend/app/
 |-- modules/
 |   |-- auth/                         # 用户、认证、角色与权限策略
 |   |-- conversations/                # 会话、消息、来源和用户归属
-|   |-- knowledge/                    # 文档登记、生命周期和公开权限
+|   |-- knowledge/                    # 提交、审核、版本、发布和文档生命周期
 |   |-- rag/                          # 查询构造、检索、重排和回答生成
 |   |-- agent/                        # 独立 Agent Runtime、工具和运行记录
+|   |-- jobs/                         # 可持久化处理任务、状态、重试和错误摘要
+|   |-- audit/                        # 管理操作审计，不承载业务规则
 |   `-- observability/                # 指标查询与管理端统计用例
 |-- evaluation/                       # 离线评估集、Runner 和报告，不进用户会话
 `-- main.py
@@ -297,18 +301,23 @@ policies.py     # 权限、预算、状态转换等纯业务规则
 frontend/src/
 |-- api/                              # HTTP/SSE 客户端与统一错误处理
 |-- components/                       # 无页面业务的复用组件
+|-- layouts/                          # AppShell、侧边栏、顶栏与权限导航
 |-- features/
 |   |-- auth/
 |   |-- chat/
 |   |-- knowledge/
-|   |-- admin/
+|   |-- submissions/
+|   |-- profile/
+|   |-- admin/                        # 页面聚合，不持有后端业务规则
+|   |-- jobs/
+|   |-- audit/
 |   `-- agent/
 |-- router/
 |-- stores/                            # 只保存确实跨页面共享的状态
 `-- views/                             # 页面组合层，不写后端业务规则
 ```
 
-Vue 页面只负责触发动作和展示状态。API 地址、Token、SSE 解析、错误映射分别集中管理；Agent 页面不得把工具选择规则写在前端。
+Vue 页面只负责触发动作和展示状态。API 地址、Token、SSE 解析、错误映射分别集中管理；Agent 页面不得把工具选择规则写在前端。企业级页面地图、组件与视觉验收以`docs/product-and-ui-design.md`为准。
 
 ### 7.4 固定依赖方向
 
@@ -335,11 +344,13 @@ Router / CLI
 
 | 模块 | 持有的数据/规则 | 可以依赖 | 不允许负责 |
 | --- | --- | --- | --- |
-| `auth` | 用户、密码、JWT、角色 | 用户 Repository、安全适配器 | 文档、会话、模型调用 |
+| `auth` | 用户、密码、JWT、角色、账号状态、权限策略 | 用户 Repository、安全适配器 | 文档、会话、模型调用 |
 | `conversations` | 会话、消息、来源、用户归属 | 会话 Repository、RAG 对外用例 | 检索算法、Agent 工具选择 |
-| `knowledge` | 文档登记、文件/向量生命周期、文档权限 | 文档 Repository、文件/向量/Embedding Port | 生成回答、修改用户角色 |
+| `knowledge` | 资料提交、审核、版本、发布、文件/向量生命周期 | 文档 Repository、文件/向量/Embedding Port | 生成回答、修改用户角色 |
 | `rag` | 查询构造、召回、重排、拒答、回答生成 | KnowledgeSearchPort、模型 Port | 写用户权限、管理上传文件 |
 | `agent` | Run/Step 状态、工具调度、预算、审计 | 工具注册表和公开应用服务 | 直接访问数据库、Chroma、系统命令 |
+| `jobs` | 处理任务、进度、重试、错误摘要 | 业务模块提交的任务契约 | 判断审核结果、修改角色 |
+| `audit` | 关键管理动作、操作者、对象、结果 | 固定安全事件契约 | 执行业务操作、保存正文 |
 | `observability` | 指标读取和统计视图 | 脱敏后的日志/指标 Port | 改变任何业务结果 |
 
 ### 7.6 关键共享端口
@@ -352,6 +363,8 @@ Router / CLI
 - `RateLimitPort`：消费额度并返回是否允许与重试时间。
 - `DistributedLockPort`：获取、续期和安全释放带所有权令牌的锁。
 - `TelemetryPort`：记录阶段耗时、Token、错误和工具事件，不接收密钥或完整正文。
+- `AuditPort`：记录角色、审核、发布、下线和配置变更，只接收固定脱敏字段。
+- `JobPort`：创建和更新可持久化任务状态；第一版不假装已经具备外部消息队列。
 
 ### 7.7 增量迁移和防回归
 
@@ -359,7 +372,8 @@ Router / CLI
 - 任务 6 只新增 Redis 保护组件，不顺手迁移 RAG 或会话目录。
 - 任务 7 开始时先建立评估基线，再拆 `RetrievalService` 与 `AnswerService`；API 和 SSE 契约保持不变。
 - 任务 8 增加可观测性时使用事件/Port 记录，不让日志代码决定业务分支。
-- 任务 9 新建 `modules/agent`，通过公开 Port 复用知识检索和文档读取，不复制 RAG、文档或权限代码。
+- 任务 9 先扩展认证权限与知识审核边界；管理页面只组合公开查询用例，不建立万能后台Service。
+- 任务 11 新建 `modules/agent`，通过公开 Port 复用知识检索和文档读取，不复制 RAG、文档或权限代码。
 - 每次迁移前固定原行为测试，迁移后先跑模块测试，再跑完整回归。
 - 新功能必须能通过配置或独立路由关闭；关闭后原 RAG 主链路仍可运行。
 
@@ -368,6 +382,8 @@ Router / CLI
 ## 8. 阶段五：登录、用户隔离与管理员管理 `[已完成]`
 
 ### 8.1 产品规则
+
+以下内容描述阶段五建立的认证与隔离基线。阶段九已经按第12节迁移为“用户提交、管理员审核、发布后公开检索”；生产部署完成前，线上仍保持阶段八发布基线。
 
 - 邮箱和密码注册、登录。
 - 每个用户只能查看、修改、删除自己的会话。
@@ -955,7 +971,7 @@ RAG_MAX_CHUNKS_PER_DOCUMENT=2
 
 线上LangChain聊天与Embedding客户端的自动重试由`DASHSCOPE_MAX_RETRIES`统一控制，合法范围为0～10，未配置时保持历史默认值2。受控付费验收必须在部署环境明确设为0并重建后端后，先通过无费用配置检查再调用模型；删除该环境变量即可回到历史默认值。可取消SSE使用DashScope异步流的单次调用，不实现应用层重试，异常直接交给现有失败与清理流程。该配置只控制客户端重试，不改变模型、Prompt、Embedding、切片、检索、来源或SSE协议。
 
-## 11. 阶段八：可观测性 `[已完成：本地未发布]`
+## 11. 阶段八：可观测性 `[已完成并部署]`
 
 当前结构化事件固定包含：
 
@@ -1006,11 +1022,165 @@ Router / Application Service
 
 自动化故障注入覆盖Redis不可用、Chroma检索失败、模型超时、Telemetry适配器失败、SSE主动停止、未知Token计量和管理员越权。日志轮转大小/数量、敏感输入不落盘以及Telemetry关闭后的问答回归均有测试。以后接入OpenTelemetry、Prometheus或Grafana时，只替换适配器，不改业务Service。
 
-## 12. 阶段九：Agent 设计 `[目标]`
+## 12. 阶段九：用户治理、资料审核与管理中台 `[已完成，待部署]`
 
-Agent 是独立的“医学资料整理”能力，不替换现有稳定的 RAG 问答，也不把普通聊天改造成不可控循环。
+阶段九把现有“登录用户可以直接上传公共资料”的简单规则，演进为“用户提交、管理员审核、发布后公共检索”的企业知识治理流程。它不修改普通问答的输入输出，只改变哪些资料有资格进入生产知识库。
 
-### 12.1 两条互不影响的产品链路
+### 12.1 三层角色和授权真相源
+
+目标角色：
+
+| 角色 | 主要能力 |
+| --- | --- |
+| `user` | 使用公共知识问答和Agent、查看自己的会话与提交、提交和撤回待审核资料 |
+| `admin` | 用户能力 + 审核资料、管理已发布知识、查看处理任务与质量数据 |
+| `super_admin` | 管理员能力 + 授予/撤销管理员、启用/停用账号、查看系统级审计与设置 |
+
+固定规则：
+
+- 新注册账号始终为`user`，注册和个人资料接口不接受角色字段。
+- JWT继续只识别用户ID；每次请求从MySQL读取`role`和`is_active`，数据库是授权真相源。
+- `require_admin`逐步兼容`admin`和`super_admin`；新权限使用集中`RolePolicy/require_roles`，禁止在Router中散落字符串判断。
+- 只有`super_admin`可以在受控接口中变更`user/admin`；第一版不通过网页降级或删除`super_admin`。
+- 至少保留一个有效`super_admin`。初始化只允许使用需要显式确认的维护命令，并记录操作者与结果。
+- 前端路由和菜单按角色展示，但任何直接调用后端接口仍重新鉴权。
+
+任务9.1a已落地三角色数据库约束、`UserRole/RolePolicy/require_roles`和
+`python -m scripts.initialize_super_admin <email> --operator <name> --confirm`
+维护入口。该入口只提升已有账号且重复执行返回`unchanged`；通用角色维护命令不能设置
+`super_admin`。现有`ADMIN_REQUIRED`错误契约保持不变，`admin`和`super_admin`均可继续
+使用原管理员接口。
+
+任务9.1b已增加独立`audit`模块契约和`audit_events`表，并提供
+`GET /api/v1/super-admin/users`、`PATCH .../{id}/role`和
+`PATCH .../{id}/status`。角色与账号状态变更和审计事件在同一MySQL事务提交；
+HTTP不能授予或降级`super_admin`，停用超级管理员前锁定并检查有效超级管理员数量。
+
+### 12.2 资料提交、审核和发布状态机
+
+目标状态：
+
+```text
+pending_parse
+-> pending_review
+-> rejected | indexing
+-> published | failed
+-> archived
+
+pending_parse / pending_review -> withdrawn
+rejected -> 用户修改后重新提交为新的待审核版本
+failed -> 管理员受控重试
+published -> 管理员下线为 archived
+```
+
+状态语义：
+
+- `pending_parse`：文件已隔离保存，等待无费用或低成本预解析。
+- `pending_review`：格式、哈希和解析预览可用，等待管理员决定。
+- `rejected`：不进入公共知识库，并保存可向提交者展示的拒绝原因。
+- `indexing`：审核已通过，正在执行切片、Embedding、Chroma和MySQL发布。
+- `published`：唯一允许被RAG和Agent检索的状态。
+- `failed`：发布链路失败，保留安全错误摘要和补偿结果，等待管理员处理。
+- `withdrawn`：用户在审核前撤回。
+- `archived`：曾发布但已下线，不再检索，保留审计和版本关系。
+
+现有系统资料迁移时直接标记为`published`，保持原文档ID、文件和Chroma片段，不重新调用Embedding。普通用户新提交的文件在审核前只能进入隔离区和元数据表，不能写生产Chroma。
+
+任务9.3已增加`knowledge_submissions`状态表、隔离目录和`ParserPort`本地解析适配器。
+普通用户使用`POST /api/v1/knowledge/submissions`提交，成功返回202和
+`pending_review`；`POST .../{id}/withdraw`只允许提交者撤回审核前资料。旧
+`POST /documents`直入生产Chroma的旁路已移除，现有管理系统资料生命周期不变。
+迁移把已有`documents`按原ID登记为`published`兼容记录，不执行Embedding。
+
+### 12.3 跨存储发布与补偿
+
+审核与发布黑盒流程：
+
+```text
+用户提交文件
+-> KnowledgeSubmissionService 校验归属、类型、大小、哈希和并发额度
+-> 隔离文件存储 + submission登记
+-> ParserPort生成文本/页码/告警预览
+-> 管理员审核通过
+-> 创建持久化job并把submission置为indexing
+-> 复用DocumentLifecycleService切片、Embedding、写Chroma和MySQL
+-> 三处一致性检查通过
+-> document/submission置为published
+-> 写审计事件
+```
+
+MySQL、文件和Chroma不是一个事务。失败时优先删除本次新向量和临时文件，回滚新文档登记，并把任务与提交置为`failed`；若清理状态不明确，不假装回滚成功，而是保存可重试状态并阻止该资料被检索。
+
+管理员直接维护系统资料仍复用同一生命周期。审核规则属于`knowledge`模块，角色规则属于`auth`模块，任务状态属于`jobs`模块，审计记录属于`audit`模块；它们通过公开服务或小型Port协作。
+
+任务9.4已增加管理员审核查询、详情、拒绝和批准接口，以及独立
+`processing_jobs`表。批准和拒绝都以带预期状态条件的数据库`UPDATE`原子抢占
+`pending_review`，并发管理员中只有一个操作能够成功；失败发布重试同样从`failed`
+原子抢占为`indexing`，不会用中间状态覆盖另一个正在运行的任务。知识模块只通过
+`JobPort`创建和更新任务，不直接操作任务模型。
+
+批准流程先在同一事务持久化`running`任务和`indexing`状态，再复用
+`DocumentLifecycleService`发布；最终状态或发布审计写入失败时删除本次公共文档、
+文件和向量，并把提交/任务置为`failed`。发布状态、完成任务和成功审计提交后即到达
+成功终点；后续隔离文件删除属于尽力清理，失败只追加
+`knowledge_submission.cleanup_pending`告警审计，不得撤销已发布文档。发布前补偿
+清理失败时仍使用`PUBLISH_CLEANUP_UNCERTAIN`，不宣称回滚成功。
+
+### 12.4 目标数据与接口边界
+
+目标数据概念：
+
+- `users`：增加`super_admin`角色约束，保留账号启停状态。
+- `knowledge_submissions`：提交者、文件元数据、状态、解析预览摘要、拒绝原因、目标文档和时间字段。
+- `document_versions`：已发布资料的版本、替换关系、来源与状态。
+- `processing_jobs`：任务类型、对象、状态、进度、尝试次数、错误类型和时间字段。
+- `audit_events`：操作者、动作、对象类型/ID、结果、request_id和时间；不保存文件正文、问题、回答、密码或Token。
+
+目标接口分组：
+
+| 分组 | 示例路径 | 权限与用途 |
+| --- | --- | --- |
+| 个人中心 | `/api/v1/profile`、`/api/v1/me/stats` | 当前用户资料与个人统计 |
+| 我的资料 | `/api/v1/knowledge/submissions` | 提交、列表、详情、撤回 |
+| 审核中心 | `/api/v1/admin/reviews` | 管理员审核、拒绝和受控重试 |
+| 知识资产 | `/api/v1/admin/knowledge-assets` | 标签、版本、替换、发布和下线 |
+| 任务/审计 | `/api/v1/admin/jobs`、`/api/v1/admin/audit` | 管理员只读或受控重试 |
+| 用户角色 | `/api/v1/super-admin/users` | 超级管理员启停账号和分配管理员 |
+
+具体请求和响应由开发小步再冻结，不能仅凭本节一次创建全部表和接口。
+
+任务9.2已提供`GET /api/v1/profile`、`GET /api/v1/me/stats`和
+`GET /api/v1/knowledge/submissions`只读基线。统计查询始终按当前`user_id`聚合；
+状态表落地前，历史上由该用户直接上传的现有文档以`published`兼容项返回，不暴露其他
+用户记录，也不改变现有上传行为。
+
+任务9.5已增加`document_versions`及知识资产列表、元数据、下线、重发和替换接口。
+下线只有在目标向量快照完整且删除成功后才提交`archived`；数据库失败会恢复快照。
+重发从保留原文件重建同一文档ID的片段，提交失败删除新向量。替换把旧资产下线并把
+新资产版本关联到旧ID。迁移将既有`ready`规范为`published`并登记版本1，不调用模型。
+
+### 12.5 工作台与读模型
+
+管理中台不建立跨模块万能Repository。首页统计通过只读查询服务聚合：
+
+- 普通用户：会话数、最近问答、我的提交及状态。
+- 管理员：待审核、发布失败、过期知识、任务成功率和问答质量趋势。
+- 超级管理员：账号状态、管理员数量、角色变更、系统错误与部署健康。
+
+阶段8的Telemetry是进程内运行指标，重启后可归零，不能冒充审计或长期业务报表。需要按天保存的业务数据通过独立安全聚合表或查询生成，不把完整医学正文写入统计表。
+
+任务9.6已提供`GET /api/v1/admin/jobs`、失败发布任务重试和
+`GET /api/v1/admin/audit`。重试保留原失败任务并创建递增`attempt_count`的新任务；
+普通管理员的审计查询过滤`user.*`和`system.*`，超级管理员可查看完整范围。响应只包含
+状态、错误类型和脱敏详情，不返回正文或Traceback。
+
+页面结构、可视化和各角色菜单见`docs/product-and-ui-design.md`。
+
+## 13. 阶段十一：LangGraph Agent 设计 `[目标]`
+
+Agent 是独立的“医学资料整理”能力，不替换现有稳定RAG问答，也不把普通聊天改造成不可控循环。LangChain负责模型、Prompt、工具与外部集成，LangGraph负责显式状态图、条件分支、停止和运行上下文。
+
+### 13.1 两条互不影响的产品链路
 
 ```text
 普通知识问答
@@ -1020,47 +1190,56 @@ Agent 是独立的“医学资料整理”能力，不替换现有稳定的 RAG 
 
 复杂资料任务
 -> AgentApplicationService
--> Agent Runtime 状态机
+-> LangGraph StateGraph
 -> Tool Registry
 -> 一个或多个受控工具
 -> 最终结果与执行记录
 ```
 
-Agent 模块只依赖工具契约，不知道 Chroma、SQLAlchemy、redis-py 或 DashScope SDK 的具体对象。普通 RAG 可以作为工具背后的能力，但不能反向依赖 Agent。
+RAG和Agent使用两个页面、两套路由和两套SSE事件，但共享同一个只读`KnowledgeSearchPort`，并且只检索`published`公共资料。Agent模块不知道Chroma、SQLAlchemy、redis-py或DashScope SDK的具体对象；普通RAG可以成为工具背后的能力，但不能反向依赖Agent。
 
-### 12.2 第一版工具
+### 13.2 第一版工具
 
-第一版可用工具：
+- `search_knowledge`：检索已发布公共知识，返回结构化片段与来源。
+- `get_document_info`：读取可见文档的元数据，帮助消除同名歧义。
+- `summarize_document`：按文档ID获取受控正文并生成摘要。
+- `compare_documents`：对多个已获得的文档结果按指定维度比较。
+- `generate_learning_report`：基于检索、摘要和比较结果生成带引用的学习报告。
 
-- `search_knowledge`：调用 `KnowledgeSearchPort` 检索公共知识库，返回结构化片段与来源。
-- `get_document_info`：读取用户有权查看的文档元数据，帮助模型消除同名歧义。
-- `summarize_document`：按文档 ID 获取受控正文并生成摘要。
-- `generate_learning_report`：基于已获得的检索/摘要结果生成带引用的学习报告。
+第一版不开放任意网页、Python、SQL、系统命令或用户自定义插件。
 
-多文档比较可以在以上工具稳定后作为下一任务增加，不在第一个 Agent 任务中一次做完。
+### 13.3 LangGraph状态与运行记录
 
-### 12.3 Agent Runtime 与状态
+显式图：
+
+```text
+START
+-> classify_and_plan
+-> select_tool
+-> execute_tool
+-> inspect_result
+-> continue | finalize | fail | stop
+-> END
+```
 
 调用链：
 
 ```text
 用户提出任务
--> 创建 agent_run，状态 pending
--> Runtime 切换为 running，并让模型选择白名单工具
--> Tool Registry 校验工具名和参数
--> Tool 调用公开 Application Service/Port
+-> 创建agent_run，状态pending
+-> 图切换为running并选择白名单工具
+-> Tool Registry校验工具名和Pydantic参数
+-> Tool调用公开Application Service/Port
 -> 保存工具状态、耗时和脱敏结果摘要
--> Runtime 决定继续、完成、失败或停止
--> 保存最终回答、引用和运行状态
+-> 图根据结果继续、完成、失败或停止
+-> 保存最终回答、引用和产物
 ```
 
-`agent_runs` 计划保存：用户、任务、状态、步骤数、模型、预算、最终结果、错误类型和时间字段。`agent_steps` 计划保存：顺序、工具名、脱敏参数摘要、结果摘要、状态和耗时。必要时用 `agent_artifacts` 保存学习报告等产物。数据库不保存模型隐藏推理过程或完整 Chain-of-Thought，只保存用户可理解的工具事件和审计信息。
+`agent_runs`保存用户、任务、状态、步骤数、模型、预算、最终结果、错误类型和时间字段；`agent_steps`保存顺序、节点/工具名、脱敏参数与结果摘要、状态和耗时；`agent_artifacts`保存报告等用户可见产物。数据库不保存隐藏推理过程或完整Chain-of-Thought。
 
-状态第一版限定为：`pending`、`running`、`completed`、`failed`、`stopped`。需要人工确认的高风险工具出现后，再引入 `waiting_confirmation`，不要提前增加无用状态。
+状态第一版限定为`pending`、`running`、`completed`、`failed`、`stopped`。只有出现真实高风险写操作后才增加`waiting_confirmation`。在兼容的持久化checkpointer和重启测试完成前，不宣称支持跨进程断点续跑。
 
-### 12.4 API、SSE 与前端边界
-
-建议使用独立路径：
+### 13.4 API、SSE与前端边界
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
@@ -1068,33 +1247,31 @@ Agent 模块只依赖工具契约，不知道 Chroma、SQLAlchemy、redis-py 或
 | GET | `/api/v1/agent/runs` | 查看当前用户运行历史 |
 | GET | `/api/v1/agent/runs/{id}` | 查看运行、步骤和产物 |
 | POST | `/api/v1/agent/runs/{id}/stop` | 请求停止运行 |
-| POST | `/api/v1/agent/runs/{id}/stream` | 以 SSE 执行并返回事件 |
+| POST | `/api/v1/agent/runs/{id}/stream` | 以SSE执行并返回事件 |
 
-Agent SSE 事件使用独立契约：`run_started`、`tool_started`、`tool_completed`、`token`、`run_completed`、`error`。事件只展示“正在检索哪类资料、工具是否成功、最终输出”等可审计信息，不输出模型私有推理。
+Agent事件使用独立契约：`run_started`、`plan_ready`、`tool_started`、`tool_completed`、`token`、`artifact_ready`、`run_completed`、`stopped`、`error`。事件只展示用户可理解的计划、工具状态和结果，不输出模型私有推理。
 
-前端新增独立 `/agent` 页面和 `api/agent.js`，普通 `ChatView`、`conversations.js` 和现有聊天 SSE 解析器保持不变。
+前端新增独立`/agent`工作台和`api/agent.js`；普通`ChatView`、`conversations.js`和聊天SSE解析器保持不变。
 
-### 12.5 安全与成本约束
+### 13.5 安全、成本和故障约束
 
-- 使用 LangGraph 的显式状态图或同类可观察编排，不写无限 while 循环。
-- 工具只能调用公开 Service，禁止直接连接 MySQL、Chroma 或操作系统。
-- 第一版最多 5 个步骤；每个工具有超时，整次运行有 Token/费用预算和主动停止。
-- 工具参数必须由 Pydantic Schema 校验，工具异常转换为稳定结果，不把 Traceback 重新喂给模型。
-- 第一版不开放网页搜索、任意 Python/SQL、系统命令、自动诊断或处方能力。
-- Agent 使用当前登录用户身份执行，运行历史按用户隔离；管理员身份不能绕过工具自身的数据权限。
-- Agent 故障、依赖超时或功能开关关闭时，普通 `/chat` 和 `/conversations/*/chat` 仍正常运行。
+- 使用LangGraph显式状态图，不写无限`while`循环。
+- 工具只能调用公开Service，禁止直接连接MySQL、Chroma、Redis或操作系统。
+- 第一版最多5步；每个工具有超时，整次运行有Token/费用预算和主动停止。
+- 工具参数由Pydantic校验；异常转换为稳定结果，不把Traceback重新喂给模型。
+- Agent使用当前登录用户身份，运行历史按用户隔离；管理员身份也不能绕过工具的数据权限。
+- Agent故障、依赖超时或功能开关关闭时，普通`/chat`和`/conversations/*/chat`继续运行。
+- 第一版不做医疗诊断、处方、多Agent、拖拽工作流、浏览器或代码执行沙箱。
 
-### 12.6 暂缓能力
+### 13.6 暂缓能力
 
-- 多 Agent 协作。
-- 可视化拖拽工作流编辑器。
-- 用户自定义任意工具或插件市场。
-- 浏览器/代码执行沙箱。
-- 长时间后台任务队列与跨机器调度。
+- 多Agent协作和插件市场。
+- 用户自定义任意工具。
+- 长时间跨机器任务调度。
+- 未经人工确认的外部写操作。
+- 把Dify/RAGFlow的全部能力复制进单个求职项目。
 
-这些是成熟平台为通用场景提供的能力，当前项目只有出现真实需求后再引入。
-
-## 13. 统一接口与错误规范
+## 14. 统一接口与错误规范
 
 普通 JSON 错误建议保持：
 
@@ -1113,11 +1290,11 @@ Agent SSE 事件使用独立契约：`run_started`、`tool_started`、`tool_comp
 - `done`：持久化完成后的 ID 和免责声明。
 - `error`：安全错误码、提示和 request_id。
 
-Agent 使用 12.4 节的独立事件，不允许把 `tool_started` 等事件塞入普通聊天解析器。
+Agent 使用 13.4 节的独立事件，不允许把 `tool_started` 等事件塞入普通聊天解析器。
 
 后端不向前端返回 Traceback、SQL、服务器路径、密钥或第三方原始异常。
 
-## 14. 配置与秘密
+## 15. 配置与秘密
 
 现有配置：
 
@@ -1147,7 +1324,7 @@ Agent 使用 12.4 节的独立事件，不允许把 `tool_started` 等事件塞�
 
 真实值只放在本地 `.env` 或部署平台秘密配置中，`.env`、数据库备份、上传文件、Chroma 和日志不得提交 Git。
 
-## 15. 测试策略
+## 16. 测试策略
 
 测试按风险分层：
 
@@ -1159,12 +1336,14 @@ Agent 使用 12.4 节的独立事件，不允许把 `tool_started` 等事件塞�
 6. 真实浏览器冒烟：关键页面能看到预期变化且控制台无错误。
 7. 迁移测试：升级和必要的回滚路径都可执行。
 8. RAG 评估：固定问题集对比质量、耗时和成本。
-9. 架构边界测试：Agent 工具不直接导入 Repository/第三方 SDK，普通聊天不依赖 Agent。
-10. 故障注入：Redis、Chroma、模型和工具超时后，错误状态与补偿符合约定。
+9. 权限矩阵与状态机测试：三种角色、账号停用、提交/审核/发布/撤回/失败和越权组合。
+10. 架构边界测试：管理页面不持有业务规则，Agent工具不直接导入Repository/第三方SDK，普通聊天不依赖Agent。
+11. 故障注入：Redis、Chroma、模型、审核发布和工具超时后，错误状态与补偿符合约定。
+12. 前端体验测试：1280/1440桌面和390移动端无溢出遮挡，加载、空、失败、无权限、降级和重试状态可见。
 
 涉及外部模型的自动化测试默认使用假实现，避免重复付费和不稳定结果。
 
-## 16. 部署架构 `[现状 + 待完善]`
+## 17. 部署架构 `[现状 + 待完善]`
 
 为满足求职展示，项目已提前建立 Docker 云端部署基线。部署不改变模块化单体的代码边界，本地仍是唯一开发工作区，服务器只运行经过测试的版本；不能一边修改数据库和 Agent，一边直接编辑线上唯一实例。
 
@@ -1184,9 +1363,9 @@ Chroma、上传文件、MySQL 和 Redis 使用独立持久卷。2 核 2G 服务�
 
 上线后继续开发的推荐方式：本地开发和测试通过后构建版本镜像，再更新服务器；线上数据卷不随代码发布覆盖。高风险数据库迁移先备份，再单独执行，失败时回退应用版本。
 
-当前阿里云基线使用 Ubuntu 22.04 和 HTTP 端口 80，只开放 Nginx；FastAPI、MySQL 和 Redis 均不映射公网端口。真实秘密由服务器本地 `deploy/.env` 注入。RAG v1.2.1指定提交已经同步，付费RAG业务验收和后端容器重启恢复已通过，MySQL、Chroma、上传文件和Redis数据保持不变；HTTPS、自动备份和整机重启恢复仍是待完成项，具体操作见 `docs/deployment.md`。
+当前阿里云基线使用 Ubuntu 22.04 和 HTTP 端口 80，只开放 Nginx；FastAPI、MySQL 和 Redis 均不映射公网端口。真实秘密由服务器本地 `deploy/.env` 注入。`RAG v1.3`指定提交已经同步，付费RAG业务验收、可观测性页面和后端容器重启恢复已通过，MySQL、Chroma、上传文件和Redis数据保持不变；域名、HTTPS、自动备份和整机重启恢复仍是待完成项，具体操作见 `docs/deployment.md`。
 
-## 17. 架构变更规则
+## 18. 架构变更规则
 
 发生以下变化时必须更新本文档：
 
