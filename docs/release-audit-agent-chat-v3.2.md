@@ -65,3 +65,22 @@
 - 未上传、删除或修改知识文档和Chroma数据。
 - 自动浏览器没有建立有效生产页面会话，因此未把1440、1280、390宽度的线上点击与
   观感检查写成通过；该项由用户实际浏览器补充。
+
+## 7. 零工具状态显示热修复
+
+用户实测发现`你是谁呢`和`介绍一下自己`没有命中原先仅覆盖`你是谁`的确定性身份
+问答，转入模型规划后失败；同时前端只根据“零步骤”显示“直接回答”，导致同一个气泡
+上方显示处理完成、正文却显示任务失败。
+
+- 后端扩充问候、身份、能力与正面反馈的确定性短语，均不调用模型和工具。
+- 前端执行过程同时读取run/message终态；failed、stopped与completed分别展示，
+  只有completed且零步骤才显示“直接回答”。
+- 后端完整测试353项、前端10个文件40项、SSE解析、Vite构建、`pip check`和
+  `git diff --check`通过。
+- 发布前备份：
+  `/home/deploy/medical-rag-backups/backup-20260726T164852Z`，全部SHA-256校验通过。
+- 修复提交：`fe40ecd`；仅重建backend和web，MySQL与Redis未重建。
+- 线上Unicode验收在同一临时thread依次发送`你是谁呢`和`介绍一下自己`，两轮均为
+  HTTP 200、completed、0 step、0 Token、0估算费用且无SSE error。
+- 验收临时账号、thread、message、run和Redis键均清理为0；四个容器healthy，
+  Alembic保持`0019_agent_message_order (head)`。
