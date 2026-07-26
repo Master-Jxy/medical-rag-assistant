@@ -1095,7 +1095,7 @@ published -> 管理员下线为 archived
 旧系统资料维护接口与阶段九提交登记必须保持一致：物理替换系统文档时，把原
 `published`兼容提交重新关联到新文档并同步文件元数据和内容哈希；物理删除时，在同一
 MySQL提交中删除该系统资料的兼容提交，避免外键置空后留下“文档已删除但哈希仍占用”的
-孤儿登记。`0011_cleanup_orphan_system_submissions`只清理历史上已经形成的
+孤儿登记。`0011_orphan_submission_cleanup`只清理历史上已经形成的
 `published + submitter_id IS NULL + document_id IS NULL`系统孤儿记录，不删除普通用户
 的撤回、拒绝、失败或其他提交历史。知识资产中心的`archived`仍是保留版本和审计关系的
 下线语义，重新启用应走重发，而不是当作物理删除。

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import func, inspect, select, text
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,13 @@ def build_alembic_config(database_url: str) -> Config:
     config = Config(BACKEND_DIR / "alembic.ini")
     config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
     return config
+
+
+def test_all_revision_ids_fit_default_alembic_version_column() -> None:
+    config = build_alembic_config("sqlite+pysqlite:///:memory:")
+    revisions = ScriptDirectory.from_config(config).walk_revisions()
+
+    assert all(len(revision.revision) <= 32 for revision in revisions)
 
 
 def test_empty_database_upgrades_to_owned_conversation_schema(tmp_path) -> None:
