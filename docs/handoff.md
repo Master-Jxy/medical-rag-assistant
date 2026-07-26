@@ -137,6 +137,9 @@ Telemetry只观察业务，不记录完整问题、回答、Prompt、密码、JW
 - 服务器GitHub TLS拉取失败后使用完整Git bundle做`--ff-only`更新，没有改写历史；
   只重建backend和web，MySQL/Redis持续运行。四容器健康，迁移保持`0019`，HTTPS健康
   接口200、HTTP固定308；生产资源包含`/api/v1`且不含`127.0.0.1:8000`。
+- 首次Web构建误带旧`v3.1`静态目录；经用户截图发现后重新上传本地正式产物并使用
+  `--no-cache`只重建Web。最终公网首页引用`index-DmAMgtUm.js`，包内标签确认是
+  `AGENT CHAT V3.2`，Web恢复healthy，后端与数据服务未重建。
 - 首次自动验收因Windows PowerShell把中文请求错误编码为`??`，意外进入Qwen规划
   启动路径并失败；系统记录Token 0、估算费用0，但不能据此保证供应商侧绝对无计费。
   改用Unicode JSON后，“你好”走确定性0工具路线，消息按user、assistant顺序完成，

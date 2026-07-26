@@ -38,6 +38,10 @@
   执行`fetch`和`merge --ff-only`更新到业务提交；没有强制覆盖或改写历史。
 - 只构建并重建backend、web；MySQL、Redis未重建，数据卷未删除。
 - 四个容器最终均为healthy。
+- 首次Web构建误用了服务器上的旧`v3.1`静态目录，用户截图中的版本标签帮助发现该
+  问题。随后重新上传本地已验证的`v3.2`正式产物，使用`--no-cache`只重建Web容器；
+  最终公网首页引用`index-DmAMgtUm.js`，包内标签为`AGENT CHAT V3.2`。后端、
+  MySQL、Redis和业务数据未受此次纠偏影响。
 
 ## 5. 线上验证
 
