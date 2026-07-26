@@ -115,6 +115,7 @@ class KnowledgeSubmissionService:
                 record.preview_text = preview.text
                 record.preview_pages = preview.page_count
                 record.parse_warnings = list(preview.warnings)
+                record.parse_quality = preview.quality or {}
                 record.status = "pending_review"
             except DocumentParseError:
                 record.status = "failed"

@@ -10,6 +10,8 @@ import {
   streamConversation,
 } from '../api/conversations.js'
 import { getApiErrorMessage } from '../api/http.js'
+import { submitAnswerFeedback } from '../api/quality.js'
+import { getDocumentTrace, openDocumentPreview } from '../api/citations.js'
 import { createUuid } from '../utils/uuid.js'
 
 const WELCOME_MESSAGE = {
@@ -49,7 +51,60 @@ function mapStoredMessage(message) {
     sourcesExpanded: false,
     requestId: message.request_id,
     status: message.status,
+    feedbackRating: null,
   }
+}
+
+async function rateAnswer(message, rating) {
+  if (!message.id || message.id === 'welcome' || message.streaming) return
+  const questionCategory = window.prompt(
+    '问题分类：symptom 症状 / medication 用药 / test 检查 / emergency 急症 / prevention 预防 / general 其他',
+    'general',
+  )
+  const allowedQuestions = ['symptom', 'medication', 'test', 'emergency', 'prevention', 'general']
+  if (questionCategory === null || !allowedQuestions.includes(questionCategory.trim())) {
+    if (questionCategory !== null) errorMessage.value = '问题分类不在允许范围内。'
+    return
+  }
+  let issueCategory = null
+  let comment = null
+  if (rating === 'down') {
+    issueCategory = window.prompt(
+      '问题类型：inaccurate 不准确 / irrelevant 不相关 / incomplete 不完整 / unsafe 不安全 / citation 引用 / other 其他',
+      'other',
+    )
+    const allowedIssues = ['inaccurate', 'irrelevant', 'incomplete', 'unsafe', 'citation', 'other']
+    if (issueCategory === null || !allowedIssues.includes(issueCategory.trim())) {
+      if (issueCategory !== null) errorMessage.value = '问题类型不在允许范围内。'
+      return
+    }
+    comment = window.prompt('可选：补充说明', '')?.trim() || null
+  }
+  try {
+    const feedback = await submitAnswerFeedback(message.id, {
+      rating,
+      question_category: questionCategory.trim(),
+      issue_category: issueCategory?.trim() || null,
+      comment,
+    })
+    message.feedbackRating = feedback.rating
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+  }
+}
+
+async function inspectSource(source) {
+  if (!source.document_id) return
+  try {
+    source.trace = source.trace || await getDocumentTrace(source.document_id)
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+  }
+}
+
+async function openSource(source) {
+  try { await openDocumentPreview(source.document_id, source.page) }
+  catch (error) { errorMessage.value = getApiErrorMessage(error) }
 }
 
 async function scrollToBottom() {
@@ -161,6 +216,8 @@ async function sendQuestion() {
     sources: [],
     streaming: true,
     sourcesExpanded: false,
+    status: 'pending',
+    feedbackRating: null,
   })
   messages.value.push(userMessage, assistantMessage)
   question.value = ''
@@ -186,12 +243,14 @@ async function sendQuestion() {
         assistantMessage.id = data.assistant_message_id || assistantMessage.id
         assistantMessage.requestId = data.request_id
         assistantMessage.disclaimer = data.disclaimer
+        assistantMessage.status = 'completed'
       },
       onStopped(data) {
         userMessage.id = data.user_message_id || userMessage.id
         assistantMessage.id = data.assistant_message_id || assistantMessage.id
         assistantMessage.requestId = data.request_id
         errorMessage.value = data.message || '已停止生成。'
+        assistantMessage.status = 'stopped'
       },
     })
   } catch (error) {
@@ -333,10 +392,24 @@ onMounted(async () => {
                       <small>{{ source.page ? `第 ${source.page} 页` : '文本资料' }}</small>
                     </summary>
                     <p>{{ source.content }}</p>
+                    <div v-if="source.document_id" class="source-actions">
+                      <button @click="openSource(source)">{{ source.page ? `打开第 ${source.page} 页` : '打开原文' }}</button>
+                      <button @click="inspectSource(source)">版本与来源</button>
+                    </div>
+                    <p v-if="source.trace" class="source-trace">
+                      版本 {{ source.trace.version }} · {{ source.trace.source || '未标注来源' }} ·
+                      {{ source.trace.category || '未分类' }} · {{ source.trace.department || '未指定科室' }} ·
+                      {{ source.trace.tags.join('、') || '无标签' }} · 复核状态 {{ source.trace.review_status }}
+                    </p>
                   </details>
                 </div>
               </div>
               <div v-if="message.requestId" class="response-meta">请求标识：{{ message.requestId }}</div>
+              <div v-if="message.role === 'assistant' && message.id !== 'welcome' && !message.streaming && message.status === 'completed'" class="answer-feedback" aria-label="回答反馈">
+                <span>这条回答有帮助吗？</span>
+                <button :class="{ active: message.feedbackRating === 'up' }" @click="rateAnswer(message, 'up')">👍</button>
+                <button :class="{ active: message.feedbackRating === 'down' }" @click="rateAnswer(message, 'down')">👎</button>
+              </div>
             </div>
           </article>
         </div>
@@ -420,6 +493,12 @@ onMounted(async () => {
 .sources-toggle { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 3px 0 8px; border: 0; color: var(--muted); background: transparent; font: inherit; font-size: 12px; font-weight: 700; text-align: left; cursor: pointer; }
 .sources-toggle i { font-style: normal; font-size: 16px; transition: transform .2s ease; }
 .sources-toggle i.expanded { transform: rotate(180deg); }
+.answer-feedback { display: flex; align-items: center; gap: 6px; margin-top: 9px; color: var(--muted); font-size: 12px; }
+.answer-feedback button { border: 1px solid var(--border); border-radius: 5px; background: #fff; cursor: pointer; }
+.answer-feedback button.active { border-color: var(--primary); background: #eff8f4; }
+.source-actions { display: flex; gap: 8px; margin-top: 8px; }
+.source-actions button { border: 0; padding: 0; background: none; color: var(--primary); cursor: pointer; }
+.source-trace { color: var(--muted); font-size: 12px; }
 details { margin-top: 7px; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: #fff; }
 summary { display: flex; justify-content: space-between; gap: 12px; padding: 11px 13px; cursor: pointer; color: var(--ink); font-size: 13px; }
 summary small { color: var(--muted); white-space: nowrap; }

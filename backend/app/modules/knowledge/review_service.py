@@ -273,6 +273,7 @@ class KnowledgeReviewService:
             preview_text=record.preview_text,
             preview_pages=record.preview_pages,
             parse_warnings=list(record.parse_warnings or []),
+            parse_quality=dict(record.parse_quality or {}),
             rejection_reason=record.rejection_reason,
             failure_reason=record.failure_reason,
             document_id=record.document_id,

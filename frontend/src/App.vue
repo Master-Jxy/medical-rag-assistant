@@ -29,6 +29,7 @@ const adminItems = [
   { to: '/admin/audit', label: '审计记录' },
   { to: '/admin/knowledge', label: '系统资料' },
   { to: '/admin/telemetry', label: '运行统计' },
+  { to: '/admin/quality', label: '回答质量' },
 ]
 
 watch(() => route.fullPath, () => {

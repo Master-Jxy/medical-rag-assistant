@@ -14,12 +14,25 @@ from app.modules.knowledge.asset_schemas import (
     KnowledgeAssetItem,
     KnowledgeAssetListResponse,
     ReplacementRequest,
+    AssetReviewRequest,
 )
 from app.modules.knowledge.asset_service import KnowledgeAssetService
 from app.modules.knowledge.lifecycle import DocumentLifecycleService
 from app.services.document_service import get_vector_store_service
+from app.modules.jobs.service import SqlAlchemyJobService
+from app.modules.knowledge.governance_service import KnowledgeGovernanceService
+from datetime import datetime, timezone
 
 router = APIRouter(prefix="/admin/knowledge-assets", tags=["管理员知识资产"])
+
+
+@router.post("/governance/scan")
+def scan_governance(
+    _admin: UserResponse = Depends(require_admin),
+    session: Session = Depends(get_db_session),
+):
+    ids = KnowledgeGovernanceService(session, SqlAlchemyJobService(session)).scan_due_reviews(datetime.now(timezone.utc))
+    return {"created_job_ids": ids, "count": len(ids)}
 
 
 def get_asset_service(
@@ -31,6 +44,7 @@ def get_asset_service(
         session,
         DocumentLifecycleService(session, settings, vector_store),
         SqlAlchemyAuditRecorder(session),
+        SqlAlchemyJobService(session),
     )
 
 
@@ -65,6 +79,27 @@ def update_asset(
         document_id,
         source=payload.source,
         tags=payload.tags,
+        category=payload.category,
+        department=payload.department,
+        expires_at=payload.expires_at,
+        review_due_at=payload.review_due_at,
+        actor_user_id=admin.id,
+        request_id=getattr(request.state, "request_id", None),
+    )
+
+
+@router.post("/{document_id}/review", response_model=KnowledgeAssetItem)
+def review_asset(
+    document_id: str,
+    payload: AssetReviewRequest,
+    request: Request,
+    admin: UserResponse = Depends(require_admin),
+    service: KnowledgeAssetService = Depends(get_asset_service),
+):
+    return service.mark_reviewed(
+        document_id,
+        next_review_due_at=payload.next_review_due_at,
+        note=payload.note,
         actor_user_id=admin.id,
         request_id=getattr(request.state, "request_id", None),
     )

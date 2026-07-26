@@ -1307,6 +1307,57 @@ Agent事件使用独立契约：`run_started`、`plan_ready`、`tool_started`、
 - 未经人工确认的外部写操作。
 - 把Dify/RAGFlow的全部能力复制进单个求职项目。
 
+### 13.7 阶段十二质量、记忆与知识治理
+
+阶段十二仍保持模块化单体边界：
+
+```text
+回答反馈 -> quality Service -> QualityRepository + ConversationQualityPort
+聊天上下文 -> ConversationChatService -> memory Service -> 会话摘要/用户显式记忆
+资料提交 -> ParserPort -> 预览正文 + 逐页解析质量 -> 审核中心
+回答来源 -> document_id/chunk_id -> PublishedKnowledgeCatalogPort -> 原文与版本追溯
+知识治理 -> KnowledgeAssetService -> JobPort -> 复核任务中心
+```
+
+`answer_feedback`每条助手消息最多一条反馈，只保存评分、分类、评论和复核状态，不复制
+完整问题、回答、Prompt或隐藏推理。用户只能评价自己会话中已完成的助手消息；管理员
+看聚合、近14天趋势、待复核队列和有长度上限的上下文摘录。质量模块通过
+`ConversationQualityPort`读取归属和复核摘录，不导入会话Repository。
+
+`conversation_summaries`保存最近3轮之前的提取式滚动摘要，随会话级联删除；
+`user_memory_settings/user_memories`只保存用户主动创建的记忆，默认关闭并支持查看、
+修改、删除和停用。聊天编排先保证最近消息预算，再把可容纳的摘要和已启用显式记忆
+放在上下文前缀；前缀不写回消息表，不形成隐蔽长期副本。
+
+PyPDF仍是生产解析基线。解析结果增加`parse_quality`，逐页标记`text`、
+`table_like`或`scanned_or_image`以及文本字符数和图片对象数；复杂PDF质量检查异常
+会明确失败，不能静默进入审核。Docling/OCR通过独立候选Parser接入，依赖缺失或尚未
+通过固定集时明确拒绝启用；候选只有在相同固定集全量通过、无失败且严格优于基线时
+才能晋级。
+
+`message_sources`新增可空`document_id/chunk_id`。已发布文档追溯接口只读取
+`published/ready`资产，可返回原文件供认证用户内联预览并通过PDF`#page`定位；
+归档文档返回404。版本追溯同时返回来源、标签、分类、科室、失效和复核状态。
+
+`document_versions`新增分类、科室、失效时间、下次复核、上次复核和复核状态。
+管理员显式扫描到期资产时使用行锁把`current`原子转为`in_review`，通过`JobPort`
+创建`knowledge_review`任务；完成复核时更新下次日期、写审计并关闭同一资产所有
+运行中复核任务。第一版不引入消息队列、通知、对象存储或常驻调度器。
+
+阶段十二新增接口：
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| PUT/DELETE | `/api/v1/quality/messages/{message_id}/feedback` | 当前用户维护回答反馈 |
+| GET | `/api/v1/admin/quality/overview` | 管理员质量聚合与趋势 |
+| GET/PATCH | `/api/v1/admin/quality/reviews/{feedback_id}` | 查看和处理人工复核 |
+| GET/PUT | `/api/v1/profile/memory-settings` | 查看或开关显式记忆 |
+| GET/POST/PUT/DELETE | `/api/v1/profile/memories` | 当前用户记忆CRUD |
+| GET | `/api/v1/knowledge/documents/{id}/trace` | 已发布文档版本与来源 |
+| GET | `/api/v1/knowledge/documents/{id}/preview` | 认证用户打开已发布原文 |
+| POST | `/api/v1/admin/knowledge-assets/governance/scan` | 创建到期复核任务 |
+| POST | `/api/v1/admin/knowledge-assets/{id}/review` | 完成复核并关闭任务 |
+
 ## 14. 统一接口与错误规范
 
 普通 JSON 错误建议保持：

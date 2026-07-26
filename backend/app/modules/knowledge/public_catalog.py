@@ -8,6 +8,7 @@ from app.modules.knowledge.models import DocumentVersion, KnowledgeDocument
 from app.modules.knowledge.parser import LocalDocumentParser, ParserPort
 from app.modules.knowledge.public_ports import (
     PublishedDocumentContent,
+    PublishedDocumentFile,
     PublishedDocumentInfo,
 )
 
@@ -54,6 +55,12 @@ class PublishedKnowledgeCatalogService:
             version=version.version if version else 1,
             chunk_count=document.chunk_count,
             created_at=document.created_at,
+            replaces_document_id=version.replaces_document_id if version else None,
+            category=version.category if version else None,
+            department=version.department if version else None,
+            expires_at=version.expires_at if version else None,
+            review_due_at=version.review_due_at if version else None,
+            review_status=(version.review_status or "current") if version else "current",
         )
 
     def get_published_content(
@@ -79,3 +86,19 @@ class PublishedKnowledgeCatalogService:
             page_count=preview.page_count,
             warnings=preview.warnings,
         )
+
+    def read_published_file(self, document_id: str) -> PublishedDocumentFile | None:
+        document = self.session.scalar(
+            select(KnowledgeDocument).where(
+                KnowledgeDocument.id == document_id,
+                KnowledgeDocument.status.in_(PUBLIC_DOCUMENT_STATUSES),
+            )
+        )
+        if document is None:
+            return None
+        root = self.settings.upload_dir.resolve()
+        path = (root / document.stored_name).resolve()
+        if root not in path.parents or not path.is_file():
+            return None
+        mime_type = "application/pdf" if path.suffix.lower() == ".pdf" else "text/plain"
+        return PublishedDocumentFile(document.id, document.original_name, mime_type, path.read_bytes())

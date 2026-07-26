@@ -100,6 +100,8 @@ def test_query_builder_port_can_be_replaced_without_changing_orchestrator() -> N
         "file_name": "资料.txt",
         "page": 2,
         "content": "资料正文",
+        "document_id": None,
+        "chunk_id": None,
     }
 
 
@@ -124,7 +126,17 @@ def test_answer_generator_port_can_be_replaced_for_sync_stream_and_async_stream(
     assert [event["data"] for event in stream_events] == [
         {"content": "固定"},
         {"content": "回答"},
-        {"sources": [{"file_name": "资料.txt", "page": None, "content": "资料正文"}]},
+        {
+            "sources": [
+                {
+                    "file_name": "资料.txt",
+                    "page": None,
+                    "content": "资料正文",
+                    "document_id": None,
+                    "chunk_id": None,
+                }
+            ]
+        },
     ]
     assert answer.stream_calls == [("问题", None, [chunk])]
 

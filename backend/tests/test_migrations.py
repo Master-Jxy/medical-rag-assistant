@@ -47,12 +47,32 @@ def test_empty_database_upgrades_to_owned_conversation_schema(tmp_path) -> None:
         "agent_runs",
         "agent_steps",
         "agent_artifacts",
+        "answer_feedback",
+        "conversation_summaries",
+        "user_memory_settings",
+        "user_memories",
         "conversations",
         "messages",
         "message_sources",
         "users",
         "documents",
     } <= tables
+    assert "parse_quality" in {
+        column["name"] for column in inspector.get_columns("knowledge_submissions")
+    }
+    assert {"document_id", "chunk_id"} <= {
+        column["name"] for column in inspector.get_columns("message_sources")
+    }
+    assert {
+        "category",
+        "department",
+        "expires_at",
+        "review_due_at",
+        "last_reviewed_at",
+        "review_status",
+    } <= {
+        column["name"] for column in inspector.get_columns("document_versions")
+    }
 
     columns = {column["name"]: column for column in inspector.get_columns("conversations")}
     assert columns["user_id"]["nullable"] is False

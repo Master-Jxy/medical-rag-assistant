@@ -300,6 +300,8 @@ class RagService:
             file_name=chunk.file_name,
             page=chunk.page,
             content=chunk.content[:500],
+            document_id=chunk.document_id,
+            chunk_id=chunk.chunk_id,
         )
 
     # 以下兼容入口由冻结的7.1评估适配器和既有测试使用；行为委托给当前实现。

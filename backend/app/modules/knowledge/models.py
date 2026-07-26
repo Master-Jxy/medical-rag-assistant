@@ -78,6 +78,7 @@ class KnowledgeSubmission(Base):
     preview_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     preview_pages: Mapped[int | None] = mapped_column(Integer, nullable=True)
     parse_warnings: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    parse_quality: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
     document_id: Mapped[str | None] = mapped_column(
@@ -115,6 +116,12 @@ class DocumentVersion(Base):
     )
     source: Mapped[str | None] = mapped_column(String(255), nullable=True)
     tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    category: Mapped[str | None] = mapped_column(String(100))
+    department: Mapped[str | None] = mapped_column(String(100))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_status: Mapped[str] = mapped_column(String(20), nullable=False, default="current")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
@@ -122,4 +129,9 @@ class DocumentVersion(Base):
     __table_args__ = (
         CheckConstraint("version > 0", name="ck_document_versions_positive"),
         Index("ix_document_versions_replaces", "replaces_document_id"),
+        Index("ix_document_versions_governance", "review_status", "review_due_at"),
+        CheckConstraint(
+            "review_status IN ('current','due','in_review')",
+            name="ck_document_versions_review_status",
+        ),
     )

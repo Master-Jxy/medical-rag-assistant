@@ -19,6 +19,9 @@ from app.api.health import router as health_router
 from app.api.knowledge_submissions import router as knowledge_submissions_router
 from app.api.profile import router as profile_router
 from app.api.agent import router as agent_router
+from app.api.quality import router as quality_router
+from app.api.memory import router as memory_router
+from app.api.knowledge_trace import router as knowledge_trace_router
 from app.core.config import Settings, get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.request_context import new_request_id, reset_request_id, set_request_id
@@ -175,6 +178,9 @@ def create_app(
     application.include_router(profile_router, prefix="/api/v1")
     application.include_router(knowledge_submissions_router, prefix="/api/v1")
     application.include_router(agent_router, prefix="/api/v1")
+    application.include_router(quality_router, prefix="/api/v1")
+    application.include_router(memory_router, prefix="/api/v1")
+    application.include_router(knowledge_trace_router, prefix="/api/v1")
     register_exception_handlers(application)
     return application
 

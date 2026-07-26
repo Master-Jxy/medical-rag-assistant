@@ -15,6 +15,7 @@ class ReviewItem(BaseModel):
     preview_text: str | None
     preview_pages: int | None
     parse_warnings: list[str]
+    parse_quality: dict[str, object] = Field(default_factory=dict)
     rejection_reason: str | None
     failure_reason: str | None
     document_id: str | None

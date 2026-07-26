@@ -25,6 +25,7 @@ from app.services.generation_lock_service import GenerationLockService
 from app.ports.idempotency import IdempotencyRecord
 from app.services.idempotency_service import IdempotencyService
 from app.services.stream_cancellation_service import StreamCancellationService
+from app.modules.memory.service import ConversationMemoryService
 
 
 class ConversationChatService:
@@ -37,12 +38,14 @@ class ConversationChatService:
         generation_lock: GenerationLockService,
         idempotency: IdempotencyService,
         cancellation: StreamCancellationService | None = None,
+        memory: ConversationMemoryService | None = None,
     ) -> None:
         self.session = session
         self.rag_service = rag_service
         self.generation_lock = generation_lock
         self.idempotency = idempotency
         self.cancellation = cancellation or StreamCancellationService()
+        self.memory = memory or ConversationMemoryService(session)
         settings = get_settings()
         self.max_history_messages = settings.max_history_rounds * 2
         self.max_history_chars = settings.max_history_chars
@@ -471,17 +474,26 @@ class ConversationChatService:
         except SQLAlchemyError as exc:
             raise ConversationStoreError() from exc
 
-        selected: list[tuple[str, str]] = []
         remaining_chars = self.max_history_chars
+        recent: list[tuple[str, str]] = []
         for message in rows:
             if remaining_chars <= 0:
                 break
             content = message.content[:remaining_chars]
             if content:
-                selected.append((message.role, content))
+                recent.append((message.role, content))
                 remaining_chars -= len(content)
-        selected.reverse()
-        return selected
+        recent.reverse()
+        prefixes = self.memory.context_prefixes(user_id, conversation_id)
+        selected_prefixes: list[tuple[str, str]] = []
+        for role, content in prefixes:
+            if remaining_chars <= 0:
+                break
+            clipped = content[:remaining_chars]
+            if clipped:
+                selected_prefixes.append((role, clipped))
+                remaining_chars -= len(clipped)
+        return [*selected_prefixes, *recent]
 
     def _mark_failed(
         self,
@@ -535,6 +547,8 @@ class ConversationChatService:
                     file_name=source.file_name,
                     page=source.page,
                     content=source.content,
+                    document_id=source.document_id,
+                    chunk_id=source.chunk_id,
                 )
                 for index, source in enumerate(sources, start=1)
             ]

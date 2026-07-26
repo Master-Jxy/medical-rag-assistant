@@ -28,6 +28,14 @@ export async function republishAsset(id) {
   return (await http.post(`/admin/knowledge-assets/${id}/republish`)).data
 }
 
+export async function scanKnowledgeGovernance() {
+  return (await http.post('/admin/knowledge-assets/governance/scan')).data
+}
+
+export async function reviewKnowledgeAsset(id, payload) {
+  return (await http.post(`/admin/knowledge-assets/${id}/review`, payload)).data
+}
+
 export async function getJobs(params = {}) {
   return (await http.get('/admin/jobs', { params })).data
 }

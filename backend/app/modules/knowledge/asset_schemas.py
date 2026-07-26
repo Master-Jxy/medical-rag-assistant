@@ -15,6 +15,13 @@ class KnowledgeAssetItem(BaseModel):
     replaces_document_id: str | None
     chunk_count: int
     updated_at: datetime
+    category: str | None = None
+    department: str | None = None
+    expires_at: datetime | None = None
+    review_due_at: datetime | None = None
+    last_reviewed_at: datetime | None = None
+    review_status: str = "current"
+    is_expired: bool = False
 
 
 class KnowledgeAssetListResponse(BaseModel):
@@ -27,6 +34,10 @@ class KnowledgeAssetListResponse(BaseModel):
 class AssetMetadataUpdate(BaseModel):
     source: str | None = Field(default=None, max_length=255)
     tags: list[str] = Field(default_factory=list, max_length=20)
+    category: str | None = Field(default=None, max_length=100)
+    department: str | None = Field(default=None, max_length=100)
+    expires_at: datetime | None = None
+    review_due_at: datetime | None = None
 
     @field_validator("tags")
     @classmethod
@@ -43,3 +54,8 @@ class AssetMetadataUpdate(BaseModel):
 
 class ReplacementRequest(BaseModel):
     replacement_document_id: str = Field(min_length=1, max_length=36)
+
+
+class AssetReviewRequest(BaseModel):
+    next_review_due_at: datetime
+    note: str = Field(min_length=1, max_length=500)

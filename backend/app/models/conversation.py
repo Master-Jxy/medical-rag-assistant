@@ -102,6 +102,8 @@ class MessageSource(Base):
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     page: Mapped[int | None] = mapped_column(Integer, nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    document_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    chunk_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     message: Mapped[Message] = relationship(back_populates="sources")
 

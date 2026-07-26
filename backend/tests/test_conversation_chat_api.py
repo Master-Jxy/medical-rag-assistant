@@ -31,7 +31,15 @@ class SuccessfulRagService:
         assert history == []
         return (
             "根据知识库资料，高血压可能没有明显症状。",
-            [SourceItem(file_name="指南.pdf", page=12, content="引用原文")],
+            [
+                SourceItem(
+                    file_name="指南.pdf",
+                    page=12,
+                    content="引用原文",
+                    document_id="guide-document",
+                    chunk_id="guide-document:4",
+                )
+            ],
         )
 
 
@@ -122,6 +130,14 @@ def test_conversation_chat_saves_completed_answer_and_sources(tmp_path) -> None:
             ]
             assert detail["messages"][1]["request_id"] == body["request_id"]
             assert detail["messages"][1]["sources"][0]["page"] == 12
+            assert (
+                detail["messages"][1]["sources"][0]["document_id"]
+                == "guide-document"
+            )
+            assert (
+                detail["messages"][1]["sources"][0]["chunk_id"]
+                == "guide-document:4"
+            )
             assert generation_lock.released == 1
             assert idempotency.completed == 1
     finally:

@@ -54,6 +54,7 @@ def test_only_latest_three_rounds_are_passed_in_chronological_order() -> None:
             assert rag.histories[0] == []
             assert rag.histories[1] == [("user", "问题1"), ("assistant", "回答：问题1")]
             assert rag.histories[4] == [
+                ("assistant", "较早对话摘要：用户：问题1\n助手：回答：问题1"),
                 ("user", "问题2"),
                 ("assistant", "回答：问题2"),
                 ("user", "问题3"),

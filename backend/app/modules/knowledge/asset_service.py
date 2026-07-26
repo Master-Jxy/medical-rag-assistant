@@ -1,6 +1,7 @@
 """知识资产查询、元数据、下线、重发和替换编排。"""
 
 from uuid import uuid4
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -13,6 +14,7 @@ from app.modules.knowledge.asset_schemas import (
 )
 from app.modules.knowledge.lifecycle import DocumentLifecycleService
 from app.modules.knowledge.models import DocumentVersion, KnowledgeDocument
+from app.modules.jobs.ports import JobPort
 
 
 class AssetNotFoundError(AppError):
@@ -35,10 +37,12 @@ class KnowledgeAssetService:
         session: Session,
         lifecycle: DocumentLifecycleService,
         audit: AuditPort,
+        jobs: JobPort | None = None,
     ) -> None:
         self.session = session
         self.lifecycle = lifecycle
         self.audit = audit
+        self.jobs = jobs
 
     def list_assets(
         self,
@@ -90,18 +94,53 @@ class KnowledgeAssetService:
         tags: list[str],
         actor_user_id: str,
         request_id: str | None,
+        category: str | None = None,
+        department: str | None = None,
+        expires_at: datetime | None = None,
+        review_due_at: datetime | None = None,
     ) -> KnowledgeAssetItem:
         document = self._get_document(document_id)
         version = self._get_or_create_version(document)
         version.source = source.strip() if source and source.strip() else None
         version.tags = tags
+        version.category = category.strip() if category and category.strip() else None
+        version.department = department.strip() if department and department.strip() else None
+        version.expires_at = expires_at
+        version.review_due_at = review_due_at
         self._audit(
             "knowledge_asset.metadata_updated",
             document_id,
             actor_user_id,
             request_id,
-            {"source": version.source, "tag_count": len(tags)},
+            {"source": version.source, "tag_count": len(tags), "category": version.category, "department": version.department},
         )
+        self.session.commit()
+        return self._to_item(document, version)
+
+    def mark_reviewed(
+        self,
+        document_id: str,
+        *,
+        next_review_due_at: datetime,
+        note: str,
+        actor_user_id: str,
+        request_id: str | None,
+    ) -> KnowledgeAssetItem:
+        document = self._get_document(document_id)
+        version = self._get_or_create_version(document)
+        now = datetime.now(next_review_due_at.tzinfo or timezone.utc)
+        if next_review_due_at <= now:
+            raise AssetStateConflictError()
+        version.last_reviewed_at = now
+        version.review_due_at = next_review_due_at
+        version.review_status = "current"
+        if self.jobs is not None:
+            self.jobs.complete_running_for_object(
+                job_type="knowledge_review",
+                object_type="knowledge_document",
+                object_id=document_id,
+            )
+        self._audit("knowledge_asset.reviewed", document_id, actor_user_id, request_id, {"note": note, "next_review_due_at": next_review_due_at.isoformat()})
         self.session.commit()
         return self._to_item(document, version)
 
@@ -272,4 +311,16 @@ class KnowledgeAssetService:
             replaces_document_id=version.replaces_document_id if version else None,
             chunk_count=document.chunk_count,
             updated_at=document.created_at,
+            category=version.category if version else None,
+            department=version.department if version else None,
+            expires_at=version.expires_at if version else None,
+            review_due_at=version.review_due_at if version else None,
+            last_reviewed_at=version.last_reviewed_at if version else None,
+            review_status=(version.review_status or "current") if version else "current",
+            is_expired=bool(
+                version
+                and version.expires_at
+                and version.expires_at
+                <= datetime.now(version.expires_at.tzinfo or timezone.utc)
+            ),
         )

@@ -77,6 +77,25 @@ class SqlAlchemyJobService:
         job.finished_at = datetime.now(timezone.utc)
         self.session.flush()
 
+    def complete_running_for_object(
+        self,
+        *,
+        job_type: str,
+        object_type: str,
+        object_id: str,
+    ) -> int:
+        jobs = self.session.scalars(
+            select(ProcessingJob).where(
+                ProcessingJob.job_type == job_type,
+                ProcessingJob.object_type == object_type,
+                ProcessingJob.object_id == object_id,
+                ProcessingJob.status == "running",
+            )
+        ).all()
+        for job in jobs:
+            self.complete(job.id)
+        return len(jobs)
+
 
 class JobQueryService:
     def __init__(self, session: Session) -> None:

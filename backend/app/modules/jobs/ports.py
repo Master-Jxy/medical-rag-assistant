@@ -23,3 +23,11 @@ class JobPort(Protocol):
     def complete(self, job_id: str) -> None: ...
 
     def fail(self, job_id: str, error_type: str) -> None: ...
+
+    def complete_running_for_object(
+        self,
+        *,
+        job_type: str,
+        object_type: str,
+        object_id: str,
+    ) -> int: ...

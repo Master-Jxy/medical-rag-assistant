@@ -41,6 +41,8 @@ class MessageSourceResponse(BaseModel):
     file_name: str
     page: int | None
     content: str
+    document_id: str | None = None
+    chunk_id: str | None = None
 
 
 class MessageResponse(BaseModel):

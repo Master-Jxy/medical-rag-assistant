@@ -1,6 +1,8 @@
 """知识资产元数据、下线、重发和替换回归。"""
 
 from fastapi.testclient import TestClient
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
@@ -14,6 +16,8 @@ from app.modules.audit.repository import SqlAlchemyAuditRecorder
 from app.modules.auth.tokens import get_token_service
 from app.modules.knowledge.asset_service import KnowledgeAssetService
 from app.modules.knowledge.lifecycle import DocumentLifecycleService
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.service import SqlAlchemyJobService
 from tests.auth_helpers import TEST_TOKEN_SERVICE, auth_headers, create_test_user
 from tests.test_document_service import FakeVectorStore
 
@@ -85,6 +89,7 @@ def test_asset_metadata_archive_republish_and_replace(tmp_path) -> None:
                 session,
                 DocumentLifecycleService(session, settings, vectors),
                 SqlAlchemyAuditRecorder(session),
+                SqlAlchemyJobService(session),
             )
 
     app.dependency_overrides[get_db_session] = override_session
@@ -104,6 +109,48 @@ def test_asset_metadata_archive_republish_and_replace(tmp_path) -> None:
             )
             assert updated.status_code == 200
             assert updated.json()["tags"] == ["心血管", "指南"]
+
+            governance_metadata = client.patch(
+                f"/api/v1/admin/knowledge-assets/{first_id}",
+                json={
+                    "source": "临床指南",
+                    "tags": ["心血管", "指南"],
+                    "category": "诊疗规范",
+                    "department": "心内科",
+                    "review_due_at": (
+                        datetime.now(timezone.utc) - timedelta(days=1)
+                    ).isoformat(),
+                },
+                headers=auth_headers(admin.id),
+            )
+            assert governance_metadata.status_code == 200
+            assert governance_metadata.json()["department"] == "心内科"
+            assert client.post(
+                "/api/v1/admin/knowledge-assets/governance/scan",
+                headers=auth_headers(normal.id),
+            ).status_code == 403
+            scan = client.post(
+                "/api/v1/admin/knowledge-assets/governance/scan",
+                headers=auth_headers(admin.id),
+            )
+            assert scan.status_code == 200
+            assert scan.json()["count"] == 1
+            assert client.post(
+                "/api/v1/admin/knowledge-assets/governance/scan",
+                headers=auth_headers(admin.id),
+            ).json()["count"] == 0
+            reviewed = client.post(
+                f"/api/v1/admin/knowledge-assets/{first_id}/review",
+                json={
+                    "next_review_due_at": (
+                        datetime.now(timezone.utc) + timedelta(days=180)
+                    ).isoformat(),
+                    "note": "已核对现行指南",
+                },
+                headers=auth_headers(admin.id),
+            )
+            assert reviewed.status_code == 200
+            assert reviewed.json()["review_status"] == "current"
             filtered = client.get(
                 "/api/v1/admin/knowledge-assets?tag=心血管",
                 headers=auth_headers(admin.id),
@@ -144,7 +191,16 @@ def test_asset_metadata_archive_republish_and_replace(tmp_path) -> None:
                 "knowledge_asset.archived",
                 "knowledge_asset.republished",
                 "knowledge_asset.replaced",
+                "knowledge_asset.reviewed",
             } <= actions
+            review_job = session.scalar(
+                select(ProcessingJob).where(
+                    ProcessingJob.object_id == first_id,
+                    ProcessingJob.job_type == "knowledge_review",
+                )
+            )
+            assert review_job is not None
+            assert review_job.status == "completed"
     finally:
         app.dependency_overrides.clear()
         engine.dispose()

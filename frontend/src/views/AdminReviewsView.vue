@@ -45,6 +45,18 @@ onMounted(load)
       <article v-for="item in items" :key="item.submission_id" class="review-card">
         <header><div><strong :title="item.file_name">{{ item.file_name }}</strong><small>提交者 {{ item.submitter_id || '系统' }}</small></div><span class="status-badge">{{ item.status }}</span></header>
         <p class="preview-text">{{ item.preview_text || '无解析预览' }}</p>
+        <div v-if="item.parse_quality?.counts" class="parse-quality">
+          <span>文本页 {{ item.parse_quality.counts.text || 0 }}</span>
+          <span>疑似表格 {{ item.parse_quality.counts.table_like || 0 }}</span>
+          <span>扫描/图片风险 {{ item.parse_quality.counts.scanned_or_image || 0 }}</span>
+        </div>
+        <details v-if="item.parse_quality?.page_results?.length" class="page-quality">
+          <summary>查看逐页解析结果（{{ item.parse_quality.page_results.length }} 页）</summary>
+          <p v-for="page in item.parse_quality.page_results" :key="page.page">
+            第 {{ page.page }} 页：{{ page.kind }}，文本 {{ page.text_chars }} 字，图片对象 {{ page.image_count }}
+          </p>
+        </details>
+        <p v-for="warning in item.parse_warnings" :key="warning" class="parse-warning">⚠ {{ warning }}</p>
         <small>SHA-256：{{ item.content_hash }}</small>
         <footer><el-button :loading="actingId === item.submission_id" @click="reject(item)">拒绝</el-button><el-button type="primary" :loading="actingId === item.submission_id" @click="approve(item)">批准发布</el-button></footer>
       </article>

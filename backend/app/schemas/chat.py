@@ -24,6 +24,8 @@ class SourceItem(BaseModel):
     file_name: str
     page: int | None = None
     content: str
+    document_id: str | None = None
+    chunk_id: str | None = None
 
 
 class ChatResponse(BaseModel):
