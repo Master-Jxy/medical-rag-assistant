@@ -22,7 +22,6 @@ from app.modules.agent.message_service import AgentMessageService
 from app.modules.agent.repository import AgentRepository
 from app.modules.agent.recovery import AgentRecoveryService
 from app.modules.agent.schemas import (
-    AgentRunCreate,
     AgentRunListResponse,
     AgentRunResponse,
     AgentStopResponse,
@@ -316,15 +315,6 @@ def retry_thread_message(
         ),
         request_id,
     )
-
-
-@router.post("/runs", response_model=AgentRunResponse, status_code=201)
-def create_run(
-    payload: AgentRunCreate,
-    current_user: UserResponse = Depends(get_current_user),
-    service: AgentApplicationService = Depends(get_agent_application_service),
-) -> AgentRunResponse:
-    return service.create_run(current_user.id, payload.task)
 
 
 @router.get("/runs", response_model=AgentRunListResponse)

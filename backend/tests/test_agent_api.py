@@ -100,12 +100,16 @@ def test_agent_rest_sse_persistence_and_download() -> None:
     app.dependency_overrides[get_agent_application_service] = lambda: service
     try:
         with TestClient(app) as client:
-            created = client.post(
+            blocked = client.post(
                 "/api/v1/agent/runs",
                 json={"task": "整理患者安全资料"},
             )
-            assert created.status_code == 201
-            run_id = created.json()["id"]
+            assert blocked.status_code == 405
+            created = service.create_run(
+                "agent-owner",
+                "整理患者安全资料",
+            )
+            run_id = created.id
 
             streamed = client.post(f"/api/v1/agent/runs/{run_id}/stream")
             assert streamed.status_code == 200
@@ -141,7 +145,7 @@ def test_agent_rest_sse_persistence_and_download() -> None:
         engine.dispose()
 
 
-def test_agent_create_respects_default_off_switch() -> None:
+def test_legacy_run_creation_endpoint_is_not_exposed() -> None:
     engine = build_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     session = Session(engine, expire_on_commit=False)
@@ -167,8 +171,12 @@ def test_agent_create_respects_default_off_switch() -> None:
                 "/api/v1/agent/runs",
                 json={"task": "不应创建"},
             )
-            assert response.status_code == 503
-            assert response.json()["error"]["code"] == "AGENT_DISABLED"
+            assert response.status_code == 405
+            assert service.list_runs(
+                "disabled-user",
+                offset=0,
+                limit=20,
+            ).items == []
     finally:
         app.dependency_overrides.clear()
         session.close()

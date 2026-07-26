@@ -14,7 +14,7 @@ function requestId() {
     || `agent-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-export function useAgentStream(onSettled) {
+export function useAgentStream(onSettled, onEvent) {
   const state = ref(initialAgentStreamState())
   const running = computed(() => [
     'creating_message',
@@ -25,6 +25,7 @@ export function useAgentStream(onSettled) {
 
   function handle(event, data) {
     state.value = reduceAgentEvent(state.value, event, data)
+    onEvent?.(event, data)
   }
 
   async function send(threadId, content, references = {}) {

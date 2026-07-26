@@ -6,7 +6,14 @@ defineProps({
   runDetails: { type: Object, default: () => ({}) },
   live: { type: Object, default: null },
 })
-defineEmits(['retry', 'select-source', 'select-artifact', 'toggle-reference'])
+defineEmits([
+  'retry',
+  'select-source',
+  'select-artifact',
+  'toggle-reference',
+  'toggle-source-reference',
+  'toggle-artifact-reference',
+])
 </script>
 
 <template>
@@ -24,6 +31,8 @@ defineEmits(['retry', 'select-source', 'select-artifact', 'toggle-reference'])
       @select-source="$emit('select-source', $event)"
       @select-artifact="$emit('select-artifact', $event)"
       @toggle-reference="$emit('toggle-reference', $event)"
+      @toggle-source-reference="$emit('toggle-source-reference', $event)"
+      @toggle-artifact-reference="$emit('toggle-artifact-reference', $event)"
     />
   </section>
 </template>

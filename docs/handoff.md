@@ -12,10 +12,13 @@
 
 下一任务定向阅读：
 
-- `docs/conversational-agent-design.md` 的第15节
-- `docs/development-roadmap.md` 的“可选增强”
-- `docs/technical-design.md` 的13.8与现有Agent工具安全边界
-- 只读高风险工具确认、审计、run状态机和前端确认交互相关源码与测试
+- `docs/conversational-agent-design.md` 的第16节
+- `docs/development-roadmap.md` 的阶段14，只读任务14.1
+- `docs/technical-design.md` 的13.8～13.9
+- `backend/app/modules/agent/thread_models.py`
+- `backend/app/modules/agent/thread_repository.py`
+- `backend/app/modules/agent/conversation_application.py`中消息创建事务
+- `backend/tests/test_agent_thread_repository.py`、Agent会话API与迁移测试的直接相关部分
 
 ## 2. 当前状态
 
@@ -72,6 +75,15 @@
 - 任务13.8已完成：数据库为`0018_agent_threads_messages (head)`；同一thread三轮真实
   报告、显式产物引用、SSE和持久化关联通过，共3次Qwen、0次Embedding/Reranker、
   0次自动重试，累计费用¥0.044025。临时数据精确清理，正式重试恢复2。
+- 2026-07-26完成Agent Chat v3.1设计审计，尚未修改业务代码、数据库或生产：
+  - user/assistant写入顺序正确，但消息查询按`created_at + UUID`排序；同一秒记录在
+    MySQL上可能交换，现有SQLite分页测试没有覆盖相同时间戳的user/assistant。
+  - Vue仍加载`thread_id=NULL`旧独立run，并保留“旧版独立任务”、legacy专用消息和永久
+    “来源与产物”第三栏。
+  - 当前LangGraph实际是可提前结束的工具循环，5步是上限；Planner缺少直接回答和澄清
+    路由，导致身份、问候或反馈可能误调用知识工具。
+  - v3.1将先修顺序真相，再退出旧入口、改两栏聊天、统一事件归并，最后增加四类任务
+    路由和按需工具循环。完整依据见对话Agent设计第16节。
 
 ## 3. 阶段7最终证据
 
@@ -365,16 +377,24 @@ Telemetry只观察业务，不记录完整问题、回答、Prompt、密码、JW
 - `Platform v1.4`应用、迁移、测试、前端和部署恢复修改已经整体发布，后续文档提交不得夹带业务行为变化。
 - 不得清理、覆盖或回退现有修改；禁止`git reset --hard`和批量清理。
 - 后续付费模型验证仍需遵守独立预算闸门；不得把本地Mock证据写成真实多轮质量验收。
+- 本轮只允许更新设计文档；生产仍运行v3.0。不得在没有新迁移、测试、发布和在线验收时
+  把README或简历改写成v3.1已完成。
 
 ## 7. 唯一下一任务
 
-**任务14.1：设计高风险写工具的人工确认节点，不实现任何写工具。**
+**任务14.1：建立Agent消息的确定顺序基线。**
 
 本小步边界：
 
-- 只定义哪些Agent动作必须等待用户确认、确认记录归属哪个模块，以及run/step/message
-  在`waiting_confirmation/approved/rejected/expired`时如何形成可恢复终态。
-- 确认必须绑定当前用户、thread、run、工具名、参数摘要和过期时间；页面只展示公开动作
-  摘要，不展示Prompt、隐藏推理、密钥或第三方原始请求。
-- 保持现有五个只读工具、普通RAG、知识审核和`Agent Chat v3.0`生产行为不变；本任务只
-  更新产品/技术设计和测试计划，不新增数据库迁移、API、页面或模型调用。
+- 新Alembic迁移为`agent_threads`增加`next_message_sequence`，为`agent_messages`
+  增加thread内递增`sequence_no`和可空`turn_id`；优先按run触发/响应关系回填历史，再
+  建立`UNIQUE(thread_id, sequence_no)`。
+- 一轮发送使用thread行锁一次预留user和assistant两个连续序号，并在同一事务更新
+  thread计数器；禁止无锁的“查询MAX后加1”。
+- 消息列表、最近消息、上下文和摘要查询统一按sequence；Schema/API返回sequence与
+  turn，前端暂不改版但不能破坏兼容。
+- 增加同一时间戳user/assistant、分页、并发分配、SQLite迁移升级/降级和MySQL排序契约
+  测试。先运行定向测试，再按迁移风险运行后端完整回归。
+- 本任务不删除旧run、不改Agent页面、不改LangGraph/工具/Prompt、不调用Qwen、
+  Embedding或Reranker、不部署。
+- 完成后只把handoff的唯一下一任务推进到14.2；不得跨步实现14.2～14.8。

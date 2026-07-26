@@ -46,11 +46,14 @@
 - 回答反馈、人工复核、滚动摘要、用户显式记忆、PDF解析告警、引用追溯和知识复核已作为`Knowledge v2.3`发布。
 - 按用户隔离的Agent会话/消息、三轮连续任务、公开计划与工具过程、来源/产物引用、
   活动/归档历史和桌面/移动三栏工作台已冻结为`Agent Chat v3.0`。
+- 已完成`Agent Chat v3.1`设计审计；消息确定顺序、旧独立任务退役、两栏聊天界面和
+  直接回答/澄清/按需工具路由仍是待开发目标，不能作为当前已实现功能宣传。
 
 尚未实现，不能当作当前功能宣传：
 
 - 自有品牌域名与适用的DNS/备案配置。
 - 高风险写工具的人工确认节点、多Agent、后台任务队列和可视化工作流。
+- Agent Chat v3.1的确定消息顺序、聊天优先界面和按需工具路由。
 
 ## 系统架构
 
@@ -239,7 +242,8 @@ npm --prefix frontend run build
 4. 页面、角色或交互任务再读 `docs/product-and-ui-design.md` 的对应章节。
 5. `docs/project-vision.md` 只在产品范围变化时读取。
 6. `docs/deployment.md` 与发布审计只在部署、验收或回滚任务中读取。
-7. 阶段13对话Agent任务定向读取 `docs/conversational-agent-design.md`。
+7. 阶段13～14对话Agent任务定向读取 `docs/conversational-agent-design.md`，当前开发
+   只读第16节和handoff指定的小任务。
 
 ## 下一步
 
@@ -247,7 +251,8 @@ npm --prefix frontend run build
 
 ```text
 阶段1～12稳定性观察
--> 阶段13 Codex式对话Agent工作台
+-> 阶段13 Agent Chat v3.0（已完成）
+-> 阶段14 Agent Chat v3.1产品修复
 -> 可选：人工确认、后台任务、CI/CD和更丰富的受控工具
 ```
 

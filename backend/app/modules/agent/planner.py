@@ -18,8 +18,15 @@ class PlanDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     plan: list[str] = Field(default_factory=list, max_length=5)
+    route: Literal[
+        "direct_reply",
+        "clarification",
+        "tool_required",
+        "refuse",
+    ] = "tool_required"
     allowed: bool = True
     refusal_message: str | None = Field(default=None, max_length=500)
+    response_message: str | None = Field(default=None, max_length=2000)
     usage: PlannerUsage = Field(default_factory=PlannerUsage)
 
 
@@ -34,7 +41,7 @@ class ToolDecision(BaseModel):
 class InspectionDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    action: Literal["continue", "finalize", "fail"]
+    action: Literal["continue", "finalize", "clarification", "fail"]
     final_output: str | None = Field(default=None, max_length=20_000)
     error_type: str | None = Field(default=None, max_length=100)
     usage: PlannerUsage = Field(default_factory=PlannerUsage)

@@ -2,7 +2,6 @@
 defineProps({
   threads: { type: Array, default: () => [] },
   selectedId: { type: String, default: '' },
-  legacyRuns: { type: Array, default: () => [] },
   loading: Boolean,
   statusFilter: { type: String, default: 'active' },
 })
@@ -13,7 +12,6 @@ defineEmits([
   'archive',
   'restore',
   'delete',
-  'legacy',
   'show-active',
   'show-archived',
 ])
@@ -68,12 +66,6 @@ defineEmits([
         <button class="danger" :aria-label="`删除${thread.title}`" @click="$emit('delete', thread)">删除</button>
       </div>
     </div>
-    <details v-if="legacyRuns.length" class="legacy">
-      <summary>旧版独立任务（{{ legacyRuns.length }}）</summary>
-      <button v-for="run in legacyRuns" :key="run.id" @click="$emit('legacy', run)">
-        {{ run.task }}
-      </button>
-    </details>
   </aside>
 </template>
 
@@ -89,9 +81,7 @@ defineEmits([
 .thread-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thread-main small, .empty { color: var(--muted); }
 .thread-actions { display: flex; gap: 8px; padding: 6px 4px 0; }
-.thread-actions button, .legacy button { border: 0; background: none; color: var(--primary); cursor: pointer; font-size: 12px; }
+.thread-actions button { border: 0; background: none; color: var(--primary); cursor: pointer; font-size: 12px; }
 .thread-actions .danger { color: #b42318; }
-.legacy { margin-top: 18px; color: var(--muted); }
-.legacy button { display: block; width: 100%; padding: 8px 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty { padding: 28px 8px; text-align: center; }
 </style>

@@ -15,7 +15,7 @@
 | 可观测性 | 11 |
 | 用户治理、资料审核、管理中台 | 12 |
 | LangGraph Agent与阶段十二知识质量 | 13 |
-| Codex式对话Agent | 13.8与`docs/conversational-agent-design.md` |
+| 对话Agent与v3.1修复 | 13.8～13.9与`docs/conversational-agent-design.md` |
 | 错误、配置、测试、部署 | 14～18 |
 
 不要为了确认一个小任务而读取全部历史实验段落；先查对应摘要，只有定位设计依据时再展开细节。
@@ -60,6 +60,7 @@ flowchart LR
     A --> CS["会话应用服务"]
     A --> KS["知识库应用服务"]
     A --> RS["RAG 应用服务"]
+    A --> AS["Agent会话与运行服务"]
     A --> RL["RateLimitService"]
     RL --> RI["RedisInfrastructure"]
     AU --> M[("MySQL")]
@@ -69,10 +70,16 @@ flowchart LR
     KS --> C[("Chroma")]
     RS --> C
     RS --> Q["通义千问"]
+    AS --> M
+    AS --> Q
+    AS --> KS
     KS --> E["DashScope Embedding"]
 ```
 
-Redis 已承载注册、登录、四个聊天入口的限流，普通上传的频率与并发保护、管理员上传的并发保护，以及带会话问答的生成锁与请求幂等。Agent 仍未实现，不能画进“当前组件”冒充现状。
+Redis 已承载注册、登录、四个聊天入口的限流，普通上传的频率与并发保护、管理员上传的
+并发保护，以及RAG/Agent会话的生成锁与请求幂等。Agent已通过独立会话应用服务、
+LangGraph、ToolRegistry和公开业务Port接入；它只读取`published`知识，不能直接访问
+SQL、Chroma或系统命令。
 
 ### 3.2 当前后端目录
 
@@ -1416,6 +1423,93 @@ Chroma客户端、系统命令或隐藏推理。
 `generate_learning_report` step并产生一个同来源Markdown产物。第三轮显式引用第二轮
 产物；验收账号、thread/message/run/step/artifact和精确幂等/限流键随后全部清理，
 正式重试恢复2，知识库保持27份文档、103个Chroma片段和27个上传文件。
+
+### 13.9 Agent Chat v3.1 修复边界 `[目标]`
+
+v3.1不是增加更多Agent工具，而是修复v3.0产品主链路。当前代码审计证据：
+
+- `AgentConversationApplication`按user message、run、assistant message顺序写入，业务
+  创建顺序正确。
+- `AgentThreadRepository`读取消息时却按`created_at DESC, id DESC`查询后反转；
+  `AgentMessage.id`是随机UUID。MySQL同一秒时间精度下，UUID不能作为消息先后真相。
+- Vue同时拼接持久消息、乐观消息和临时助手消息，并保留旧独立run专用分支；缺少一个
+  按稳定ID归并的时间线状态边界。
+- `BoundedAgentGraph`已经具备`select_tool -> execute_tool -> inspect_result`循环，
+  `max_steps`是上限；但`PlanDecision`只有`allowed`布尔值，无法表达无需工具回答或
+  需要澄清。
+
+#### 13.9.1 消息顺序真相
+
+为`agent_messages`增加：
+
+```text
+sequence_no BIGINT NOT NULL
+turn_id VARCHAR(36) NULL
+agent_threads.next_message_sequence BIGINT NOT NULL DEFAULT 1
+UNIQUE(thread_id, sequence_no)
+INDEX(thread_id, sequence_no)
+```
+
+每轮使用`SELECT ... FOR UPDATE`锁定thread，从`next_message_sequence`一次预留两个
+连续序号，在同一事务中创建user与assistant占位消息并把计数器加2。禁止无锁查询消息
+最大值。Repository的列表、分页、最近上下文和摘要查询统一使用`sequence_no`，API和
+SSE同时返回该字段。`created_at`只保留审计与展示用途。
+
+迁移优先依据run的`trigger_message_id/response_message_id`配对历史user/assistant，
+再按轮创建时间排序；不能关联的system或异常历史消息才使用`created_at/id`稳定兜底。
+回填后设置thread计数器，再建立非空和唯一约束。该回填是历史兼容手段，不代表日常
+排序继续依赖UUID。迁移必须验证：
+
+- 同时间戳user/assistant顺序。
+- 分页边界不重复、不遗漏。
+- 并发序号分配不产生唯一键冲突或顺序空洞。
+- SQLite升级/降级和一次MySQL迁移契约。
+
+#### 13.9.2 时间线状态边界
+
+前端新增timeline reducer作为REST与SSE之间的唯一状态入口：
+
+```text
+REST/SSE
+-> normalize by message_id/run_id/step_id/artifact_id
+-> upsert entity
+-> sort messages by sequence_no
+-> render message parts
+```
+
+消息正文、执行过程、来源和产物分别是同一assistant message的部件。重复事件更新同一
+实体，事件晚到不创建第二个气泡。Vue View只编排组件，不直接维护legacy、optimistic、
+live三套数组。
+
+#### 13.9.3 显式任务路由
+
+`PlanDecision`后续演进为显式route：
+
+```text
+direct_reply | clarification | tool_required | refuse
+```
+
+- `direct_reply`和`clarification`形成0-step run，继续保留消息、费用和审计一致性。
+- `tool_required`进入现有ToolRegistry循环；一次运行实际0～5次工具调用。
+- `refuse`返回稳定安全边界。
+- `inspect_result`可以结束、继续、改选工具或转澄清，但不能输出隐藏推理。
+
+首版在现有Planner Port和LangGraph节点上增量实现，不直接切换到LangChain
+`create_agent`，避免同时改变模型协议、状态机、持久化、SSE和前端。
+
+#### 13.9.4 旧独立run退出
+
+`agent_runs/agent_steps/agent_artifacts`仍是threaded Agent执行真相，不能删除。只退出
+`thread_id IS NULL`的旧模式：
+
+- 删除Vue入口和专用渲染状态。
+- 关闭用户可调用的无thread创建入口。
+- 维护脚本默认dry-run；显式确认、备份后才删除旧run及专属step/artifact/file。
+- 生产清理不放入Alembic或容器启动，不影响`thread_id IS NOT NULL`记录。
+
+完整布局、任务拆分、外部方案取舍和验收标准见
+[`docs/conversational-agent-design.md`](conversational-agent-design.md)第16节以及
+[`docs/development-roadmap.md`](development-roadmap.md)阶段14。
 
 ## 14. 统一接口与错误规范
 

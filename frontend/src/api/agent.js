@@ -1,11 +1,6 @@
 import http, { apiBaseUrl, createApiErrorFromResponse } from './http.js'
 import { getAuthorizationHeaders, notifyUnauthorized } from '../auth/token.js'
 
-export async function createAgentRun(task) {
-  const response = await http.post('/agent/runs', { task })
-  return response.data
-}
-
 export async function createAgentThread(title = '新对话') {
   return (await http.post('/agent/threads', { title })).data
 }

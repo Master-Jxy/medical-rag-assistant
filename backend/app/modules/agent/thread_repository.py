@@ -1,6 +1,7 @@
 """按用户隔离的Agent会话与消息持久化。"""
 
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
@@ -122,6 +123,48 @@ class AgentThreadRepository:
             raise AgentThreadNotFoundError()
         return thread
 
+    def reserve_turn(
+        self,
+        user_id: str,
+        thread_id: str,
+    ) -> tuple[int, int, str]:
+        thread = self.session.scalar(
+            select(AgentThread)
+            .where(
+                AgentThread.id == thread_id,
+                AgentThread.user_id == user_id,
+            )
+            .with_for_update()
+        )
+        if thread is None:
+            raise AgentThreadNotFoundError()
+        user_sequence = thread.next_message_sequence
+        assistant_sequence = user_sequence + 1
+        thread.next_message_sequence = assistant_sequence + 1
+        turn_id = str(uuid4())
+        self.session.flush()
+        return user_sequence, assistant_sequence, turn_id
+
+    def _reserve_message_sequence(
+        self,
+        user_id: str,
+        thread_id: str,
+    ) -> int:
+        thread = self.session.scalar(
+            select(AgentThread)
+            .where(
+                AgentThread.id == thread_id,
+                AgentThread.user_id == user_id,
+            )
+            .with_for_update()
+        )
+        if thread is None:
+            raise AgentThreadNotFoundError()
+        sequence_no = thread.next_message_sequence
+        thread.next_message_sequence += 1
+        self.session.flush()
+        return sequence_no
+
     def rename_thread(
         self,
         user_id: str,
@@ -159,6 +202,8 @@ class AgentThreadRepository:
         run_id: str | None = None,
         reply_to_message_id: str | None = None,
         metadata: dict[str, object] | None = None,
+        sequence_no: int | None = None,
+        turn_id: str | None = None,
     ) -> AgentMessage:
         thread = self.get_thread(user_id, thread_id)
         safe_metadata = dict(metadata or {})
@@ -175,9 +220,16 @@ class AgentThreadRepository:
             )
             if run is None:
                 raise AgentMessageNotFoundError()
+        assigned_sequence = (
+            sequence_no
+            if sequence_no is not None
+            else self._reserve_message_sequence(user_id, thread_id)
+        )
         message = AgentMessage(
             thread_id=thread_id,
             user_id=user_id,
+            sequence_no=assigned_sequence,
+            turn_id=turn_id,
             role=role,
             content=content,
             status=status,
@@ -207,8 +259,7 @@ class AgentThreadRepository:
                     AgentMessage.user_id == user_id,
                 )
                 .order_by(
-                    AgentMessage.created_at.desc(),
-                    AgentMessage.id.desc(),
+                    AgentMessage.sequence_no.desc(),
                 )
                 .offset(offset)
                 .limit(limit)
@@ -232,13 +283,11 @@ class AgentThreadRepository:
                 .where(
                     AgentMessage.thread_id == thread_id,
                     AgentMessage.user_id == user_id,
-                    AgentMessage.created_at <= current.created_at,
-                    AgentMessage.id != current.id,
+                    AgentMessage.sequence_no < current.sequence_no,
                     AgentMessage.status.in_(("completed", "stopped")),
                 )
                 .order_by(
-                    AgentMessage.created_at.desc(),
-                    AgentMessage.id.desc(),
+                    AgentMessage.sequence_no.desc(),
                 )
                 .limit(limit)
             ).all()

@@ -116,13 +116,14 @@ class LangChainAgentPlanner(AgentPlanner):
         if deterministic is not None:
             return deterministic
         decision, usage = self.client.invoke_json(
-            "先判断任务是否属于已发布医学资料的检索、摘要、比较或学习报告。"
-            "诊断、处方、网页、代码、SQL、系统命令、写入或删除请求必须allowed=false；"
-            "讨论系统用途、安全边界或知识库规则属于资料整理，允许执行；"
-            "其他任务生成1到5条用户可见的简短执行计划。\n"
+            "把任务路由为direct_reply、clarification、tool_required或refuse。"
+            "身份、能力、礼貌反馈和无需资料的系统边界说明走direct_reply；"
+            "缺少文档或比较对象走clarification；检索、摘要、比较和报告走tool_required；"
+            "诊断、处方、代码、SQL、系统命令、写入或删除走refuse。"
+            "tool_required生成1到5条用户可见计划，其他路由提供response_message。\n"
             f"任务：{state['task']}\n"
-            'JSON格式：{"plan":["步骤1"],"allowed":true,'
-            '"refusal_message":null}',
+            'JSON格式：{"route":"tool_required","plan":["步骤1"],'
+            '"allowed":true,"response_message":null,"refusal_message":null}',
             PlanDecision,
         )
         public_plan = decision.plan or [
@@ -167,11 +168,13 @@ class LangChainAgentPlanner(AgentPlanner):
             )
         decision, usage = self.client.invoke_json(
             "检查当前工具结果。足够完成任务则finalize，需要其他工具则continue，"
-            "结果不可用则fail。final_output只能写用户可见结论，不写推理过程。\n"
+            "缺少继续执行所必需且不能安全推断的信息则clarification，并在final_output"
+            "中给出一个简短明确的追问；结果不可用则fail。final_output只能写用户可见"
+            "结论或澄清问题，不写推理过程。\n"
             f"任务：{state['task']}\n"
             f"计划：{json.dumps(state['plan'], ensure_ascii=False)}\n"
             f"工具结果：{json.dumps(state.get('last_tool_result'), ensure_ascii=False)}\n"
-            'JSON格式：{"action":"continue|finalize|fail",'
+            'JSON格式：{"action":"continue|finalize|clarification|fail",'
             '"final_output":null,"error_type":null}',
             InspectionDecision,
         )
@@ -189,6 +192,19 @@ class LangChainAgentPlanner(AgentPlanner):
 
     @staticmethod
     def _deterministic_plan_decision(task: str) -> PlanDecision | None:
+        normalized = task.strip().rstrip("。！!？?")
+        direct_replies = {
+            "你好": "你好，我是资料整理 Agent，可以帮助你检索、摘要、比较已发布的医学资料并生成学习报告。",
+            "你是谁": "我是受控的医学资料整理 Agent，只处理已发布知识库资料，不提供诊断或处方。",
+            "不错": "谢谢认可。你可以继续让我摘要资料、比较文档或生成学习报告。",
+            "谢谢": "不客气。需要继续整理资料时直接告诉我目标即可。",
+        }
+        if normalized in direct_replies:
+            return PlanDecision(
+                route="direct_reply",
+                plan=[],
+                response_message=direct_replies[normalized],
+            )
         forbidden_phrases = (
             "系统命令",
             "执行命令",
@@ -204,15 +220,33 @@ class LangChainAgentPlanner(AgentPlanner):
         )
         if any(phrase in task for phrase in forbidden_phrases):
             return PlanDecision(
+                route="refuse",
                 plan=["拒绝越权任务"],
                 allowed=False,
                 refusal_message="该任务超出资料整理Agent的安全能力范围。",
+            )
+        if any(word in task for word in ("比较", "对比")) and len(
+            DOCUMENT_ID_PATTERN.findall(task)
+        ) < 2:
+            return PlanDecision(
+                route="clarification",
+                plan=[],
+                response_message="请提供至少两份需要比较的已发布资料或文档ID。",
+            )
+        if any(word in task for word in ("摘要", "总结", "报告")) and not (
+            DOCUMENT_ID_PATTERN.findall(task)
+        ):
+            return PlanDecision(
+                route="clarification",
+                plan=[],
+                response_message="请提供需要整理的已发布资料名称或文档ID。",
             )
         document_ids = DOCUMENT_ID_PATTERN.findall(task)
         if document_ids and any(
             word in task for word in ("摘要", "总结", "比较", "对比", "报告", "文档信息", "资料信息")
         ):
             return PlanDecision(
+                route="tool_required",
                 plan=["读取指定的已发布资料", "生成带来源的整理结果"],
                 allowed=True,
             )

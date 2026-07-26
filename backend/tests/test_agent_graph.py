@@ -189,3 +189,20 @@ def test_graph_refuses_unsupported_task_without_selecting_tool() -> None:
     assert result["status"] == AgentRunStatus.COMPLETED
     assert result["step_count"] == 0
     assert result["final_output"] == "不支持执行系统命令。"
+
+
+def test_graph_direct_reply_completes_without_tool_step() -> None:
+    planner = StubPlanner()
+    planner.classify_and_plan = lambda state: PlanDecision(
+        route="direct_reply",
+        response_message="你好，我是资料整理Agent。",
+    )
+    runner = BoundedAgentGraph(
+        planner=planner,
+        registry=ToolRegistry([StubTool()]),
+    )
+    result = runner.invoke(initial_state(AgentPolicy(enabled=True)))
+
+    assert result["status"] == AgentRunStatus.COMPLETED
+    assert result["step_count"] == 0
+    assert result["final_output"] == "你好，我是资料整理Agent。"

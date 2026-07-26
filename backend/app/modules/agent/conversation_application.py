@@ -112,6 +112,9 @@ class AgentConversationApplication:
         source_items: list[dict[str, object]] = []
         try:
             lease = self.generation_lock.acquire_agent(user_id, thread_id)
+            user_sequence, assistant_sequence, turn_id = (
+                self.threads.reserve_turn(user_id, thread_id)
+            )
             user_message = self.threads.create_message(
                 user_id=user_id,
                 thread_id=thread_id,
@@ -120,6 +123,8 @@ class AgentConversationApplication:
                 status="completed",
                 reply_to_message_id=reply_to_message_id,
                 metadata=metadata,
+                sequence_no=user_sequence,
+                turn_id=turn_id,
             )
             run = self.runs.create_run(
                 user_id=user_id,
@@ -138,6 +143,8 @@ class AgentConversationApplication:
                 run_id=run.id,
                 reply_to_message_id=user_message.id,
                 metadata={},
+                sequence_no=assistant_sequence,
+                turn_id=turn_id,
             )
             self.runs.link_response_message(
                 user_id, run.id, assistant_message.id
@@ -150,6 +157,9 @@ class AgentConversationApplication:
                     "user_message_id": user_message.id,
                     "assistant_message_id": assistant_message.id,
                     "run_id": run.id,
+                    "user_sequence_no": user_message.sequence_no,
+                    "assistant_sequence_no": assistant_message.sequence_no,
+                    "turn_id": turn_id,
                 },
             }
             context = self.context_builder.build(
@@ -254,6 +264,8 @@ class AgentConversationApplication:
                     "message_id": assistant_message.id,
                     "status": assistant_message.status,
                     "run_id": run.id,
+                    "sequence_no": assistant_message.sequence_no,
+                    "turn_id": assistant_message.turn_id,
                 },
             }
             try:
@@ -430,6 +442,9 @@ class AgentConversationApplication:
                 "user_message_id": user_message.id,
                 "assistant_message_id": assistant_message.id,
                 "run_id": assistant_message.run_id,
+                "user_sequence_no": user_message.sequence_no,
+                "assistant_sequence_no": assistant_message.sequence_no,
+                "turn_id": assistant_message.turn_id,
                 "replayed": True,
             },
         }
@@ -444,6 +459,8 @@ class AgentConversationApplication:
                 "message_id": assistant_message.id,
                 "status": assistant_message.status,
                 "run_id": assistant_message.run_id,
+                "sequence_no": assistant_message.sequence_no,
+                "turn_id": assistant_message.turn_id,
                 "replayed": True,
             },
         }

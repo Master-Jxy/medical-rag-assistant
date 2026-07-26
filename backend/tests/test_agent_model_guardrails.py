@@ -1,5 +1,7 @@
 """Agent模型规划外层的确定性业务护栏。"""
 
+import pytest
+
 from app.infrastructure.agent_model import LangChainAgentPlanner
 
 
@@ -96,3 +98,19 @@ def test_current_forbidden_task_still_wins_over_safe_conversation_history() -> N
 
     assert decision.allowed is False
     assert decision.plan == ["拒绝越权任务"]
+
+
+@pytest.mark.parametrize("task", ["你好", "你是谁", "不错"])
+def test_small_talk_routes_to_zero_tool_direct_reply(task) -> None:
+    decision = LangChainAgentPlanner._deterministic_plan_decision(task)
+    assert decision.route == "direct_reply"
+    assert decision.response_message
+    assert decision.plan == []
+
+
+def test_missing_comparison_target_routes_to_clarification() -> None:
+    decision = LangChainAgentPlanner._deterministic_plan_decision(
+        "请比较这两份资料"
+    )
+    assert decision.route == "clarification"
+    assert "至少两份" in decision.response_message

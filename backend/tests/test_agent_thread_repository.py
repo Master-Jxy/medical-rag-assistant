@@ -3,6 +3,7 @@
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone
 
 from app.db.base import Base
 from app.db.session import build_engine
@@ -294,4 +295,45 @@ def test_message_first_page_returns_the_most_recent_rows_in_display_order() -> N
             offset=2,
             limit=2,
         ) == messages[1:3]
+    engine.dispose()
+
+
+def test_message_sequence_is_stable_when_timestamps_are_identical() -> None:
+    engine = build_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as session:
+        create_user(session, "owner")
+        repository = AgentThreadRepository(session)
+        thread = repository.create_thread(user_id="owner")
+        user_sequence, assistant_sequence, turn_id = repository.reserve_turn(
+            "owner", thread.id
+        )
+        user_message = repository.create_message(
+            user_id="owner",
+            thread_id=thread.id,
+            role="user",
+            content="先问",
+            sequence_no=user_sequence,
+            turn_id=turn_id,
+        )
+        assistant_message = repository.create_message(
+            user_id="owner",
+            thread_id=thread.id,
+            role="assistant",
+            content="后答",
+            sequence_no=assistant_sequence,
+            turn_id=turn_id,
+        )
+        same_time = datetime(2026, 7, 26, tzinfo=timezone.utc)
+        user_message.created_at = same_time
+        assistant_message.created_at = same_time
+        session.commit()
+
+        assert repository.list_messages("owner", thread.id) == [
+            user_message,
+            assistant_message,
+        ]
+        assert (user_message.sequence_no, assistant_message.sequence_no) == (1, 2)
+        assert user_message.turn_id == assistant_message.turn_id == turn_id
+        assert thread.next_message_sequence == 3
     engine.dispose()

@@ -1,10 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import {
-  downloadAgentArtifact,
-  getAgentRun,
-  listAgentRuns,
-} from '../api/agent.js'
+import { downloadAgentArtifact } from '../api/agent.js'
 import { getApiErrorMessage } from '../api/http.js'
 import { getDocumentTrace, openDocumentPreview } from '../api/citations.js'
 import AgentComposer from '../features/agent-chat/AgentComposer.vue'
@@ -13,14 +9,14 @@ import AgentConversation from '../features/agent-chat/AgentConversation.vue'
 import AgentThreadSidebar from '../features/agent-chat/AgentThreadSidebar.vue'
 import { useAgentStream } from '../features/agent-chat/useAgentStream.js'
 import { useAgentThread } from '../features/agent-chat/useAgentThread.js'
+import { useAgentTimeline } from '../features/agent-chat/useAgentTimeline.js'
 
 const threadState = useAgentThread()
-const optimisticMessages = ref([])
+const timeline = useAgentTimeline()
 const errorMessage = ref('')
 const notice = ref('')
-const legacyRuns = ref([])
-const legacySelected = ref(null)
 const selectedSource = ref(null)
+const selectedArtifact = ref(null)
 const threadDrawerOpen = ref(false)
 const contextDrawerOpen = ref(false)
 const downloadingId = ref('')
@@ -49,48 +45,12 @@ const referenceLabels = computed(() => [
 ])
 
 const stream = useAgentStream(async () => {
-  optimisticMessages.value = []
   await threadState.reloadCurrent()
-})
+  timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
+}, timeline.handle)
 
-const displayMessages = computed(() => {
-  if (legacySelected.value) {
-    return [{
-      id: `legacy-${legacySelected.value.id}`,
-      role: 'assistant',
-      status: legacySelected.value.status,
-      content: legacySelected.value.final_result || legacySelected.value.task,
-      run_id: legacySelected.value.id,
-      metadata: {
-        source_ids: [],
-        artifact_ids: (legacySelected.value.artifacts || []).map((item) => item.id),
-      },
-    }]
-  }
-  const rows = [...threadState.messages.value, ...optimisticMessages.value]
-  if (
-    stream.state.value.assistantMessageId
-    && !rows.some((item) => item.id === stream.state.value.assistantMessageId)
-  ) {
-    rows.push({
-      id: stream.state.value.assistantMessageId,
-      role: 'assistant',
-      status: stream.state.value.phase,
-      content: stream.state.value.output,
-      run_id: stream.state.value.runId,
-      metadata: {
-        source_ids: stream.state.value.sources.map((item) => item.document_id).filter(Boolean),
-        artifact_ids: stream.state.value.artifacts.map((item) => item.artifact_id).filter(Boolean),
-      },
-    })
-  }
-  return rows
-})
-
-const runDetails = computed(() => {
-  if (!legacySelected.value) return threadState.runDetails.value
-  return { [legacySelected.value.id]: legacySelected.value }
-})
+const displayMessages = timeline.messages
+const runDetails = computed(() => threadState.runDetails.value)
 
 const sources = computed(() => {
   const rows = displayMessages.value.flatMap((item) => {
@@ -122,9 +82,9 @@ const artifacts = computed(() => {
 
 async function selectThread(thread) {
   errorMessage.value = ''
-  legacySelected.value = null
   try {
     await threadState.selectThread(thread)
+    timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
     references.value = { messageIds: [], sourceIds: [], artifactIds: [] }
     threadDrawerOpen.value = false
   } catch (error) {
@@ -136,7 +96,7 @@ async function createThread() {
   errorMessage.value = ''
   try {
     await threadState.newThread()
-    legacySelected.value = null
+    timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
     threadDrawerOpen.value = false
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
@@ -192,25 +152,16 @@ async function removeThread(thread) {
 async function send(content) {
   errorMessage.value = ''
   notice.value = ''
-  legacySelected.value = null
   try {
     let thread = threadState.currentThread.value
     if (!thread) thread = await threadState.newThread()
     if (thread.title === '新对话') {
       await threadState.renameThread(thread, content.slice(0, 30))
     }
-    optimisticMessages.value = [{
-      id: `pending-${Date.now()}`,
-      role: 'user',
-      status: 'pending',
-      content,
-      run_id: null,
-      metadata: {},
-    }]
+    timeline.beginUser(content)
     await stream.send(thread.id, content, references.value)
     references.value = { messageIds: [], sourceIds: [], artifactIds: [] }
   } catch (error) {
-    optimisticMessages.value = []
     errorMessage.value = getApiErrorMessage(error)
   }
 }
@@ -253,27 +204,23 @@ async function stop() {
   }
 }
 
-async function selectLegacy(run) {
-  try {
-    legacySelected.value = await getAgentRun(run.id)
-    threadState.currentThread.value = null
-    threadState.messages.value = []
-    threadDrawerOpen.value = false
-  } catch (error) {
-    errorMessage.value = getApiErrorMessage(error)
-  }
-}
-
 async function selectSource(source, open = false) {
   const documentId = typeof source === 'string' ? source : source.document_id
   const page = typeof source === 'string' ? null : source.page
   try {
+    selectedArtifact.value = null
     selectedSource.value = await getDocumentTrace(documentId)
     contextDrawerOpen.value = true
     if (open) await openDocumentPreview(documentId, page)
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
   }
+}
+
+function selectArtifact(artifact) {
+  selectedSource.value = null
+  selectedArtifact.value = artifact
+  contextDrawerOpen.value = true
 }
 
 async function download(artifact) {
@@ -295,11 +242,8 @@ async function download(artifact) {
 
 onMounted(async () => {
   try {
-    const [runs] = await Promise.all([
-      listAgentRuns(100),
-      threadState.loadThreads(true),
-    ])
-    legacyRuns.value = runs.items.filter((item) => !item.thread_id)
+    await threadState.loadThreads(true)
+    timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
   }
@@ -310,13 +254,12 @@ onMounted(async () => {
   <section class="agent-page">
     <header class="page-toolbar">
       <div>
-        <span>AGENT CHAT V3</span>
+        <span>AGENT CHAT V3.1</span>
         <h1>资料整理 Agent</h1>
         <p>连续会话承载任务上下文；公开展示计划、工具、来源与产物，不展示隐藏推理。</p>
       </div>
       <div class="mobile-tools">
         <button aria-label="打开Agent会话列表" @click="threadDrawerOpen = true">会话</button>
-        <button aria-label="打开来源与产物" @click="contextDrawerOpen = true">上下文</button>
       </div>
     </header>
 
@@ -331,7 +274,6 @@ onMounted(async () => {
         <AgentThreadSidebar
           :threads="threadState.threads.value"
           :selected-id="threadState.currentThread.value?.id || ''"
-          :legacy-runs="legacyRuns"
           :loading="threadState.loading.value"
           :status-filter="threadState.statusFilter.value"
           @new="createThread"
@@ -340,7 +282,6 @@ onMounted(async () => {
           @archive="archiveThread"
           @restore="restoreThread"
           @delete="removeThread"
-          @legacy="selectLegacy"
           @show-active="showThreadStatus('active')"
           @show-archived="showThreadStatus('archived')"
         />
@@ -348,7 +289,7 @@ onMounted(async () => {
 
       <main class="conversation-shell">
         <div class="conversation-title">
-          <strong>{{ legacySelected?.task || threadState.currentThread.value?.title || '新Agent会话' }}</strong>
+          <strong>{{ threadState.currentThread.value?.title || '新Agent会话' }}</strong>
           <span v-if="stream.running.value">运行中</span>
         </div>
         <AgentConversation
@@ -357,8 +298,10 @@ onMounted(async () => {
           :live="stream.state.value"
           @retry="retry"
           @select-source="selectSource"
-          @select-artifact="contextDrawerOpen = true"
+          @select-artifact="selectArtifact"
           @toggle-reference="toggleReference('message', $event)"
+          @toggle-source-reference="toggleReference('source', $event)"
+          @toggle-artifact-reference="toggleReference('artifact', $event)"
         />
         <AgentComposer
           :disabled="stream.running.value"
@@ -370,11 +313,12 @@ onMounted(async () => {
         />
       </main>
 
-      <div class="drawer-shell context" :class="{ open: contextDrawerOpen }">
+      <div v-if="contextDrawerOpen" class="detail-overlay" @click.self="contextDrawerOpen = false">
+        <div class="drawer-shell context open">
         <button class="drawer-close" aria-label="关闭来源与产物" @click="contextDrawerOpen = false">×</button>
         <AgentContextDrawer
-          :sources="sources"
-          :artifacts="artifacts"
+          :sources="selectedSource ? [selectedSource] : []"
+          :artifacts="selectedArtifact ? [selectedArtifact] : []"
           :selected-source="selectedSource"
           :referenced-source-ids="references.sourceIds"
           :referenced-artifact-ids="references.artifactIds"
@@ -383,6 +327,7 @@ onMounted(async () => {
           @toggle-source-reference="toggleReference('source', $event)"
           @toggle-artifact-reference="toggleReference('artifact', $event)"
         />
+        </div>
       </div>
     </div>
   </section>
@@ -391,13 +336,16 @@ onMounted(async () => {
 <style scoped>
 .agent-page { min-width: 0; }
 .page-toolbar { display: flex; justify-content: space-between; gap: 16px; }
-.agent-workspace { height: min(720px, calc(100vh - 190px)); min-height: 560px; display: grid; grid-template-columns: minmax(220px, 270px) minmax(0, 1fr) minmax(220px, 280px); gap: 12px; }
+.agent-workspace { height: min(760px, calc(100vh - 190px)); min-height: 560px; display: grid; grid-template-columns: minmax(220px, 270px) minmax(0, 1fr); gap: 12px; }
 .drawer-shell { min-width: 0; min-height: 0; }
 .drawer-close, .mobile-tools { display: none; }
 .conversation-shell { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #f6f8f7; border: 1px solid var(--border); border-radius: 8px; }
 .conversation-title { height: 48px; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: #fff; }
 .conversation-title span { color: #276749; font-size: 12px; }
 .conversation-shell :deep(.conversation) { height: calc(100% - 48px); box-sizing: border-box; }
+.detail-overlay { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; padding: 24px; background: rgb(15 30 24 / 36%); }
+.detail-overlay .context { display: block; position: relative; width: min(560px, 100%); max-height: min(680px, calc(100vh - 48px)); }
+.detail-overlay .context :deep(aside) { max-height: inherit; box-shadow: 0 18px 50px rgb(20 40 31 / 24%); }
 @media (max-width: 1000px) {
   .mobile-tools { display: flex; gap: 8px; }
   .mobile-tools button { padding: 7px 10px; border: 1px solid var(--border); border-radius: 5px; background: #fff; }
@@ -405,7 +353,7 @@ onMounted(async () => {
   .drawer-shell { display: none; position: fixed; z-index: 30; top: 72px; bottom: 12px; width: min(330px, calc(100vw - 24px)); }
   .drawer-shell.open { display: block; }
   .drawer-shell.threads { left: 12px; }
-  .drawer-shell.context { right: 12px; }
+  .detail-overlay .drawer-shell.context { inset: auto; width: min(560px, 100%); }
   .drawer-close { display: block; position: absolute; z-index: 2; top: 8px; right: 10px; border: 0; background: transparent; font-size: 22px; cursor: pointer; }
   .drawer-shell :deep(aside) { box-shadow: 0 16px 40px rgb(20 40 31 / 22%); }
 }

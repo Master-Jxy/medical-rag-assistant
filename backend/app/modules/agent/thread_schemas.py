@@ -92,6 +92,8 @@ class AgentMessageResponse(BaseModel):
 
     id: str
     thread_id: str
+    sequence_no: int
+    turn_id: str | None
     role: AgentMessageRole
     content: str
     status: AgentMessageStatus

@@ -129,6 +129,7 @@ class AgentApplicationService:
         )
         graph = self.graph_factory(user_id, run_id)
         tool_started_at = monotonic()
+        active_step = None
         last_node = None
         final_state = state
         try:
@@ -148,24 +149,48 @@ class AgentApplicationService:
                     }
                 elif node == AgentNode.SELECT_TOOL:
                     tool_started_at = monotonic()
+                    active_step = self.repository.append_step(
+                        user_id=user_id,
+                        run_id=run_id,
+                        node_name=AgentNode.EXECUTE_TOOL,
+                        tool_name=current.get("selected_tool"),
+                        parameters=current.get("tool_arguments", {}),
+                    )
+                    self.session.commit()
                     yield {
                         "event": "tool_started",
                         "data": {
+                            "step_id": active_step.id,
                             "tool_name": current.get("selected_tool"),
-                            "step": current["step_count"] + 1,
+                            "step": active_step.sequence,
                         },
                     }
                 elif node == AgentNode.EXECUTE_TOOL:
-                    self._persist_tool_step(
-                        user_id,
-                        run_id,
-                        current,
-                        round((monotonic() - tool_started_at) * 1000),
-                    )
                     result = current.get("last_tool_result")
+                    if active_step is not None:
+                        self.repository.finish_step(
+                            user_id=user_id,
+                            step_id=active_step.id,
+                            status=(
+                                "failed"
+                                if current.get("error_type")
+                                else "completed"
+                            ),
+                            result_summary=(
+                                result.get("summary")
+                                if isinstance(result, dict)
+                                else None
+                            ),
+                            duration_ms=round(
+                                (monotonic() - tool_started_at) * 1000
+                            ),
+                            error_type=current.get("error_type"),
+                        )
+                        self.session.commit()
                     yield {
                         "event": "tool_completed",
                         "data": {
+                            "step_id": active_step.id if active_step else None,
                             "tool_name": current.get("selected_tool"),
                             "summary": (
                                 result.get("summary") if isinstance(result, dict) else None
@@ -175,6 +200,7 @@ class AgentApplicationService:
                             ),
                         },
                     }
+                    active_step = None
                     self._emit(
                         "agent_tool",
                         user_id,
@@ -228,13 +254,56 @@ class AgentApplicationService:
                                     "mime_type": stored.mime_type,
                                 },
                             }
+            if active_step is not None:
+                step_status = (
+                    "stopped"
+                    if final_state["status"] == AgentRunStatus.STOPPED
+                    else "failed"
+                )
+                self.repository.finish_step(
+                    user_id=user_id,
+                    step_id=active_step.id,
+                    status=step_status,
+                    duration_ms=round((monotonic() - tool_started_at) * 1000),
+                    error_type=final_state.get("error_type")
+                    or final_state.get("stop_reason"),
+                )
+                self.session.commit()
+                yield {
+                    "event": "tool_completed",
+                    "data": {
+                        "step_id": active_step.id,
+                        "tool_name": final_state.get("selected_tool"),
+                        "summary": None,
+                        "status": step_status,
+                    },
+                }
+                active_step = None
             yield from self._finish_run(user_id, run_id, final_state)
         except GeneratorExit:
             self.cancellation.request_stop(user_id, run_id)
+            if active_step is not None:
+                self.repository.finish_step(
+                    user_id=user_id,
+                    step_id=active_step.id,
+                    status="stopped",
+                    duration_ms=round((monotonic() - tool_started_at) * 1000),
+                    error_type="client_disconnected",
+                )
+                self.session.commit()
             self._safe_stop(user_id, run_id)
             raise
         except Exception:
             self.session.rollback()
+            if active_step is not None:
+                self.repository.finish_step(
+                    user_id=user_id,
+                    step_id=active_step.id,
+                    status="failed",
+                    duration_ms=round((monotonic() - tool_started_at) * 1000),
+                    error_type="AGENT_EXECUTION_FAILED",
+                )
+                self.session.commit()
             self._safe_fail(user_id, run_id, "AGENT_EXECUTION_FAILED")
             yield {
                 "event": "error",
@@ -245,33 +314,6 @@ class AgentApplicationService:
             }
         finally:
             self.cancellation.clear(user_id, run_id)
-
-    def _persist_tool_step(
-        self,
-        user_id: str,
-        run_id: str,
-        state,
-        duration_ms: int,
-    ) -> None:
-        step = self.repository.append_step(
-            user_id=user_id,
-            run_id=run_id,
-            node_name=AgentNode.EXECUTE_TOOL,
-            tool_name=state.get("selected_tool"),
-            parameters=state.get("tool_arguments", {}),
-        )
-        result = state.get("last_tool_result")
-        self.repository.finish_step(
-            user_id=user_id,
-            step_id=step.id,
-            status="failed" if state.get("error_type") else "completed",
-            result_summary=(
-                result.get("summary") if isinstance(result, dict) else None
-            ),
-            duration_ms=duration_ms,
-            error_type=state.get("error_type"),
-        )
-        self.session.commit()
 
     def _finish_run(self, user_id: str, run_id: str, state):
         status = state["status"]

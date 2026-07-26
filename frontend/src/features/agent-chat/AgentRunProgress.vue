@@ -15,8 +15,12 @@ const labels = {
 </script>
 
 <template>
-  <details v-if="plan.length || steps.length || run" class="run-progress" :open="steps.some((step) => step.status === 'failed')">
-    <summary>执行过程 · {{ labels[run?.status] || run?.status || '进行中' }}</summary>
+  <details
+    v-if="plan.length || steps.length || run"
+    class="run-progress"
+    :open="steps.some((step) => ['running', 'failed'].includes(step.status))"
+  >
+    <summary>执行过程 · 按需调用（最多 5 次） · {{ labels[run?.status] || run?.status || '进行中' }}</summary>
     <ol v-if="plan.length" class="plan"><li v-for="item in plan" :key="item">{{ item }}</li></ol>
     <div v-for="step in steps" :key="step.id" class="step">
       <span :class="`dot ${step.status}`" />

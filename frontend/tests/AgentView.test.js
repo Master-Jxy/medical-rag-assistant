@@ -7,7 +7,6 @@ const agentApi = vi.hoisted(() => ({
   downloadAgentArtifact: vi.fn(),
   getAgentRun: vi.fn(),
   listAgentMessages: vi.fn(),
-  listAgentRuns: vi.fn(),
   listAgentThreads: vi.fn(),
   retryAgentMessage: vi.fn(),
   stopAgentRun: vi.fn(),
@@ -26,6 +25,10 @@ import {
   initialAgentStreamState,
   reduceAgentEvent,
 } from '../src/features/agent-chat/agentEventReducer.js'
+import {
+  createAgentTimelineState,
+  reduceAgentTimeline,
+} from '../src/features/agent-chat/useAgentTimeline.js'
 
 const thread = {
   id: 'thread-1',
@@ -64,6 +67,8 @@ const run = {
 }
 const messages = [{
   id: 'message-user',
+  sequence_no: 1,
+  turn_id: 'turn-1',
   thread_id: 'thread-1',
   role: 'user',
   content: '生成患者安全报告',
@@ -72,12 +77,18 @@ const messages = [{
   metadata: {},
 }, {
   id: 'message-assistant',
+  sequence_no: 2,
+  turn_id: 'turn-1',
   thread_id: 'thread-1',
   role: 'assistant',
   content: '学习报告已完成。',
   status: 'completed',
   run_id: 'run-1',
-  metadata: { source_ids: ['doc-1'], artifact_ids: ['artifact-1'] },
+  metadata: {
+    source_ids: ['doc-1'],
+    sources: [{ document_id: 'doc-1', file_name: '患者安全.pdf' }],
+    artifact_ids: ['artifact-1'],
+  },
 }]
 
 function mountView() {
@@ -98,7 +109,6 @@ beforeEach(() => {
     items: status === 'archived' ? [archivedThread] : [thread],
   }))
   agentApi.listAgentMessages.mockResolvedValue({ items: messages })
-  agentApi.listAgentRuns.mockResolvedValue({ items: [run] })
   agentApi.getAgentRun.mockResolvedValue(run)
   agentApi.updateAgentThread.mockImplementation(async (_id, changes) => ({
     ...thread,
@@ -121,7 +131,7 @@ describe('Codex式资料Agent工作台', () => {
     expect(wrapper.text()).toContain('患者安全')
     expect(wrapper.text()).toContain('学习报告已完成')
     expect(wrapper.text()).toContain('generate_learning_report')
-    expect(wrapper.text()).toContain('来源 doc-1')
+    expect(wrapper.text()).toContain('患者安全.pdf')
     expect(wrapper.text()).toContain('学习报告.md')
   })
 
@@ -129,8 +139,12 @@ describe('Codex式资料Agent工作台', () => {
     agentApi.streamAgentMessage.mockImplementation(
       async (_threadId, _payload, _key, handlers) => {
         handlers.onEvent('message_created', {
+          user_message_id: 'message-new-user',
           assistant_message_id: 'message-new-assistant',
           run_id: 'run-new',
+          user_sequence_no: 3,
+          assistant_sequence_no: 4,
+          turn_id: 'turn-2',
         })
         handlers.onEvent('plan_ready', { plan: ['检索资料'] })
         handlers.onEvent('tool_started', { tool_name: 'search_knowledge', step: 1 })
@@ -170,16 +184,11 @@ describe('Codex式资料Agent工作台', () => {
       (item) => item.text() === '引用此消息',
     )
     await referenceButtons[0].trigger('click')
-    const sourceButton = wrapper.findAll('button').find(
-      (item) => item.text() === '来源 doc-1',
-    )
-    await sourceButton.trigger('click')
-    await flushPromises()
-    const contextReferenceButtons = wrapper.findAll('button').filter(
+    const partReferenceButtons = wrapper.findAll('button').filter(
       (item) => item.text() === '引用',
     )
-    await contextReferenceButtons[0].trigger('click')
-    await contextReferenceButtons[1].trigger('click')
+    await partReferenceButtons[0].trigger('click')
+    await partReferenceButtons[1].trigger('click')
     await wrapper.get('textarea').setValue('基于这些内容继续整理')
     await wrapper.get('form.composer').trigger('submit')
     await flushPromises()
@@ -241,5 +250,35 @@ describe('Codex式资料Agent工作台', () => {
     expect(state.sources[0].page).toBe(3)
     expect(state.output).toBe('完成')
     expect(state).not.toHaveProperty('chain_of_thought')
+  })
+
+  it('时间线按sequence排序并对重复SSE实体做幂等更新', () => {
+    let state = createAgentTimelineState()
+    state = reduceAgentTimeline(state, 'optimistic_user', {
+      id: 'pending-1',
+      content: '你好',
+    })
+    state = reduceAgentTimeline(state, 'message_created', {
+      user_message_id: 'user-1',
+      assistant_message_id: 'assistant-1',
+      user_sequence_no: 9,
+      assistant_sequence_no: 10,
+      turn_id: 'turn-1',
+      run_id: 'run-1',
+    })
+    state = reduceAgentTimeline(state, 'tool_started', {
+      step_id: 'step-1',
+      step: 1,
+      tool_name: 'search_knowledge',
+    })
+    state = reduceAgentTimeline(state, 'tool_started', {
+      step_id: 'step-1',
+      step: 1,
+      tool_name: 'search_knowledge',
+    })
+    state = reduceAgentTimeline(state, 'token', { content: '完成' })
+    expect(state.messages['assistant-1'].content).toBe('完成')
+    expect(state.messages['assistant-1'].parts.steps).toHaveLength(1)
+    expect(state.messages['user-1'].sequence_no).toBe(9)
   })
 })

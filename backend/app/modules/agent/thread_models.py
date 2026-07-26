@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -46,6 +47,9 @@ class AgentThread(Base):
             use_alter=True,
         )
     )
+    next_message_sequence: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=1
+    )
     last_message_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
@@ -60,7 +64,7 @@ class AgentThread(Base):
         back_populates="thread",
         cascade="all, delete-orphan",
         foreign_keys="AgentMessage.thread_id",
-        order_by="AgentMessage.created_at, AgentMessage.id",
+        order_by="AgentMessage.sequence_no",
     )
 
     __table_args__ = (
@@ -89,6 +93,8 @@ class AgentMessage(Base):
     user_id: Mapped[str] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
+    sequence_no: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    turn_id: Mapped[str | None] = mapped_column(String(36))
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status: Mapped[str] = mapped_column(
@@ -130,6 +136,16 @@ class AgentMessage(Base):
             name="ck_agent_messages_status",
         ),
         UniqueConstraint("run_id", name="uq_agent_messages_run_id"),
+        UniqueConstraint(
+            "thread_id",
+            "sequence_no",
+            name="uq_agent_messages_thread_sequence",
+        ),
+        Index(
+            "ix_agent_messages_thread_sequence",
+            "thread_id",
+            "sequence_no",
+        ),
         Index(
             "ix_agent_messages_thread_created",
             "thread_id",

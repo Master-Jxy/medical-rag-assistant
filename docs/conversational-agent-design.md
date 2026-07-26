@@ -1,10 +1,13 @@
 # 对话式资料 Agent 产品与技术设计
 
-> 设计版本：Agent Chat v3.0
+> 设计版本：Agent Chat v3.1
 >
-> 状态：`[已完成并冻结为 Agent Chat v3.0]`
+> 状态：`[v3.0 已上线；v3.1 产品修复待开发]`
 >
-> 目标：在不破坏现有 RAG、资料治理和受控 LangGraph 内核的前提下，把独立任务工作台升级为类似 Codex 的对话式 Agent 工作空间。
+> 目标：保留 v3.0 的会话、运行、审计和预算能力，修复消息顺序、旧入口、聊天体验和任务路由，使 Agent 成为聊天优先、过程可见、工具按需调用的工作空间。
+
+第 1～15 节记录 Agent Chat v3.0 的设计和发布事实；第 16 节是当前唯一有效的
+v3.1 演进方案。两者发生冲突时，以第 16 节和 `docs/handoff.md` 为准。
 
 ## 1. 产品定位
 
@@ -101,7 +104,7 @@ Agent Thread
 - 把一个用户的会话、产物或运行泄露给其他用户。
 - 把普通聊天历史全部无限塞入模型。
 
-## 3. 目标界面
+## 3. v3.0 历史界面设计
 
 ### 3.1 桌面布局
 
@@ -608,7 +611,7 @@ Fake Planner和Mock工具，未调用Embedding、Reranker或Qwen。
 
 > 系统使用LangGraph实现受步骤、超时、Token和费用约束的工具循环，并在其上增加按用户隔离的Agent线程与消息模型。前端采用对话式工作台，通过SSE实时展示公开计划、工具状态、流式回答、来源和报告产物；上下文由最近消息、滚动摘要、显式记忆及引用产物按预算组合，同时通过幂等、生成锁和权限校验避免重复调用与跨用户数据泄露。
 
-## 15. 后续但不属于 v3.0
+## 15. v3.0 发布时的后续候选
 
 - 高风险写工具的人工确认节点。
 - 后台任务队列和跨进程断点恢复。
@@ -619,3 +622,292 @@ Fake Planner和Mock工具，未调用Embedding、Reranker或Qwen。
 - 可视化工作流编辑器。
 
 这些能力必须在对话式单Agent稳定后逐项评估，不能与阶段13同时开发。
+
+## 16. Agent Chat v3.1 产品修复方案 `[当前目标]`
+
+### 16.1 为什么先修产品主链路
+
+2026-07-26 对当前代码、线上截图和历史设计复核后确认，v3.0 已经具备可用的
+thread/message/run/step/artifact 分层，但交互仍像“任务调试台”，没有达到稳定聊天产品
+的体验：
+
+1. `agent_messages` 只按 `created_at + UUID` 排序。用户消息和助手占位消息在同一事务、
+   同一秒内创建时，MySQL 时间精度可能相同，随机 UUID 不能表达先后关系，页面刷新后
+   可能出现助手回复排到用户问题上方。
+2. 前端仍加载 `thread_id IS NULL` 的旧独立 run，并保留“旧版独立任务”入口，使会话
+   模型和旧任务模型同时成为用户入口。
+3. 桌面端固定三栏，右侧“来源与产物”长期占据宽度；来源 UUID、英文终态和执行卡片
+   抢占回答正文的阅读位置。
+4. `classify_and_plan` 只有“允许后选工具”和“拒绝后结束”两条主路由。“你是谁”、
+   “不错”等无需工具的消息也可能进入知识检索，产生无意义来源甚至失败。
+5. 当前 LangGraph 已经允许 `inspect_result -> select_tool` 循环，实际工具次数可以少于
+   5；但页面和文案把它表现成固定计划，用户容易误以为每次必须执行 5 步。
+
+本阶段不新增业务工具，不修改普通 RAG、资料审核或知识库内容。先把消息顺序、对话
+路由、聊天呈现和旧数据退出做正确，再继续人工确认或高风险写工具。
+
+### 16.2 对照成熟系统后的取舍
+
+本项目借鉴原则，不整体引入或照搬其他平台：
+
+- LangGraph Agent Chat UI：线程、实时消息、工具调用和 interrupt 都属于同一会话。
+- LangGraph 持久化与 interrupt：`thread_id` 是恢复运行的持久游标，高风险动作可以在
+  保存状态后暂停，而不是依赖浏览器一直在线。
+- Open WebUI：聊天是主入口，历史、知识检索、工具和引用按需接入同一对话；来源附着
+  在回答上，不用永久空白侧栏承载。
+- assistant-ui：UI、会话运行时和模型后端分层；工具调用以有稳定 ID 的消息部件呈现，
+  线程列表独立负责创建、切换、归档和删除。
+- Codex：thread 承载连续任务，进度和工具调用在任务中逐步更新；高风险动作显式审批，
+  最终结果和产物仍回到对应消息。
+
+本机旧课程项目也完成了定向复核：其Streamlit页面用`st.chat_message`按user/assistant
+顺序呈现，`create_agent`让模型在工具结果后继续选择下一动作，值得借鉴“聊天优先”和
+“模型-工具-观察”循环。但历史只在`st.session_state`，后端每次只发送当前query，没有
+数据库线程、用户隔离、幂等、停止恢复、预算、审计和持久产物，因此不能复制其整体
+架构。本项目只吸收交互节奏和循环思想，继续保留现有企业工程边界。
+
+不会直接替换为 assistant-ui 或 LangChain Agent Chat UI。本项目继续使用 Vue 3 和现有
+FastAPI API，只吸收其状态分层、事件归并、工具内联和按需面板思想。
+
+调研入口：
+
+- [LangGraph Agent Chat UI](https://docs.langchain.com/oss/python/langgraph/ui)
+- [LangGraph event streaming](https://docs.langchain.com/oss/python/langgraph/event-streaming)
+- [LangGraph persistence](https://docs.langchain.com/oss/python/langgraph/persistence)
+- [LangGraph interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts)
+- [Open WebUI Chat & Conversations](https://docs.openwebui.com/features/chat-conversations/)
+- [Open WebUI History & Search](https://docs.openwebui.com/features/chat-conversations/chat-features/history-search/)
+- [Open WebUI RAG and citations](https://docs.openwebui.com/features/chat-conversations/rag/)
+- [assistant-ui architecture](https://www.assistant-ui.com/docs/architecture)
+- [assistant-ui threads](https://www.assistant-ui.com/docs/runtimes/concepts/threads)
+- [assistant-ui tools](https://www.assistant-ui.com/docs/tools)
+- [OpenAI Codex app](https://openai.com/index/introducing-the-codex-app/)
+
+### 16.3 v3.1 产品布局
+
+桌面端固定为两栏，不再永久显示“来源与产物”第三栏：
+
+```text
+┌────────────────────────────────────────────────────────────────────┐
+│ AppShell / 当前页面 / 连接状态 / 当前账号                          │
+├────────────────┬───────────────────────────────────────────────────┤
+│ Agent 会话     │ 当前会话                                          │
+│                │                                                   │
+│ + 新建会话     │ 用户消息                                          │
+│ 活动 / 归档    │ Agent 最终回答                                    │
+│ 搜索与历史     │ ├─ 执行过程（默认折叠，运行中自动展开）            │
+│ 会话菜单       │ ├─ 引用来源（文件名、页码、相关片段）              │
+│                │ └─ 产物（文件卡、下载、继续引用）                  │
+│                │                                                   │
+│                │ 固定底部输入区 / 引用标签 / 发送或停止             │
+└────────────────┴───────────────────────────────────────────────────┘
+```
+
+具体规则：
+
+- 视觉结构复用 `/chat` 的两栏比例、消息留白、滚动区和输入区，不复制其业务逻辑。
+- 用户消息始终在右，Agent 消息始终在左；一条助手消息只出现一次。
+- 回答正文是主内容。执行过程、来源和产物属于该条助手消息的 message parts。
+- 完成后不显示原始 `completed`；仅在运行、失败、停止时显示中文状态。
+- 来源显示文件名、页码和可理解摘要，不把 UUID 当作主要文案。
+- 来源详情通过点击后临时抽屉或对话框打开；关闭后不占页面宽度。
+- 只有用户主动打开大型报告预览时才出现临时产物面板；普通来源和下载不使用永久右栏。
+- 运行中“发送”替换为“停止”，尺寸不变；输入框保留，但同一 thread 不允许并发发送。
+- 移动端会话列表进入抽屉，消息和输入区占满主屏；执行过程、来源和产物在消息内展开。
+- “旧版独立任务”入口、兼容消息分支和旧任务选择状态全部退出产品页面。
+
+### 16.4 消息顺序与数据模型
+
+`created_at` 只用于显示时间和审计，不能再作为会话内唯一排序真相。新增：
+
+| 字段 | 位置 | 规则 |
+| --- | --- | --- |
+| `sequence_no` | `agent_messages` | thread 内严格递增的正整数 |
+| `turn_id` | `agent_messages` | 同一轮 user/assistant 共用，可空兼容历史 |
+| `next_message_sequence` | `agent_threads` | 下一次可分配序号，默认1 |
+
+数据库约束：
+
+- 唯一索引：`UNIQUE(thread_id, sequence_no)`。
+- 常用索引：`INDEX(thread_id, sequence_no)`。
+- 一轮开始时使用`SELECT ... FOR UPDATE`锁定当前thread，读取
+  `next_message_sequence=N`，给用户消息分配`N`、助手占位消息分配`N+1`，再把thread
+  计数器更新为`N+2`；三项在同一事务提交或回滚。
+- 禁止先查消息`MAX(sequence_no)`再无锁加1。
+- 历史回填优先使用run的`trigger_message_id/response_message_id`把user/assistant配成
+  一轮，再按轮的创建时间排序；无法关联的system或异常历史消息才使用
+  `created_at/id`稳定兜底。回填完成后把thread计数器设为`MAX(sequence_no)+1`。
+- 回填只用于建立新真相，不把 UUID 继续用作日常排序。
+- 消息列表、最近上下文、滚动摘要和分页游标统一按 `sequence_no`。
+- API 返回 `sequence_no` 和 `turn_id`；前端只按 `sequence_no` 渲染。
+
+需要增加同一时间戳的回归用例：强制 user 和 assistant 使用完全相同的 `created_at`，
+刷新、分页、最近上下文和摘要都必须保持 user 在前、assistant 在后。SQLite 单独通过
+不算完成；迁移和排序至少要覆盖一次真实 MySQL 契约。
+
+### 16.5 前端事件归并
+
+页面不能继续依靠“服务端消息数组 + optimistic 数组 + 临时助手数组”按位置拼接。
+建立单一 timeline store/reducer：
+
+```text
+REST 历史 -> 按 message_id 建立实体 -> 按 sequence_no 排序
+SSE message_created -> 写入/更新 user 与 assistant 实体
+SSE run/step/source/artifact -> 按 run_id、step_id、artifact_id 更新对应助手消息部件
+SSE token -> 只追加到 assistant_message_id
+SSE terminal -> 收敛同一助手消息状态
+刷新 -> REST 重建相同实体，不重复 append
+```
+
+每个事件必须携带足以关联的稳定 ID：
+
+- 消息：`message_id`、`sequence_no`、`turn_id`。
+- 运行：`run_id`、`assistant_message_id`。
+- 工具：现有稳定 `step_id`，前端把它视为 `tool_call_id`。
+- 来源：`document_id + chunk_id + page`。
+- 产物：`artifact_id`。
+
+Reducer 对相同 ID 做幂等更新，不根据事件到达先后制造第二个气泡。断线重连、刷新恢复
+和终态回放必须得到相同时间线。
+
+### 16.6 Agent 路由与动态工具循环
+
+第一节点不再只返回 `allowed`，而是返回以下明确意图：
+
+| `route` | 适用场景 | 工具次数 |
+| --- | --- | --- |
+| `direct_reply` | 问身份、能力、边界、礼貌反馈和无需资料的说明 | 0 |
+| `clarification` | 缺少文档、比较对象、目标或关键参数 | 0 |
+| `tool_required` | 必须检索、读取、摘要、比较或生成报告 | 1～上限 |
+| `refuse` | 诊断、处方、越权写入、系统命令等禁用请求 | 0 |
+
+新黑盒流程：
+
+```text
+用户消息
+-> route_task
+   -> direct_reply -> 直接生成用户可见回答 -> finalize
+   -> clarification -> 提出一个明确补充问题 -> finalize
+   -> refuse -> 返回稳定安全边界 -> finalize
+   -> tool_required
+      -> 模型选择一个白名单工具
+      -> 参数校验和预算检查
+      -> 执行工具
+      -> 模型读取公开观察结果
+         -> 已足够：finalize
+         -> 信息不足：更换参数或选择下一个工具
+         -> 需要用户：clarification
+         -> 工具失败：受控回退、澄清或 fail
+```
+
+`max_steps=5` 保留，但统一解释为“单次运行最多 5 次工具调用”的安全上限，实际可以是
+0～5 次。公开计划允许在执行过程中更新，但不要求预先填满 5 步。系统不展示或持久化
+隐藏思维，只展示计划摘要、工具名、安全参数摘要、状态、耗时和结果摘要。
+
+v3.1 先在现有 `AgentPlanner`/`ToolRegistry`/LangGraph 边界内增加路由和循环语义，不在
+同一步把整个内核替换为 `create_agent`。后续只有在同一固定任务集上证明原生 function
+calling 的稳定性、预算和错误契约不低于当前实现，才考虑替换规划适配器。
+
+### 16.7 旧版独立任务退出
+
+`agent_runs/agent_steps/agent_artifacts` 仍是当前 threaded Agent 的执行与审计数据，不能
+删除表或关闭全部 run 查询。只退出 `thread_id IS NULL` 的旧独立任务：
+
+1. 前端删除 `legacyRuns`、`legacySelected`、`selectLegacy` 和侧栏旧任务区域。
+2. 停止暴露创建无 thread run 的用户入口；当前会话创建 run 的内部应用服务继续使用。
+3. 增加一次性维护脚本，默认 `--dry-run` 输出旧 run、step、artifact 和文件数量。
+4. 只有显式 `--confirm` 且完成数据库与产物目录备份后，才删除 `thread_id IS NULL`
+   的 run 及其专属 step/artifact/file。
+5. 清理后再次证明所有 `thread_id IS NOT NULL` 的消息、run、step、artifact 数量和引用
+   不变。
+
+生产清理不是 Alembic 自动动作，不随容器启动执行。没有用户当次确认时，只提交脚本和
+Mock/临时数据库测试，不删除线上记录。
+
+### 16.8 模块边界
+
+前端建议边界：
+
+```text
+AgentView.vue                 # 页面编排，不处理事件细节
+features/agent-chat/
+|-- AgentThreadSidebar.vue    # 会话创建、切换、归档、菜单
+|-- AgentConversation.vue     # 时间线容器和滚动
+|-- AgentMessageItem.vue      # 用户/助手消息外壳
+|-- AgentExecutionParts.vue   # 计划与工具步骤
+|-- AgentSourceParts.vue      # 消息内来源
+|-- AgentArtifactParts.vue    # 消息内产物
+|-- AgentDetailDrawer.vue     # 按需来源/产物详情
+|-- AgentComposer.vue
+|-- useAgentTimeline.js       # 实体化 reducer 与稳定排序
+|-- useAgentThread.js
+`-- useAgentStream.js
+```
+
+后端继续遵守：
+
+```text
+API -> AgentConversationApplication
+    -> AgentThreadRepository
+    -> AgentApplicationService / BoundedAgentGraph
+    -> AgentPlanner + ToolRegistry
+    -> 公开业务 Port
+```
+
+- API 不决定 route、不直接删旧数据。
+- ConversationApplication 负责编排一轮消息与 run，不实现工具。
+- Repository 负责 sequence 分配、查询和持久化，不拼前端卡片。
+- Planner 只产生显式业务决策，不返回隐藏推理。
+- 工具仍只能调用公开应用 Port，不能直接访问 SQL、Chroma 或系统命令。
+- 来源、产物和步骤继续归属 run/assistant message，不变成前端全局状态。
+
+### 16.9 开发顺序
+
+开发必须按以下顺序，一次只完成一个可回退小任务：
+
+1. **14.1 消息顺序基线**：迁移 `next_message_sequence/sequence_no/turn_id`、基于run
+   关系的确定性回填、thread行锁序号预留、Repository/API/MySQL回归。未通过前不改页面。
+2. **14.2 旧入口退役**：删除前端 legacy 分支，关闭无 thread 创建入口，加入只针对
+   `thread_id IS NULL` 的 dry-run 清理脚本；不执行生产删除。
+3. **14.3 两栏聊天外壳**：复用 RAG 视觉结构，移除永久右栏，先用现有 API 渲染。
+4. **14.4 时间线 reducer**：REST/SSE 统一按实体 ID 和 sequence 合并，覆盖重连、刷新、
+   重复事件和乱序事件。
+5. **14.5 任务路由**：实现 direct reply、clarification、tool required、refuse；问候、
+   身份和正面反馈不得调用知识工具。
+6. **14.6 动态工具循环**：把执行次数明确为按需 0～5 次，补工具失败后的受控反馈与
+   选择，保持预算、停止和审计。
+7. **14.7 完整验收**：权限、排序、状态、响应式、可访问性、普通 RAG 回归和固定 Agent
+   场景集。
+8. **14.8 生产清理与发布**：备份、迁移、发布、在线无费用检查；生产旧数据清理和真实
+   模型验收分别获得当次确认后执行。
+
+高风险写工具的人工确认节点顺延到 v3.1 稳定之后，避免在错误时间线和旧入口仍存在时
+增加新状态。
+
+### 16.10 v3.1 验收标准
+
+产品验收：
+
+- 连续发送 20 轮并刷新，消息顺序始终与创建顺序一致。
+- “你是谁”“你好”“不错”均零工具调用、零来源，返回自然直接回答。
+- 检索、摘要、比较和报告按需要执行不同数量工具，不凑固定步数。
+- 回答正文优先；执行过程、来源、产物附着在对应助手消息并可折叠。
+- 桌面没有永久右侧上下文栏；移动端没有整页横向滚动、遮挡或不可达按钮。
+- 页面不存在“旧版独立任务”入口和旧任务专用气泡。
+
+技术验收：
+
+- 数据库唯一约束保证 thread 内 `sequence_no` 无重复，分页和上下文统一按其排序。
+- 同时间戳、重复 SSE、乱序 SSE、断线重连和刷新回放均不重复或交换消息。
+- 同一用户消息至多一个 run；直接回答和澄清允许 0 step run。
+- 每个 tool step 与唯一助手消息、run 和稳定 step ID 关联。
+- 旧记录清理脚本默认只读；确认清理只影响 `thread_id IS NULL` 数据。
+- 旧数据清理前后 threaded message/run/step/artifact、公共知识、RAG 会话均保持不变。
+- 普通 RAG、认证、资料审核、管理中台、记忆、质量和部署健康回归通过。
+
+费用与发布：
+
+- 14.1～14.7 默认使用 Fake Planner、Mock 工具和临时数据库，不调用 Qwen、Embedding
+  或 Reranker。
+- 任何真实模型验收先给出调用数、预计费用、超时、自动重试和清理方案，并取得当次确认。
+- 文档完成不等于功能完成；README 和简历只能在代码、测试和发布验收后更新为 v3.1。

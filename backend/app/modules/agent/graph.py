@@ -103,17 +103,21 @@ class BoundedAgentGraph:
 
     def _classify_and_plan(self, state: AgentGraphState) -> dict[str, object]:
         decision = self.planner.classify_and_plan(state)
+        route = "refuse" if not decision.allowed else decision.route
+        should_use_tool = route == "tool_required"
+        visible_output = decision.response_message
+        if route == "refuse":
+            visible_output = (
+                decision.refusal_message
+                or visible_output
+                or "该任务超出资料整理Agent的安全能力范围。"
+            )
         return {
             "status": AgentRunStatus.RUNNING,
             "current_node": AgentNode.CLASSIFY_AND_PLAN,
             "plan": decision.plan,
-            "next_action": "select_tool" if decision.allowed else "finalize",
-            "final_output": (
-                None
-                if decision.allowed
-                else decision.refusal_message
-                or "该任务超出资料整理Agent的安全能力范围。"
-            ),
+            "next_action": "select_tool" if should_use_tool else "finalize",
+            "final_output": None if should_use_tool else visible_output,
             **_with_usage(state, decision.usage),
         }
 
@@ -195,7 +199,11 @@ class BoundedAgentGraph:
         decision = self.planner.inspect_result(state)
         return {
             "current_node": AgentNode.INSPECT_RESULT,
-            "next_action": decision.action,
+            "next_action": (
+                "finalize"
+                if decision.action == "clarification"
+                else decision.action
+            ),
             "final_output": decision.final_output,
             "error_type": decision.error_type,
             **_with_usage(state, decision.usage),
