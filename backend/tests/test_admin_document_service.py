@@ -12,14 +12,21 @@ from app.core.config import Settings
 from app.core.exceptions import DocumentBusyError, DocumentStoreError
 from app.db.base import Base
 from app.db.session import build_engine
-from app.models import KnowledgeDocument
+from app.models import KnowledgeDocument, KnowledgeSubmission, User
+from app.modules.knowledge.parser import ParsedPreview
 from app.modules.knowledge.repository import DocumentLockConflictError
+from app.modules.knowledge.submission_service import KnowledgeSubmissionService
 from app.services.admin_document_service import AdminDocumentService
 from tests.test_document_service import FakeVectorStore
 
 
 def make_upload(name: str, text: str) -> UploadFile:
     return UploadFile(filename=name, file=BytesIO(text.encode()))
+
+
+class FakeSubmissionParser:
+    def parse(self, _path, _suffix):
+        return ParsedPreview("重新提交预览", 1)
 
 
 def build_admin_service(tmp_path):
@@ -30,6 +37,7 @@ def build_admin_service(tmp_path):
         _env_file=None,
         upload_dir=tmp_path / "uploads",
         document_registry_path=tmp_path / "documents.json",
+        submission_dir=tmp_path / "submissions",
         chunk_size=30,
         chunk_overlap=5,
     )
@@ -48,6 +56,19 @@ def test_admin_can_create_replace_and_delete_system_document(tmp_path) -> None:
         assert created.is_system is True and created.can_delete is True
         old_record = session.get(KnowledgeDocument, created.document_id)
         assert old_record is not None and old_record.uploader_id is None
+        linked_submission = KnowledgeSubmission(
+            id="legacy-system-submission",
+            submitter_id=None,
+            original_name=old_record.original_name,
+            stored_name=old_record.stored_name,
+            content_hash=old_record.content_hash,
+            size_bytes=old_record.size_bytes,
+            status="published",
+            parse_warnings=[],
+            document_id=old_record.id,
+        )
+        session.add(linked_submission)
+        session.commit()
 
         replaced = asyncio.run(
             service.replace_system_document(
@@ -57,14 +78,40 @@ def test_admin_can_create_replace_and_delete_system_document(tmp_path) -> None:
         assert replaced.document_id != created.document_id
         assert session.get(KnowledgeDocument, created.document_id) is None
         assert session.get(KnowledgeDocument, replaced.document_id) is not None
+        session.refresh(linked_submission)
+        replacement_record = session.get(KnowledgeDocument, replaced.document_id)
+        assert linked_submission.document_id == replaced.document_id
+        assert linked_submission.content_hash == replacement_record.content_hash
+        assert linked_submission.original_name == replacement_record.original_name
         assert old_ids.isdisjoint(vector_store.entries)
         assert len(list(service.settings.upload_dir.glob("*.txt"))) == 1
 
         deleted = service.delete_system_document(replaced.document_id)
         assert deleted.document_id == replaced.document_id
         assert session.get(KnowledgeDocument, replaced.document_id) is None
+        assert session.get(KnowledgeSubmission, linked_submission.id) is None
         assert not vector_store.entries
         assert not list(service.settings.upload_dir.glob("*.txt"))
+
+        session.add(
+            User(
+                id="new-submitter",
+                email="new-submitter@example.com",
+                password_hash="hash",
+            )
+        )
+        session.commit()
+        resubmitted = asyncio.run(
+            KnowledgeSubmissionService(
+                session,
+                service.settings,
+                FakeSubmissionParser(),
+            ).submit(
+                "new-submitter",
+                make_upload("系统资料重新提交.txt", "第二版医学资料"),
+            )
+        )
+        assert resubmitted.status == "pending_review"
     finally:
         session.close()
         engine.dispose()

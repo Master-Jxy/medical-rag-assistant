@@ -15,7 +15,10 @@ from app.core.exceptions import (
 from app.db.session import get_db_session
 from app.infrastructure.vector_store import VectorStoreService
 from app.modules.knowledge.lifecycle import DocumentLifecycleService
-from app.modules.knowledge.models import DocumentVersion
+from app.modules.knowledge.models import (
+    DocumentVersion,
+    KnowledgeSubmission,
+)
 from app.modules.knowledge.repository import DocumentRepository
 from app.schemas.document import DocumentDeleteResponse, DocumentUploadResponse
 from app.services.document_service import document_to_item, get_vector_store_service
@@ -92,6 +95,9 @@ class AdminDocumentService:
             raise DocumentNotFoundError()
         if not record.is_system:
             raise SystemDocumentRequiredError()
+        linked_submission = self._get_linked_submission(document_id)
+        if linked_submission is not None:
+            self.session.delete(linked_submission)
         deleted_id = self.lifecycle.delete_document(record)
         return DocumentDeleteResponse(document_id=deleted_id)
 
@@ -105,6 +111,7 @@ class AdminDocumentService:
         old_version = self.session.scalar(
             select(DocumentVersion).where(DocumentVersion.document_id == document_id)
         )
+        linked_submission = self._get_linked_submission(document_id)
         next_version = (old_version.version + 1) if old_version else 2
         inherited_tags = list(old_version.tags or []) if old_version else []
 
@@ -123,6 +130,13 @@ class AdminDocumentService:
             )
         finally:
             await upload_file.close()
+        if linked_submission is not None:
+            linked_submission.original_name = record.original_name
+            linked_submission.stored_name = record.stored_name
+            linked_submission.content_hash = record.content_hash
+            linked_submission.size_bytes = record.size_bytes
+            linked_submission.status = "published"
+            linked_submission.document_id = record.id
         self.session.add(
             DocumentVersion(
                 id=str(uuid4()),
@@ -136,6 +150,15 @@ class AdminDocumentService:
         self.session.commit()
         return DocumentUploadResponse(
             **document_to_item(record, can_delete=True).model_dump()
+        )
+
+    def _get_linked_submission(
+        self, document_id: str
+    ) -> KnowledgeSubmission | None:
+        return self.session.scalar(
+            select(KnowledgeSubmission).where(
+                KnowledgeSubmission.document_id == document_id
+            )
         )
 
 

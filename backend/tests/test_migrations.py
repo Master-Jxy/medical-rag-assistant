@@ -260,6 +260,57 @@ def test_stage9_upgrade_registers_legacy_documents_without_duplicate_publication
         ) == 2
 
 
+def test_upgrade_removes_only_orphaned_published_system_submission(tmp_path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'orphan-submission.db'}"
+    config = build_alembic_config(database_url)
+    command.upgrade(config, "0010_document_versions")
+    engine = build_engine(database_url)
+    now = datetime.now(timezone.utc)
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users "
+                "(id, email, password_hash, is_active, role, created_at, updated_at) "
+                "VALUES ('submitter', 'submitter@example.com', 'hash', 1, 'user', :now, :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO knowledge_submissions "
+                "(id, submitter_id, original_name, stored_name, content_hash, size_bytes, "
+                "status, preview_text, preview_pages, parse_warnings, rejection_reason, "
+                "failure_reason, document_id, created_at, updated_at) VALUES "
+                "('orphan-system', NULL, '已删除系统资料.txt', 'deleted.txt', :system_hash, "
+                "10, 'published', NULL, NULL, '[]', NULL, NULL, NULL, :now, :now), "
+                "('withdrawn-user', 'submitter', '已撤回资料.txt', 'withdrawn.txt', "
+                ":user_hash, 10, 'withdrawn', NULL, NULL, '[]', NULL, NULL, NULL, :now, :now)"
+            ),
+            {
+                "system_hash": "c" * 64,
+                "user_hash": "d" * 64,
+                "now": now,
+            },
+        )
+
+    command.upgrade(config, "head")
+
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text(
+                "SELECT COUNT(*) FROM knowledge_submissions "
+                "WHERE id = 'orphan-system'"
+            )
+        ) == 0
+        assert connection.scalar(
+            text(
+                "SELECT COUNT(*) FROM knowledge_submissions "
+                "WHERE id = 'withdrawn-user'"
+            )
+        ) == 1
+
+
 
 def test_legacy_json_import_creates_idempotent_system_documents(tmp_path) -> None:
     database_url = f"sqlite+pysqlite:///{tmp_path / 'documents.db'}"
