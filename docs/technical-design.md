@@ -1359,7 +1359,7 @@ PyPDF仍是生产解析基线。解析结果增加`parse_quality`，逐页标记
 | POST | `/api/v1/admin/knowledge-assets/governance/scan` | 创建到期复核任务 |
 | POST | `/api/v1/admin/knowledge-assets/{id}/review` | 完成复核并关闭任务 |
 
-### 13.8 阶段十三对话式Agent演进 `[发布候选]`
+### 13.8 阶段十三对话式Agent演进 `[现状；已冻结为 Agent Chat v3.0]`
 
 阶段十三不替换现有LangGraph、工具、run/step/artifact或普通RAG，而是在Agent运行层之上
 增加会话与消息层：
@@ -1403,6 +1403,19 @@ user message、run、assistant message和独立SSE；`AgentContextBuilder`按当
 组件。用户可以显式选择历史消息、来源或产物作为下一轮引用；Vue只传ID，不在浏览器
 拼接模型上下文。来源只持久化文档、切片、文件名和页码白名单，隐藏推理、Prompt、
 scratchpad和第三方原始异常仍不得进入API、数据库或页面。
+
+最终生产验收补齐了确定性路由与完整上下文之间的边界：安全允许/拒绝和确定性工具选择
+只读取预算上下文中的`[当前任务]`段，避免系统安全说明、历史消息或产物正文中的禁用词
+误触发拒绝；模型规划仍读取完整上下文。执行工具时LangGraph把同一份预算化上下文放入
+`AgentToolContext.task_context`，报告工具再把最近消息与显式产物摘录作为受控学习目标
+传给内容生成Port。工具仍只接收当前用户可见的公开上下文，不获得Repository、数据库、
+Chroma客户端、系统命令或隐藏推理。
+
+生产在`DASHSCOPE_MAX_RETRIES=0`下完成同一thread三轮报告：3次Qwen、0次Embedding、
+0次Reranker、0次自动重试，7968 Token，累计估算¥0.044025；每轮均为单个
+`generate_learning_report` step并产生一个同来源Markdown产物。第三轮显式引用第二轮
+产物；验收账号、thread/message/run/step/artifact和精确幂等/限流键随后全部清理，
+正式重试恢复2，知识库保持27份文档、103个Chroma片段和27个上传文件。
 
 ## 14. 统一接口与错误规范
 
