@@ -1519,6 +1519,27 @@ threaded Agent及RAG、知识数据保持隔离。真实模型验收在`DASHSCOP
 1/2/1份资料，报告产生1个Markdown产物。临时账号、thread/message/run/step/artifact、
 限流键、生成锁和幂等键均清理，正式重试恢复2。
 
+### 13.10 Agent Chat v3.2 公开决策事件 `[本地已实现]`
+
+现有LangGraph循环没有改写。`AgentApplicationService`在观察到
+`AgentNode.INSPECT_RESULT`后增加`decision` SSE事件，只返回：
+
+```json
+{
+  "action": "continue | finalize | fail",
+  "summary": "用户可见的下一步业务摘要"
+}
+```
+
+该事件不包含Prompt、工具原始敏感参数、模型隐藏推理或Chain-of-Thought。它不新增
+数据库字段；刷新时由`run.steps`和步骤前后关系重建公开展示。`decision`丢失不会改变
+run执行结果，前端也不能用它驱动工具执行。
+
+前端职责保持分离：timeline reducer幂等合并事件，`AgentRunProgress`渲染折叠时间线，
+`AgentMessageItem`渲染最终气泡、来源与产物，`AgentView`只处理页面编排。删除当前
+thread后必须同步清空或切换message/run/timeline/reference状态，避免左侧为空而右侧
+保留旧消息。
+
 ## 14. 统一接口与错误规范
 
 普通 JSON 错误建议保持：

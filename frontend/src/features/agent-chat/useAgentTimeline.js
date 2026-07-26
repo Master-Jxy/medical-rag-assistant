@@ -117,6 +117,14 @@ export function reduceAgentTimeline(state, event, data = {}) {
       result_summary: data.summary || '',
     }
   }
+  if (event === 'decision' && updated.parts.steps.length) {
+    const lastIndex = updated.parts.steps.length - 1
+    updated.parts.steps[lastIndex] = {
+      ...updated.parts.steps[lastIndex],
+      decision_action: data.action || '',
+      decision_summary: data.summary || '',
+    }
+  }
   if (event === 'sources') {
     const incoming = data.items?.length
       ? data.items

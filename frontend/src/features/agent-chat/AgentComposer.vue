@@ -16,11 +16,17 @@ function submit() {
   emit('send', content)
   value.value = ''
 }
+
+function handleKeydown(event) {
+  if (event.key !== 'Enter' || event.shiftKey) return
+  event.preventDefault()
+  submit()
+}
 </script>
 
 <template>
   <form class="composer" @submit.prevent="submit">
-    <label for="agent-message">给资料Agent发送任务</label>
+    <label for="agent-message">给资料 Agent 发送任务</label>
     <div v-if="references.length" class="references" aria-label="本轮显式引用">
       <button
         v-for="item in references"
@@ -37,22 +43,79 @@ function submit() {
       v-model="value"
       maxlength="4000"
       rows="3"
-      placeholder="例如：基于刚才的来源，比较两份资料并生成学习报告"
+      placeholder="输入任务，Enter 发送，Shift + Enter 换行"
+      :disabled="disabled"
+      @keydown="handleKeydown"
     />
-    <div>
-      <small>{{ value.length }}/4000</small>
-      <el-button v-if="running" type="danger" @click="$emit('stop')">停止</el-button>
-      <el-button type="primary" native-type="submit" :disabled="!canSend">发送</el-button>
+    <div class="composer-footer">
+      <small>{{ value.length }} / 4000</small>
+      <el-button v-if="running" type="danger" plain round @click="$emit('stop')">停止生成</el-button>
+      <el-button v-else type="primary" round native-type="submit" :disabled="!canSend">
+        发送任务
+      </el-button>
     </div>
   </form>
 </template>
 
 <style scoped>
-.composer { position: absolute; z-index: 4; left: 18px; right: 18px; bottom: 16px; padding: 12px; background: #fff; border: 1px solid #cfdad5; border-radius: 8px; box-shadow: 0 8px 24px rgb(24 55 42 / 10%); }
-.composer label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
-.composer .references { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 6px; margin-bottom: 6px; }
-.references button { max-width: 180px; overflow: hidden; padding: 4px 7px; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #cbdad3; border-radius: 999px; background: #edf6f2; color: #226347; cursor: pointer; }
-.composer textarea { width: 100%; resize: none; border: 0; outline: 0; box-sizing: border-box; font: inherit; }
-.composer div { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
-.composer small { margin-right: auto; color: var(--muted); }
+.composer {
+  position: absolute;
+  z-index: 4;
+  right: 24px;
+  bottom: 16px;
+  left: 24px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fbfdfc;
+  box-shadow: 0 12px 30px rgba(24, 55, 42, .08);
+}
+.composer label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+.references {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 7px;
+}
+.references button {
+  max-width: 190px;
+  overflow: hidden;
+  padding: 4px 8px;
+  border: 1px solid #cbdad3;
+  border-radius: 999px;
+  color: #226347;
+  background: #edf6f2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.composer textarea {
+  width: 100%;
+  resize: none;
+  border: 0;
+  outline: 0;
+  box-sizing: border-box;
+  color: var(--ink);
+  background: transparent;
+  font: inherit;
+  line-height: 1.6;
+}
+.composer textarea::placeholder { color: #9aaba7; }
+.composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+.composer small { color: var(--muted); }
+@media (max-width: 760px) {
+  .composer { right: 12px; bottom: 10px; left: 12px; }
+}
 </style>

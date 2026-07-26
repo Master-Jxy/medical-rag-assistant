@@ -254,6 +254,23 @@ class AgentApplicationService:
                                     "mime_type": stored.mime_type,
                                 },
                             }
+                elif node == AgentNode.INSPECT_RESULT:
+                    action = str(current.get("next_action") or "finalize")
+                    summaries = {
+                        "continue": "当前结果还不足以完成任务，继续选择下一项工具。",
+                        "finalize": "现有结果足以完成任务，正在组织最终回答。",
+                        "fail": "工具结果不可用，任务将安全结束。",
+                    }
+                    yield {
+                        "event": "decision",
+                        "data": {
+                            "action": action,
+                            "summary": summaries.get(
+                                action,
+                                "已检查工具结果，正在确定下一步。",
+                            ),
+                        },
+                    }
             if active_step is not None:
                 step_status = (
                     "stopped"

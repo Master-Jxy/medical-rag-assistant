@@ -116,6 +116,7 @@ async function renameThread(thread) {
 async function archiveThread(thread) {
   try {
     await threadState.archiveThread(thread)
+    timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
   }
@@ -124,6 +125,7 @@ async function archiveThread(thread) {
 async function restoreThread(thread) {
   try {
     await threadState.restoreThread(thread)
+    timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
     notice.value = '会话已恢复到进行中。'
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
@@ -143,6 +145,11 @@ async function removeThread(thread) {
   if (!window.confirm(`删除“${thread.title}”及其消息、运行和产物？`)) return
   try {
     await threadState.removeThread(thread)
+    timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
+    references.value = { messageIds: [], sourceIds: [], artifactIds: [] }
+    selectedSource.value = null
+    selectedArtifact.value = null
+    contextDrawerOpen.value = false
     notice.value = '会话已删除。'
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
@@ -254,9 +261,9 @@ onMounted(async () => {
   <section class="agent-page">
     <header class="page-toolbar">
       <div>
-        <span>AGENT CHAT V3.1</span>
+        <span>AGENT CHAT V3.2</span>
         <h1>资料整理 Agent</h1>
-        <p>连续会话承载任务上下文；公开展示计划、工具、来源与产物，不展示隐藏推理。</p>
+        <p>像聊天一样交付任务；运行时展示公开决策与工具调用，完成后自动折叠过程。</p>
       </div>
       <div class="mobile-tools">
         <button aria-label="打开Agent会话列表" @click="threadDrawerOpen = true">会话</button>
@@ -290,7 +297,7 @@ onMounted(async () => {
       <main class="conversation-shell">
         <div class="conversation-title">
           <strong>{{ threadState.currentThread.value?.title || '新Agent会话' }}</strong>
-          <span v-if="stream.running.value">运行中</span>
+          <span v-if="stream.running.value"><i></i> Agent 正在工作</span>
         </div>
         <AgentConversation
           :messages="displayMessages"
@@ -334,21 +341,71 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.agent-page { min-width: 0; }
-.page-toolbar { display: flex; justify-content: space-between; gap: 16px; }
-.agent-workspace { height: min(760px, calc(100vh - 190px)); min-height: 560px; display: grid; grid-template-columns: minmax(220px, 270px) minmax(0, 1fr); gap: 12px; }
+.agent-page { min-width: 0; padding: 42px 0 56px; }
+.page-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+.page-toolbar span {
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .16em;
+}
+.page-toolbar h1 { margin: 8px 0 6px; font-size: 34px; }
+.page-toolbar p { margin: 0; color: var(--muted); font-size: 14px; }
+.agent-workspace {
+  height: min(720px, calc(100vh - 210px));
+  min-height: 560px;
+  display: grid;
+  grid-template-columns: minmax(220px, 250px) minmax(0, 1fr);
+  gap: 16px;
+}
 .drawer-shell { min-width: 0; min-height: 0; }
 .drawer-close, .mobile-tools { display: none; }
-.conversation-shell { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #f6f8f7; border: 1px solid var(--border); border-radius: 8px; }
-.conversation-title { height: 48px; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: #fff; }
-.conversation-title span { color: #276749; font-size: 12px; }
-.conversation-shell :deep(.conversation) { height: calc(100% - 48px); box-sizing: border-box; }
+.conversation-shell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, .9);
+  box-shadow: 0 24px 60px rgba(35, 87, 77, .08);
+}
+.conversation-title {
+  height: 52px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, .96);
+}
+.conversation-title span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--primary);
+  font-size: 12px;
+}
+.conversation-title i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #18a875;
+  box-shadow: 0 0 0 5px rgba(24, 168, 117, .1);
+}
+.conversation-shell :deep(.conversation) { height: calc(100% - 52px); box-sizing: border-box; }
 .detail-overlay { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; padding: 24px; background: rgb(15 30 24 / 36%); }
 .detail-overlay .context { display: block; position: relative; width: min(560px, 100%); max-height: min(680px, calc(100vh - 48px)); }
 .detail-overlay .context :deep(aside) { max-height: inherit; box-shadow: 0 18px 50px rgb(20 40 31 / 24%); }
 @media (max-width: 1000px) {
   .mobile-tools { display: flex; gap: 8px; }
-  .mobile-tools button { padding: 7px 10px; border: 1px solid var(--border); border-radius: 5px; background: #fff; }
+  .mobile-tools button { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
   .agent-workspace { grid-template-columns: minmax(0, 1fr); }
   .drawer-shell { display: none; position: fixed; z-index: 30; top: 72px; bottom: 12px; width: min(330px, calc(100vw - 24px)); }
   .drawer-shell.open { display: block; }
@@ -358,7 +415,9 @@ onMounted(async () => {
   .drawer-shell :deep(aside) { box-shadow: 0 16px 40px rgb(20 40 31 / 22%); }
 }
 @media (max-width: 480px) {
-  .agent-workspace { height: calc(100vh - 160px); min-height: 520px; }
+  .agent-page { padding-top: 24px; }
+  .agent-workspace { height: calc(100vh - 150px); min-height: 520px; }
   .page-toolbar p { display: none; }
+  .page-toolbar h1 { font-size: 27px; }
 }
 </style>

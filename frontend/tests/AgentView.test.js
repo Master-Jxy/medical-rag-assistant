@@ -136,7 +136,10 @@ describe('Codex式资料Agent工作台', () => {
     expect(wrapper.text()).toContain('AGENT CHAT V3')
     expect(wrapper.text()).toContain('患者安全')
     expect(wrapper.text()).toContain('学习报告已完成')
-    expect(wrapper.text()).toContain('generate_learning_report')
+    expect(wrapper.text()).toContain('生成学习报告')
+    const partToggles = wrapper.findAll('.parts-toggle')
+    await partToggles[0].trigger('click')
+    await partToggles[1].trigger('click')
     expect(wrapper.text()).toContain('患者安全.pdf')
     expect(wrapper.text()).toContain('学习报告.md')
     expect(messageArea.scrollTop).toBe(6789)
@@ -192,8 +195,11 @@ describe('Codex式资料Agent工作台', () => {
       (item) => item.text() === '引用此消息',
     )
     await referenceButtons[0].trigger('click')
+    const partToggles = wrapper.findAll('.parts-toggle')
+    await partToggles[0].trigger('click')
+    await partToggles[1].trigger('click')
     const partReferenceButtons = wrapper.findAll('button').filter(
-      (item) => item.text() === '引用',
+      (item) => item.text() === '引用到下一轮',
     )
     await partReferenceButtons[0].trigger('click')
     await partReferenceButtons[1].trigger('click')
@@ -251,13 +257,36 @@ describe('Codex式资料Agent工作台', () => {
       source_ids: ['doc-1'],
       items: [{ document_id: 'doc-1', page: 3 }],
     })
+    state = reduceAgentEvent(state, 'decision', {
+      action: 'finalize',
+      summary: '现有结果足以完成任务，正在组织最终回答。',
+    })
     state = reduceAgentEvent(state, 'token', { content: '完成' })
 
     expect(state.plan).toEqual(['检索资料'])
     expect(state.steps[0].tool_name).toBe('search_knowledge')
     expect(state.sources[0].page).toBe(3)
+    expect(state.steps[0].decision_action).toBe('finalize')
     expect(state.output).toBe('完成')
     expect(state).not.toHaveProperty('chain_of_thought')
+  })
+
+  it('删除最后一个会话后同步清空右侧消息和运行详情', async () => {
+    agentApi.deleteAgentThread.mockResolvedValue()
+    const previousConfirm = window.confirm
+    window.confirm = vi.fn(() => true)
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('学习报告已完成')
+    await wrapper.get('.thread-actions .danger').trigger('click')
+    await flushPromises()
+
+    expect(agentApi.deleteAgentThread).toHaveBeenCalledWith('thread-1')
+    expect(wrapper.text()).not.toContain('学习报告已完成')
+    expect(wrapper.text()).toContain('开始一段 Agent 对话')
+    expect(wrapper.text()).toContain('新Agent会话')
+    window.confirm = previousConfirm
   })
 
   it('时间线按sequence排序并对重复SSE实体做幂等更新', () => {

@@ -4,6 +4,7 @@ export const initialAgentStreamState = () => ({
   assistantMessageId: '',
   plan: [],
   steps: [],
+  decisions: [],
   output: '',
   sources: [],
   artifacts: [],
@@ -45,6 +46,21 @@ export function reduceAgentEvent(state, event, data = {}) {
       result_summary: data.summary || '',
     }
     return { ...state, steps }
+  }
+  if (event === 'decision') {
+    const decisions = [...state.decisions, {
+      action: data.action || '',
+      summary: data.summary || '',
+    }]
+    const steps = [...state.steps]
+    if (steps.length) {
+      steps[steps.length - 1] = {
+        ...steps[steps.length - 1],
+        decision_action: data.action || '',
+        decision_summary: data.summary || '',
+      }
+    }
+    return { ...state, decisions, steps }
   }
   if (event === 'sources') {
     return { ...state, sources: data.items?.length

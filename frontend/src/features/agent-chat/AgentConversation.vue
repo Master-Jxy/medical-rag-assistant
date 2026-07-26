@@ -36,7 +36,8 @@ watch(
     aria-live="polite"
   >
     <div v-if="!messages.length" class="empty">
-      输入一项资料整理任务；运行时展示公开计划，消息、工具步骤、来源和产物会保存在当前会话。
+      <strong>开始一段 Agent 对话</strong>
+      <span>我会公开展示任务计划、工具调用和结果检查，完成后将过程折叠在最终回答上方。</span>
     </div>
     <AgentMessageItem
       v-for="message in messages"
@@ -55,6 +56,19 @@ watch(
 </template>
 
 <style scoped>
-.conversation { min-height: 0; padding: 14px 18px 120px; overflow: auto; }
-.empty { max-width: 560px; margin: 80px auto; color: var(--muted); text-align: center; line-height: 1.7; }
+.conversation { min-height: 0; padding: 32px 32px 150px; overflow: auto; }
+.empty {
+  max-width: 520px;
+  margin: 110px auto;
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.7;
+}
+.empty strong { color: var(--ink); font-size: 18px; }
+.empty span { font-size: 13px; }
+@media (max-width: 760px) {
+  .conversation { padding: 20px 14px 145px; }
+}
 </style>

@@ -210,6 +210,7 @@ def test_agent_thread_api_streams_persists_and_replays_without_duplicate_run() -
             assert "event: message_created" in response.text
             assert "event: sources" in response.text
             assert "event: artifact_ready" in response.text
+            assert "event: decision" in response.text
             assert "event: message_completed" in response.text
 
             messages = client.get(

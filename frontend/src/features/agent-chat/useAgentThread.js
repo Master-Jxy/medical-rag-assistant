@@ -16,6 +16,12 @@ export function useAgentThread() {
   const loading = ref(false)
   const statusFilter = ref('active')
 
+  function clearCurrent() {
+    currentThread.value = null
+    messages.value = []
+    runDetails.value = {}
+  }
+
   async function loadThreads(selectFirst = true) {
     loading.value = true
     try {
@@ -64,8 +70,7 @@ export function useAgentThread() {
     await updateAgentThread(thread.id, { status: 'archived' })
     threads.value = threads.value.filter((item) => item.id !== thread.id)
     if (currentThread.value?.id === thread.id) {
-      currentThread.value = null
-      messages.value = []
+      clearCurrent()
       if (threads.value.length) await selectThread(threads.value[0])
     }
   }
@@ -74,9 +79,7 @@ export function useAgentThread() {
     await updateAgentThread(thread.id, { status: 'active' })
     threads.value = threads.value.filter((item) => item.id !== thread.id)
     if (currentThread.value?.id === thread.id) {
-      currentThread.value = null
-      messages.value = []
-      runDetails.value = {}
+      clearCurrent()
       if (threads.value.length) await selectThread(threads.value[0])
     }
   }
@@ -84,9 +87,7 @@ export function useAgentThread() {
   async function showStatus(status) {
     if (statusFilter.value === status) return
     statusFilter.value = status
-    currentThread.value = null
-    messages.value = []
-    runDetails.value = {}
+    clearCurrent()
     await loadThreads(true)
   }
 
@@ -94,8 +95,7 @@ export function useAgentThread() {
     await deleteAgentThread(thread.id)
     threads.value = threads.value.filter((item) => item.id !== thread.id)
     if (currentThread.value?.id === thread.id) {
-      currentThread.value = null
-      messages.value = []
+      clearCurrent()
       if (threads.value.length) await selectThread(threads.value[0])
     }
   }
