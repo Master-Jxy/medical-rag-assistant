@@ -8,7 +8,14 @@ const props = defineProps({
 })
 const emit = defineEmits(['send', 'stop', 'remove-reference'])
 const value = ref('')
+const textarea = ref(null)
 const canSend = computed(() => value.value.trim() && !props.disabled)
+
+function focus() {
+  if (!props.disabled) textarea.value?.focus()
+}
+
+defineExpose({ focus })
 
 function submit() {
   const content = value.value.trim()
@@ -39,6 +46,7 @@ function handleKeydown(event) {
       </button>
     </div>
     <textarea
+      ref="textarea"
       id="agent-message"
       v-model="value"
       maxlength="4000"

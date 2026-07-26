@@ -92,8 +92,9 @@ const messages = [{
   },
 }]
 
-function mountView() {
+function mountView(options = {}) {
   return mount(AgentView, {
+    ...options,
     global: {
       stubs: {
         ElButton: {
@@ -111,6 +112,11 @@ beforeEach(() => {
   }))
   agentApi.listAgentMessages.mockResolvedValue({ items: messages })
   agentApi.getAgentRun.mockResolvedValue(run)
+  agentApi.createAgentThread.mockResolvedValue({
+    ...thread,
+    id: 'thread-new',
+    title: '新对话',
+  })
   agentApi.updateAgentThread.mockImplementation(async (_id, changes) => ({
     ...thread,
     ...changes,
@@ -204,6 +210,46 @@ describe('Codex式资料Agent工作台', () => {
       expect.any(Object),
     )
     expect(agentApi.listAgentMessages).toHaveBeenCalledTimes(2)
+  })
+
+  it('新建、切换会话和模型回复结束后自动聚焦输入框', async () => {
+    agentApi.streamAgentMessage.mockImplementation(
+      async (_threadId, _payload, _key, handlers) => {
+        handlers.onEvent('message_created', {
+          user_message_id: 'focus-user',
+          assistant_message_id: 'focus-assistant',
+          run_id: 'focus-run',
+          user_sequence_no: 3,
+          assistant_sequence_no: 4,
+          turn_id: 'focus-turn',
+        })
+        handlers.onEvent('message_completed', {
+          message_id: 'focus-assistant',
+          status: 'completed',
+        })
+      },
+    )
+    const wrapper = mountView({ attachTo: document.body })
+    await flushPromises()
+    const textarea = wrapper.get('textarea').element
+
+    textarea.blur()
+    await wrapper.get('.thread-main').trigger('click')
+    await flushPromises()
+    expect(document.activeElement).toBe(textarea)
+
+    textarea.blur()
+    await wrapper.get('.new-thread').trigger('click')
+    await flushPromises()
+    expect(document.activeElement).toBe(textarea)
+
+    await wrapper.get('textarea').setValue('完成后继续输入')
+    textarea.blur()
+    await wrapper.get('form.composer').trigger('submit')
+    await flushPromises()
+    expect(document.activeElement).toBe(textarea)
+
+    wrapper.unmount()
   })
 
   it('把用户选中的消息、来源和产物作为显式引用发送', async () => {

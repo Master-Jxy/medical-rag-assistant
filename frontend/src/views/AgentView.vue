@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { downloadAgentArtifact } from '../api/agent.js'
 import { getApiErrorMessage } from '../api/http.js'
 import { getDocumentTrace, openDocumentPreview } from '../api/citations.js'
@@ -20,7 +20,13 @@ const selectedArtifact = ref(null)
 const threadDrawerOpen = ref(false)
 const contextDrawerOpen = ref(false)
 const downloadingId = ref('')
+const composer = ref(null)
 const references = ref({ messageIds: [], sourceIds: [], artifactIds: [] })
+
+async function focusComposer() {
+  await nextTick()
+  composer.value?.focus()
+}
 
 const referenceLabels = computed(() => [
   ...references.value.messageIds.map((id) => ({
@@ -47,6 +53,7 @@ const referenceLabels = computed(() => [
 const stream = useAgentStream(async () => {
   await threadState.reloadCurrent()
   timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
+  await focusComposer()
 }, timeline.handle)
 
 const displayMessages = timeline.messages
@@ -87,6 +94,7 @@ async function selectThread(thread) {
     timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
     references.value = { messageIds: [], sourceIds: [], artifactIds: [] }
     threadDrawerOpen.value = false
+    await focusComposer()
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
   }
@@ -98,6 +106,7 @@ async function createThread() {
     await threadState.newThread()
     timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
     threadDrawerOpen.value = false
+    await focusComposer()
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
   }
@@ -251,6 +260,7 @@ onMounted(async () => {
   try {
     await threadState.loadThreads(true)
     timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
+    await focusComposer()
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
   }
@@ -311,6 +321,7 @@ onMounted(async () => {
           @toggle-artifact-reference="toggleReference('artifact', $event)"
         />
         <AgentComposer
+          ref="composer"
           :disabled="stream.running.value"
           :running="stream.running.value"
           :references="referenceLabels"
