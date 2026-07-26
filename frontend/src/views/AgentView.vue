@@ -161,6 +161,24 @@ async function archiveThread(thread) {
   }
 }
 
+async function restoreThread(thread) {
+  try {
+    await threadState.restoreThread(thread)
+    notice.value = '会话已恢复到进行中。'
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+  }
+}
+
+async function showThreadStatus(status) {
+  errorMessage.value = ''
+  try {
+    await threadState.showStatus(status)
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+  }
+}
+
 async function removeThread(thread) {
   if (!window.confirm(`删除“${thread.title}”及其消息、运行和产物？`)) return
   try {
@@ -315,12 +333,16 @@ onMounted(async () => {
           :selected-id="threadState.currentThread.value?.id || ''"
           :legacy-runs="legacyRuns"
           :loading="threadState.loading.value"
+          :status-filter="threadState.statusFilter.value"
           @new="createThread"
           @select="selectThread"
           @rename="renameThread"
           @archive="archiveThread"
+          @restore="restoreThread"
           @delete="removeThread"
           @legacy="selectLegacy"
+          @show-active="showThreadStatus('active')"
+          @show-archived="showThreadStatus('archived')"
         />
       </div>
 

@@ -14,11 +14,12 @@ export function useAgentThread() {
   const messages = ref([])
   const runDetails = ref({})
   const loading = ref(false)
+  const statusFilter = ref('active')
 
   async function loadThreads(selectFirst = true) {
     loading.value = true
     try {
-      threads.value = (await listAgentThreads('active')).items
+      threads.value = (await listAgentThreads(statusFilter.value)).items
       if (selectFirst && !currentThread.value && threads.value.length) {
         await selectThread(threads.value[0])
       }
@@ -29,6 +30,8 @@ export function useAgentThread() {
 
   async function newThread(title = '新对话') {
     const thread = await createAgentThread(title)
+    statusFilter.value = 'active'
+    threads.value = threads.value.filter((item) => item.status === 'active')
     threads.value = [thread, ...threads.value]
     await selectThread(thread)
     return thread
@@ -67,6 +70,26 @@ export function useAgentThread() {
     }
   }
 
+  async function restoreThread(thread) {
+    await updateAgentThread(thread.id, { status: 'active' })
+    threads.value = threads.value.filter((item) => item.id !== thread.id)
+    if (currentThread.value?.id === thread.id) {
+      currentThread.value = null
+      messages.value = []
+      runDetails.value = {}
+      if (threads.value.length) await selectThread(threads.value[0])
+    }
+  }
+
+  async function showStatus(status) {
+    if (statusFilter.value === status) return
+    statusFilter.value = status
+    currentThread.value = null
+    messages.value = []
+    runDetails.value = {}
+    await loadThreads(true)
+  }
+
   async function removeThread(thread) {
     await deleteAgentThread(thread.id)
     threads.value = threads.value.filter((item) => item.id !== thread.id)
@@ -88,11 +111,14 @@ export function useAgentThread() {
     messages,
     runDetails,
     loading,
+    statusFilter,
     loadThreads,
     newThread,
     selectThread,
     renameThread,
     archiveThread,
+    restoreThread,
+    showStatus,
     removeThread,
     reloadCurrent,
   }

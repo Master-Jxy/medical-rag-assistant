@@ -37,6 +37,12 @@ const thread = {
   created_at: '2026-07-26T00:00:00Z',
   updated_at: '2026-07-26T00:00:00Z',
 }
+const archivedThread = {
+  ...thread,
+  id: 'thread-archived',
+  title: '已归档患者安全',
+  status: 'archived',
+}
 const run = {
   id: 'run-1',
   thread_id: 'thread-1',
@@ -88,7 +94,9 @@ function mountView() {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  agentApi.listAgentThreads.mockResolvedValue({ items: [thread] })
+  agentApi.listAgentThreads.mockImplementation(async (status) => ({
+    items: status === 'archived' ? [archivedThread] : [thread],
+  }))
   agentApi.listAgentMessages.mockResolvedValue({ items: messages })
   agentApi.listAgentRuns.mockResolvedValue({ items: [run] })
   agentApi.getAgentRun.mockResolvedValue(run)
@@ -187,6 +195,32 @@ describe('Codex式资料Agent工作台', () => {
       expect.any(String),
       expect.any(Object),
     )
+  })
+
+  it('可以查看已归档会话并恢复到进行中', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const archivedButton = wrapper.findAll('button').find(
+      (item) => item.text() === '已归档',
+    )
+    await archivedButton.trigger('click')
+    await flushPromises()
+
+    expect(agentApi.listAgentThreads).toHaveBeenLastCalledWith('archived')
+    expect(wrapper.text()).toContain('已归档患者安全')
+
+    const restoreButton = wrapper.findAll('button').find(
+      (item) => item.text() === '恢复',
+    )
+    await restoreButton.trigger('click')
+    await flushPromises()
+
+    expect(agentApi.updateAgentThread).toHaveBeenCalledWith(
+      'thread-archived',
+      { status: 'active' },
+    )
+    expect(wrapper.text()).not.toContain('已归档患者安全')
   })
 
   it('独立Reducer维护公开计划、工具、来源和结果，不接收隐藏推理', () => {
