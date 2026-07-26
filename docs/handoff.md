@@ -12,11 +12,10 @@
 
 下一任务定向阅读：
 
-- `docs/conversational-agent-design.md` 的16.8～16.10
-- `docs/development-roadmap.md` 的任务14.8
-- `docs/deployment.md` 的备份、发布和回滚边界
-- `backend/scripts/cleanup_legacy_agent_runs.py`
-- 真实模型调用前再定向读取Agent Planner、Tool和费用计量相关实现与测试
+- `docs/conversational-agent-design.md` 的第15节及16.8安全边界
+- `docs/development-roadmap.md` 的“可选增强”
+- `docs/technical-design.md` 的13.1状态机、13.6安全边界和13.9
+- 只读人工确认、run/step状态、审计和前端确认交互直接相关源码与测试
 
 ## 2. 当前状态
 
@@ -27,7 +26,8 @@
 - 服务器运行`Agent Chat v3.1`提交`bd6a724`，数据库为
   `0019_agent_message_order (head)`，四个容器健康。
 - 本轮阶段8部署没有调用真实Embedding、Reranker或Qwen，没有产生模型费用；临时验收账号已删除，业务数据恢复原基线。
-- 阶段9～13已经完成；阶段13已在现有受控LangGraph之上增加Codex式多轮会话与消息工作台。
+- 阶段9～14已经完成；阶段14已把Agent主链路升级为消息顺序确定、聊天优先和工具按需
+  调用的`Agent Chat v3.1`。
 - 已确认目标规则：普通用户提交资料但不直接发布，管理员审核后才进入公共知识库；RAG与Agent使用独立页面并只共享`published`公共资料。
 - 任务9.1a已完成：数据库角色支持`user/admin/super_admin`，集中`RolePolicy/require_roles`已建立，原管理员接口兼容`admin/super_admin`，超级管理员只能通过显式确认的幂等维护命令初始化。
 - 任务9.1b已完成：超级管理员用户列表、角色与账号状态接口已建立，普通管理员不能调用；角色/状态变化实时生效并写安全审计，最后一个有效超级管理员不能停用。
@@ -57,8 +57,9 @@
 - `Agent v2.2 + Knowledge v2.3`已发布到生产提交`bc20151`；数据库已由`0011`
   升级到单一`0017_knowledge_governance (head)`，Agent生产策略为启用、最多5步、
   单工具30秒、整次120秒、12000 Token、单次预估费用上限¥0.05、正式重试上限2。
-- 当前生产四个容器健康，HTTPS健康检查200、HTTP固定308；27份已发布文档、
-  27份提交、27个版本、103个Chroma片段和27个上传文件保持一致。
+- 当前生产四个容器健康，HTTPS健康检查200、HTTP固定308；27份已发布文档和27个上传
+  文件保持一致。2026-07-26发布前备份与当前只读检查均为100个Chroma片段；旧文档中的
+  103是此前历史发布基线，本次Agent清理没有访问或改变Chroma。
 - 阶段13已经完成并冻结为`Agent Chat v3.0`：保留现有受控LangGraph内核，
   新增thread/message会话层，并采用会话、消息、公开计划、工具步骤、来源和产物组合的
   Codex式工作台。
@@ -73,7 +74,7 @@
 - 任务13.8已完成：数据库为`0018_agent_threads_messages (head)`；同一thread三轮真实
   报告、显式产物引用、SSE和持久化关联通过，共3次Qwen、0次Embedding/Reranker、
   0次自动重试，累计费用¥0.044025。临时数据精确清理，正式重试恢复2。
-- 阶段14的14.1～14.7及14.8无费用部分已经完成：
+- 阶段14已经完成并冻结为`Agent Chat v3.1`：
   - `0019`增加thread内递增`sequence_no`、`turn_id`和行锁序号预留；生产10条历史消息
     已回填为1～10，唯一序号10条、空turn 0条，thread下一序号为11。
   - 前端旧独立任务入口和永久右栏已退出；REST/SSE由timeline reducer按稳定实体ID
@@ -85,9 +86,13 @@
   - 线上同一临时thread按真实60秒限流分两批完成20轮问候：40条消息序号1～40、
     20个turn、20个run、0 step、0 Token、费用0，退出码0；清理后恢复5账号、1个正式
     Agent thread、10条Agent消息、11个run，临时账号残留0。
-  - 旧清理脚本dry-run识别6个`thread_id IS NULL` run、6个专属step、0 artifact/file，
-    `deleted=False`；5个threaded run及其他业务数据未改。
-  - 生产旧记录真实删除和真实模型场景仍等待两个独立的当次确认，不得提前写成完成。
+  - 用户确认删除闸门后，6个`thread_id IS NULL`旧run及6个专属step已删除；再次
+    dry-run为0，threaded Agent、RAG会话、文档、文件和Chroma均未被清理脚本触及。
+  - 用户确认费用闸门后，在正式重试0下完成摘要、比较、报告各1次Qwen：0次Embedding/
+    Reranker、0次自动重试、12109 Token、估算¥0.04924，低于¥0.15硬上限；三个run均
+    只有1个正确工具step，来源为1/2/1份，报告产生1个Markdown产物。
+  - 临时账号、thread/message/run/step/artifact及Redis限流、生成锁、幂等键残留均为0，
+    正式重试恢复2。验收期间原有用户新增的2轮Agent和2轮RAG对话已识别并保留。
 
 ## 3. 阶段7最终证据
 
@@ -121,6 +126,11 @@ Telemetry只观察业务，不记录完整问题、回答、Prompt、密码、JW
   横向溢出；移动端会话抽屉可打开。
 - 生产迁移为`0019`，四容器健康，HTTPS健康200；正式包使用`/api/v1`且不含本地API。
 - 20轮在线无费用验收与清理通过；没有调用Qwen、Embedding或Reranker。
+- 两个最终闸门通过：旧独立run/step由6/6清理为0；真实验收为3次Qwen、12109 Token、
+  ¥0.04924，0次Embedding/Reranker/自动重试。临时数据和Redis键清理为0，重试恢复2。
+- 最终生产保持5账号、27文档、5个普通RAG会话、1个Agent thread；原有用户同期新增
+  数据后为100条RAG消息、14条Agent消息、7个threaded run和6个step。Agent消息序号
+  1～14唯一且连续，空turn为0，下一序号15。
 
 2026-07-25发布前回归：
 
@@ -389,21 +399,18 @@ Telemetry只观察业务，不记录完整问题、回答、Prompt、密码、JW
 - `backend/tests/test_auth_api.py`在`git status`中可能因Windows换行显示修改，但内容与HEAD一致，不属于发布范围。
 - `Platform v1.4`应用、迁移、测试、前端和部署恢复修改已经整体发布，后续文档提交不得夹带业务行为变化。
 - 不得清理、覆盖或回退现有修改；禁止`git reset --hard`和批量清理。
-- 后续付费模型验证仍需遵守独立预算闸门；不得把本地Mock证据写成真实多轮质量验收。
-- 生产旧独立run清理和真实模型验收仍需分别取得当次明确确认；不得用无费用问候验收
-  替代真实工具/模型质量证据。
+- 后续付费模型验证仍需遵守新的独立预算闸门；阶段14的本次授权已经执行完毕，不能
+  自动沿用到下一任务。
 
 ## 7. 唯一下一任务
 
-**任务14.8闸门收口：生产旧独立run清理与真实模型验收。**
+**设计高风险写工具的人工确认节点；本任务只做设计，不实现写工具。**
 
 本小步边界：
 
-- 删除闸门当前dry-run为6个legacy run、6个step、0 artifact/file；只有用户明确确认
-  `DELETE_LEGACY_AGENT_RUNS`后才执行，随后复核5个threaded run、正式thread/message、
-  RAG会话、文档、文件和Chroma基线不变。
-- 真实模型闸门必须先固定场景、最大Qwen/Embedding/Reranker次数、预计费用、超时、
-  自动重试、停止条件和清理方案，再取得同一对话的明确确认。
-- 两个闸门互相独立；只确认其中一个时不得执行另一个。
-- 闸门执行并清理复核通过后，才能把阶段14和`Agent Chat v3.1`最终标记为完成，并把
-  唯一下一任务推进到高风险写工具人工确认节点的设计。
+- 只定义哪些未来动作必须确认，以及`waiting_confirmation/approved/rejected/expired`
+  如何进入可恢复的run/step/message终态。
+- 确认记录必须绑定当前用户、thread、run、工具名、参数摘要、过期时间和审计事件；
+  页面只展示公开动作摘要，不展示Prompt、隐藏推理、密钥或第三方原始请求。
+- 保持现有五个只读工具、普通RAG、知识审核和`Agent Chat v3.1`生产行为不变。
+- 本任务只更新产品/技术设计和测试计划，不新增迁移、API、页面、写工具或模型调用。

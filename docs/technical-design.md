@@ -1512,6 +1512,13 @@ direct_reply | clarification | tool_required | refuse
 [`docs/conversational-agent-design.md`](conversational-agent-design.md)第16节以及
 [`docs/development-roadmap.md`](development-roadmap.md)阶段14。
 
+生产最终验收先删除6个`thread_id IS NULL`旧run及其6个专属step，删除后legacy run为0，
+threaded Agent及RAG、知识数据保持隔离。真实模型验收在`DASHSCOPE_MAX_RETRIES=0`下
+完成单文档摘要、双文档比较和学习报告：3次Qwen、0次Embedding/Reranker、0次自动
+重试，12109 Token，累计估算费用¥0.04924；三个run各1个正确工具step，来源分别为
+1/2/1份资料，报告产生1个Markdown产物。临时账号、thread/message/run/step/artifact、
+限流键、生成锁和幂等键均清理，正式重试恢复2。
+
 ## 14. 统一接口与错误规范
 
 普通 JSON 错误建议保持：
