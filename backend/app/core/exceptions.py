@@ -35,6 +35,33 @@ class RagServiceError(AppError):
         super().__init__(message, code="RAG_SERVICE_ERROR", status_code=503)
 
 
+class AgentDisabledError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "资料Agent当前未启用",
+            code="AGENT_DISABLED",
+            status_code=503,
+        )
+
+
+class AgentRunNotFoundAppError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "未找到指定Agent运行",
+            code="AGENT_RUN_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class AgentRunConflictError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "当前Agent运行状态不允许该操作",
+            code="AGENT_RUN_CONFLICT",
+            status_code=409,
+        )
+
+
 class UnsupportedFileTypeError(AppError):
     def __init__(self) -> None:
         super().__init__("仅支持 PDF 和 TXT 文件", code="UNSUPPORTED_FILE_TYPE", status_code=400)

@@ -84,6 +84,19 @@ class Settings(BaseSettings):
         default=5 * 1024 * 1024, ge=1024, le=100 * 1024 * 1024
     )
     telemetry_log_backup_count: int = Field(default=5, ge=1, le=30)
+    agent_enabled: bool = False
+    agent_max_steps: int = Field(default=5, ge=1, le=5)
+    agent_tool_timeout_seconds: float = Field(default=30.0, gt=0, le=60)
+    agent_run_timeout_seconds: float = Field(default=120.0, gt=0, le=600)
+    agent_max_tokens: int = Field(default=12_000, ge=1, le=200_000)
+    agent_max_estimated_cost_cny: float = Field(default=0.05, ge=0, le=10)
+    agent_input_price_per_million_tokens_cny: float = Field(
+        default=2.5, ge=0, le=1000
+    )
+    agent_output_price_per_million_tokens_cny: float = Field(
+        default=10.0, ge=0, le=1000
+    )
+    agent_model_max_output_tokens: int = Field(default=1200, ge=100, le=4000)
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",

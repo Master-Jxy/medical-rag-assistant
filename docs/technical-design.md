@@ -1247,6 +1247,34 @@ START
 
 状态第一版限定为`pending`、`running`、`completed`、`failed`、`stopped`。只有出现真实高风险写操作后才增加`waiting_confirmation`。在兼容的持久化checkpointer和重启测试完成前，不宣称支持跨进程断点续跑。
 
+任务11.1已落地默认关闭的`modules/agent`骨架：`AgentGraphState`只包含运行、预算、
+步骤、工具摘要和最终输出等显式业务字段；`AgentTool`、`AgentToolArguments`、
+`AgentToolResult`和`ToolRegistry`固定白名单及Pydantic参数校验边界。第一版配置硬限制
+最多5步，并预留单工具/整次运行超时、Token和费用预算；本步没有安装LangGraph运行
+依赖、创建状态图、数据库表、API、SSE或页面，也没有调用真实模型。
+
+任务11.2已通过`0012_agent_persistence`新增`agent_runs`、`agent_steps`和
+`agent_artifacts`。运行记录保存用户、任务、固定预算、状态、最终结果和安全错误类型；
+步骤只保存节点/工具名、经过检查的参数、用户可理解的结果摘要和耗时；产物保存用户可见
+内容及来源ID。Repository所有运行、步骤和产物查询均通过所属`agent_run.user_id`隔离，
+状态转换使用带预期旧状态的条件更新，步骤追加锁定运行并执行最多5步约束；参数出现
+`reasoning/chain_of_thought/scratchpad`等隐藏推理键时拒绝持久化。本步仍未增加API、
+ SSE、页面或实际图执行。
+
+任务11.3至11.8已落地完整受控链路。知识工具只接收`KnowledgeSearchPort`和
+`PublishedKnowledgeCatalogPort`，归档资料不可见；摘要、比较和学习报告通过
+`AgentContentGeneratorPort`生成，报告先作为用户可见产物交由应用服务持久化。
+LangGraph固定使用`classify_and_plan -> select_tool -> execute_tool ->
+inspect_result`显式节点和`finalize/fail/stop`终点，最多5个工具步骤，默认单工具
+30秒、整次120秒，并同时检查Token、费用和用户停止。明确文档ID的摘要、比较和
+报告使用确定性白名单路由，禁用任务先由代码拒绝，模糊任务才交给LangChain规划，
+避免概率模型制造越权或“未生成却完成”的状态。
+
+Agent使用独立REST/SSE、`/agent`页面和事件解析器；运行、步骤、产物及下载均按
+当前用户隔离。模型计量优先读取供应商usage，缺失时只对输出做保守估算；步骤表只存
+安全参数和用户可见摘要。固定6案例覆盖四类工具及系统命令/诊断拒绝，真实报告验收
+只读取已发布资料，产物包含来源ID。普通RAG路由、SSE和前端解析器没有依赖Agent。
+
 ### 13.4 API、SSE与前端边界
 
 | 方法 | 路径 | 用途 |

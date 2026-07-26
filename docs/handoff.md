@@ -12,10 +12,9 @@
 
 下一任务定向阅读：
 
-- `docs/development-roadmap.md` 的阶段11任务11.1
-- `docs/technical-design.md` 第13节
-- `docs/product-and-ui-design.md` 第4.5节只用于理解后续页面方向；任务11.1不开发页面
-- 只读`app/modules/rag/ports.py`、现有配置注入方式和最接近的Mock测试
+- `docs/development-roadmap.md` 的阶段12任务12.1
+- `docs/technical-design.md` 第11.3、13.5和16节
+- 只读普通问答消息模型、会话应用服务、Telemetry聚合和管理中台边界
 
 ## 2. 当前状态
 
@@ -42,6 +41,11 @@
 - 任务10.5a已完成：整台服务器重启后四容器、HTTP健康和MySQL/文件/Chroma/Redis基线完整恢复。
 - 阶段10已完成并冻结为`Cloud v2.1`：公网IP受信任HTTPS、HTTP 308、短期证书自动
   续期、续期热重载、HTTPS SSE、web和整机重启恢复均通过；当前没有自有品牌域名。
+- 任务11.1已完成：默认关闭的Agent模块骨架、显式状态契约、Tool Protocol/Registry和最多5步及预算/超时占位边界已建立；只使用Mock，没有数据库、API、SSE、页面或模型调用。
+- 任务11.2已完成：`agent_runs/agent_steps/agent_artifacts`及按用户隔离Repository、原子状态转换、步骤上限和隐藏推理字段拒绝规则已建立；当前仍没有Agent API、SSE、页面或真实执行。
+- 阶段11已完成并冻结为`Agent v2.2`：五个只读白名单工具、最多5步LangGraph、
+  Token/费用/超时/停止边界、用户隔离持久化、独立REST/SSE和`/agent`工作台均已建立；
+  明确任务走确定性安全路由，模糊任务由LangChain规划，普通RAG链路保持独立。
 
 ## 3. 阶段7最终证据
 
@@ -200,6 +204,29 @@ Telemetry只观察业务，不记录完整问题、回答、Prompt、密码、JW
 - 最终Alembic为`0011_orphan_submission_cleanup`，26文档、26提交、目标孤儿0；目标文件原SHA-256在文档和提交表中的匹配均为0，判重预检通过。四容器healthy、HTTPS健康200、服务器工作树干净。
 - 本次只重建后端，没有重建Web、MySQL、Redis或删除命名卷；没有调用Embedding、Qwen或Reranker。
 
+2026-07-26 任务11.1本地验证：
+
+- Agent默认关闭、状态/预算契约、工具白名单与参数校验、Agent不导入基础设施及普通RAG不依赖Agent定向测试16项通过。
+- 完整后端287项通过；没有新增数据库表、API、SSE或页面，没有安装LangGraph运行依赖或调用模型。
+
+2026-07-26 任务11.2本地验证：
+
+- Agent迁移、Repository用户隔离、运行状态机、步骤上限、产物归属和隐藏推理字段拒绝定向测试14项通过。
+- 完整后端289项通过；Alembic新增单头`0012_agent_persistence`，没有新增API、SSE、页面或调用模型。
+
+2026-07-26 阶段11最终验证：
+
+- 后端完整测试311项、前端10个文件33项、独立SSE、普通聊天SSE和Vite正式构建通过；
+  Alembic单一`0012_agent_persistence (head)`，本地MySQL由0005按迁移升级到0012。
+- 固定6案例真实规划评估最终6/6通过；首轮5/6后只复测报告选择分歧，固定评估已知
+  计量合计5864 Token、约¥0.01856。
+- 真实完整报告验收使用`26_住院手术检查与患者安全.txt`：1步
+  `generate_learning_report`、1个Markdown产物、来源ID正确、2594 Token、
+  约¥0.015485，低于单运行¥0.05上限。
+- 调试期间5次因PowerShell中文管道或15秒超时形成的无效完整验收已停止并清理；
+  其中有计量的4次合计约¥0.00957，另1次超时未返回可靠usage。最终临时用户和运行均为0，
+  文档保持27、Chroma保持103片段；没有写入或删除知识资产。
+
 ## 6. 工作区与禁止事项
 
 - 当前分支为`main`；线上业务运行`Platform v1.4`加`e5f02bb`热修复，部署脚本提交为`21cda0e`。
@@ -211,13 +238,12 @@ Telemetry只观察业务，不记录完整问题、回答、Prompt、密码、JW
 
 ## 7. 唯一下一任务
 
-**执行阶段11任务11.1：建立默认关闭、仅Mock的受控Agent模块骨架。**
+**执行阶段12任务12.1：建立问答反馈、问题分类、人工复核队列和质量看板。**
 
 本小步边界：
 
-- 只新增`app/modules/agent`骨架、显式状态类型、Tool Protocol、Tool Registry和配置开关。
-- 开关默认关闭；本步只用Mock，不安装或调用真实模型，不新增数据库表、API、SSE或前端页面。
-- LangGraph只负责状态流转契约；工具只能依赖公开应用Port，禁止直接访问Repository、
-  SQLAlchemy、Chroma、Redis、第三方SDK或系统命令。
-- 固定第一版最多5步、后续预算/超时字段的占位契约，但本步不提前实现运行流程。
-- 增加架构和Mock单测，完整后端回归；完成后唯一下一任务切到11.2持久化运行记录。
+- `quality`模块拥有点赞/点踩、问题分类和人工复核状态；反馈必须绑定当前用户可见的助手消息，
+  禁止越权评价其他账号会话。
+- 先写清数据表、公开Schema、状态转换、脱敏字段和聚合指标；质量表不保存隐藏Prompt或额外正文副本。
+- 普通用户只能提交/修改自己的反馈；管理员只读聚合并处理复核队列，不能借此读取其他用户完整会话正文。
+- 本步只做质量闭环和管理看板，不修改RAG检索、Prompt、Agent或知识发布流程。

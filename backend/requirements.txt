@@ -4,6 +4,7 @@ pydantic-settings==2.14.2
 langchain-core==1.4.9
 langchain-community==0.4.2
 langchain-chroma==1.1.0
+langgraph==1.2.9
 dashscope==1.26.3
 httpx==0.28.1
 pytest==9.1.1

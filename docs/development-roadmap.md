@@ -417,7 +417,7 @@
 属于外部运营条件，不冒充已拥有能力，也不阻塞阶段十一在本地开始。完整证据见
 `docs/release-audit-cloud-v2.1.md`。
 
-## 10. 阶段十一：基于 LangGraph 的受控资料 Agent `[待开始]`
+## 10. 阶段十一：基于 LangGraph 的受控资料 Agent `[已完成：Agent v2.2]`
 
 ### 开发前提
 
@@ -428,14 +428,14 @@
 
 ### 建议拆分任务
 
-1. **任务 11.1**：建立`modules/agent`骨架、LangGraph状态定义、Tool Protocol、Tool Registry和默认关闭开关，只用Mock。
-2. **任务 11.2**：增加`agent_runs`、`agent_steps`、`agent_artifacts`，实现按用户隔离的Repository和状态转换。
-3. **任务 11.3**：实现只读`search_knowledge`与`get_document_info`工具，只调用公开Port并只读取`published`资料。
-4. **任务 11.4**：实现显式LangGraph流程：任务分类、计划、工具选择、结果检查和最终输出；最多5步，并加入超时、Token/费用预算和停止条件。
-5. **任务 11.5**：增加`summarize_document`、`compare_documents`和`generate_learning_report`，输出可下载产物与来源。
-6. **任务 11.6**：增加独立Agent REST/SSE接口与安全事件，不修改普通聊天SSE。
-7. **任务 11.7**：增加独立`/agent`工作台、运行历史、步骤时间线、停止生成和产物展示。
-8. **任务 11.8**：建立工具选择、越权、超时、预算、失败恢复和普通RAG不受影响的评估，冻结`Agent v2.2`。
+1. **任务 11.1 `[已完成]`**：建立`modules/agent`骨架、LangGraph状态定义、Tool Protocol、Tool Registry和默认关闭开关，只用Mock。
+2. **任务 11.2 `[已完成]`**：增加`agent_runs`、`agent_steps`、`agent_artifacts`，实现按用户隔离的Repository和状态转换。
+3. **任务 11.3 `[已完成]`**：实现只读`search_knowledge`与`get_document_info`工具，只调用公开Port并只读取`published`资料。
+4. **任务 11.4 `[已完成]`**：实现显式LangGraph流程：任务分类、计划、工具选择、结果检查和最终输出；最多5步，并加入超时、Token/费用预算和停止条件。
+5. **任务 11.5 `[已完成]`**：增加`summarize_document`、`compare_documents`和`generate_learning_report`，输出可下载产物与来源。
+6. **任务 11.6 `[已完成]`**：增加独立Agent REST/SSE接口与安全事件，不修改普通聊天SSE。
+7. **任务 11.7 `[已完成]`**：增加独立`/agent`工作台、运行历史、步骤时间线、停止生成和产物展示。
+8. **任务 11.8 `[已完成]`**：建立工具选择、越权、超时、预算、失败恢复和普通RAG不受影响的评估，冻结`Agent v2.2`。
 
 ### 验收
 

@@ -14,6 +14,7 @@ import AdminAuditView from '../views/AdminAuditView.vue'
 import AdminKnowledgeView from '../views/AdminKnowledgeView.vue'
 import AdminTelemetryView from '../views/AdminTelemetryView.vue'
 import SuperAdminUsersView from '../views/SuperAdminUsersView.vue'
+import AgentView from '../views/AgentView.vue'
 import { initializeAuth, useAuthSession } from '../auth/session.js'
 
 const authenticated = { requiresAuth: true }
@@ -27,6 +28,7 @@ const router = createRouter({
     { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true, title: '登录' } },
     { path: '/dashboard', name: 'dashboard', component: DashboardView, meta: { ...authenticated, title: '工作台' } },
     { path: '/chat', name: 'chat', component: ChatView, meta: { ...authenticated, title: '知识问答' } },
+    { path: '/agent', name: 'agent', component: AgentView, meta: { ...authenticated, title: '资料整理 Agent' } },
     { path: '/knowledge', name: 'knowledge', component: KnowledgeView, meta: { ...authenticated, title: '公共知识库' } },
     { path: '/my-documents', name: 'my-documents', component: MyDocumentsView, meta: { ...authenticated, title: '我的资料' } },
     { path: '/profile', name: 'profile', component: ProfileView, meta: { ...authenticated, title: '个人中心' } },

@@ -18,6 +18,7 @@ from app.api.documents import router as documents_router
 from app.api.health import router as health_router
 from app.api.knowledge_submissions import router as knowledge_submissions_router
 from app.api.profile import router as profile_router
+from app.api.agent import router as agent_router
 from app.core.config import Settings, get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.request_context import new_request_id, reset_request_id, set_request_id
@@ -38,6 +39,7 @@ from app.services.protection_observability import ProtectionObservability
 from app.services.concurrency_limit_service import ConcurrencyLimitService
 from app.services.rate_limit_service import RateLimitService
 from app.services.upload_protection_service import UploadProtectionService
+from app.modules.agent.cancellation import AgentCancellationService
 
 
 def create_app(
@@ -71,6 +73,7 @@ def create_app(
         lifespan=lifespan,
     )
     application.state.telemetry = telemetry or create_local_telemetry(current_settings)
+    application.state.agent_cancellation_service = AgentCancellationService()
 
     @application.middleware("http")
     async def telemetry_middleware(request: Request, call_next):
@@ -171,6 +174,7 @@ def create_app(
     application.include_router(super_admin_users_router, prefix="/api/v1")
     application.include_router(profile_router, prefix="/api/v1")
     application.include_router(knowledge_submissions_router, prefix="/api/v1")
+    application.include_router(agent_router, prefix="/api/v1")
     register_exception_handlers(application)
     return application
 
