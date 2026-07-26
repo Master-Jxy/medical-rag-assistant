@@ -1,10 +1,12 @@
 """Agent规划器契约；只交换显式业务决策，不交换隐藏推理。"""
 
+from collections.abc import Iterator
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.agent.state import AgentGraphState
+from app.modules.agent.generation import GeneratedAgentTextChunk
 
 
 class PlannerUsage(BaseModel):
@@ -70,3 +72,8 @@ class AgentPlanner(Protocol):
     def inspect_result(self, state: AgentGraphState) -> InspectionDecision: ...
 
     def finalize(self, state: AgentGraphState) -> FinalDecision: ...
+
+    def stream_finalize(
+        self,
+        state: AgentGraphState,
+    ) -> Iterator[GeneratedAgentTextChunk]: ...

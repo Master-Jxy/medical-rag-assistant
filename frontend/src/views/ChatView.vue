@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { nextTick, onMounted, reactive, ref } from 'vue'
 
 import {
   createConversation,
@@ -23,6 +23,7 @@ const WELCOME_MESSAGE = {
 }
 
 const question = ref('')
+const questionInput = ref(null)
 const sending = ref(false)
 const stopping = ref(false)
 const loadingConversations = ref(true)
@@ -112,13 +113,22 @@ function scrollToBottom() {
   return scrollToLatest(messageArea)
 }
 
+async function focusQuestionInput() {
+  await nextTick()
+  if (!sending.value && !loadingMessages.value) questionInput.value?.focus()
+}
+
 async function refreshConversationList() {
   const data = await listConversations()
   conversations.value = data.conversations
 }
 
 async function selectConversation(conversationId) {
-  if (sending.value || conversationId === activeConversationId.value) return
+  if (sending.value) return
+  if (conversationId === activeConversationId.value) {
+    await focusQuestionInput()
+    return
+  }
   errorMessage.value = ''
   loadingMessages.value = true
   try {
@@ -132,6 +142,7 @@ async function selectConversation(conversationId) {
   } finally {
     loadingMessages.value = false
     await scrollToBottom()
+    await focusQuestionInput()
   }
 }
 
@@ -143,6 +154,7 @@ async function startNewConversation() {
     conversations.value.unshift(conversation)
     activeConversationId.value = conversation.id
     messages.value = [{ ...WELCOME_MESSAGE }]
+    await focusQuestionInput()
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
   }
@@ -270,6 +282,7 @@ async function sendQuestion() {
       // 回答已完成时，会话列表刷新失败不影响当前消息展示。
     }
     await scrollToBottom()
+    await focusQuestionInput()
   }
 }
 
@@ -304,6 +317,7 @@ onMounted(async () => {
     errorMessage.value = getApiErrorMessage(error)
   } finally {
     loadingConversations.value = false
+    await focusQuestionInput()
   }
 })
 </script>
@@ -425,6 +439,7 @@ onMounted(async () => {
         </div>
         <form class="composer" @submit.prevent="sendQuestion">
           <textarea
+            ref="questionInput"
             v-model="question"
             maxlength="2000"
             rows="3"

@@ -13,6 +13,13 @@ class GeneratedAgentText:
     estimated_cost_cny: float = 0
 
 
+@dataclass(frozen=True, slots=True)
+class GeneratedAgentTextChunk:
+    content: str
+    used_tokens: int = 0
+    estimated_cost_cny: float = 0
+
+
 class AgentContentGeneratorPort(Protocol):
     def summarize(
         self,

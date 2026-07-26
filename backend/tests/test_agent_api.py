@@ -23,6 +23,7 @@ from app.modules.agent.planner import (
     PlanDecision,
     ToolDecision,
 )
+from app.modules.agent.generation import GeneratedAgentTextChunk
 from app.modules.agent.policy import AgentPolicy
 from app.modules.agent.registry import ToolRegistry
 from app.modules.auth.dependencies import get_current_user
@@ -69,6 +70,20 @@ class ReportPlanner:
 
     def finalize(self, state):
         return FinalDecision(output="学习报告已完成。")
+
+
+class StreamingReportPlanner(ReportPlanner):
+    def inspect_result(self, state):
+        return InspectionDecision(action="finalize")
+
+    def stream_finalize(self, state):
+        yield GeneratedAgentTextChunk(content="学习报告")
+        yield GeneratedAgentTextChunk(content="已完成。")
+        yield GeneratedAgentTextChunk(
+            content="",
+            used_tokens=31,
+            estimated_cost_cny=0.003,
+        )
 
 
 def test_agent_rest_sse_persistence_and_download() -> None:
@@ -177,6 +192,53 @@ def test_legacy_run_creation_endpoint_is_not_exposed() -> None:
                 offset=0,
                 limit=20,
             ).items == []
+    finally:
+        app.dependency_overrides.clear()
+        session.close()
+        engine.dispose()
+
+
+def test_agent_final_answer_is_forwarded_as_multiple_sse_tokens() -> None:
+    engine = build_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = Session(engine, expire_on_commit=False)
+    user = User(
+        id="stream-owner",
+        email="stream-owner@example.com",
+        password_hash="hash",
+    )
+    session.add(user)
+    session.commit()
+    cancellation = AgentCancellationService()
+    registry = ToolRegistry([ReportTool()])
+    service = AgentApplicationService(
+        session,
+        policy=AgentPolicy(enabled=True),
+        graph_factory=lambda user_id, run_id: BoundedAgentGraph(
+            planner=StreamingReportPlanner(),
+            registry=registry,
+            stop_requested=lambda: cancellation.is_requested(user_id, run_id),
+        ),
+        cancellation=cancellation,
+        model_name="mock-stream",
+    )
+    current_user = UserResponse.model_validate(user)
+    app.dependency_overrides[get_current_user] = lambda: current_user
+    app.dependency_overrides[get_agent_application_service] = lambda: service
+    try:
+        with TestClient(app) as client:
+            created = service.create_run("stream-owner", "生成流式学习报告")
+            response = client.post(f"/api/v1/agent/runs/{created.id}/stream")
+
+            assert response.status_code == 200
+            assert response.text.count("event: token") == 2
+            assert "学习报告" in response.text
+            assert "已完成。" in response.text
+
+            detail = client.get(f"/api/v1/agent/runs/{created.id}").json()
+            assert detail["final_result"] == "学习报告已完成。"
+            assert detail["used_tokens"] == 56
+            assert detail["estimated_cost_cny"] == 0.005
     finally:
         app.dependency_overrides.clear()
         session.close()

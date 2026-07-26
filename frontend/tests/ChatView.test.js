@@ -48,8 +48,9 @@ const details = {
   },
 }
 
-function mountChatView() {
+function mountChatView(options = {}) {
   return mount(ChatView, {
+    ...options,
     global: {
       stubs: {
         ElButton: {
@@ -69,6 +70,44 @@ beforeEach(() => {
 })
 
 describe('ChatView 会话交互', () => {
+  it('进入、切换、新建会话和回答结束后聚焦问题输入框', async () => {
+    let finishStream
+    api.streamConversation.mockImplementation(() => new Promise((resolve) => {
+      finishStream = resolve
+    }))
+    api.createConversation.mockResolvedValue({
+      id: 'conversation-3',
+      title: '新会话',
+      message_count: 0,
+    })
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const wrapper = mountChatView({ attachTo: host })
+
+    await flushPromises()
+    expect(document.activeElement).toBe(wrapper.get('textarea').element)
+
+    await wrapper.get('[data-conversation-id="conversation-2"] [data-testid="conversation-main"]').trigger('click')
+    await flushPromises()
+    expect(document.activeElement).toBe(wrapper.get('textarea').element)
+
+    await wrapper.get('.new-chat-button').trigger('click')
+    await flushPromises()
+    expect(document.activeElement).toBe(wrapper.get('textarea').element)
+
+    await wrapper.get('textarea').setValue('继续提问')
+    await wrapper.get('form').trigger('submit')
+    await nextTick()
+    expect(wrapper.get('textarea').attributes('disabled')).toBeDefined()
+
+    finishStream()
+    await flushPromises()
+    expect(document.activeElement).toBe(wrapper.get('textarea').element)
+
+    wrapper.unmount()
+    host.remove()
+  })
+
   it('每收到一个 SSE token 都立即更新页面内容', async () => {
     let streamHandlers
     let finishStream

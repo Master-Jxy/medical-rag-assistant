@@ -1297,6 +1297,23 @@ Agent事件使用独立契约：`run_started`、`plan_ready`、`tool_started`、
 
 前端新增独立`/agent`工作台和`api/agent.js`；普通`ChatView`、`conversations.js`和聊天SSE解析器保持不变。
 
+最终回答流式链路使用模型原生流，而不是前端逐字动画：
+
+```text
+LangGraph完成规划、工具执行和结果检查
+-> LangChainAgentPlanner.stream_finalize
+-> LangChainAgentModel调用ChatTongyi.stream
+-> AgentApplicationService把每个模型chunk转换为独立token事件
+-> AgentConversationApplication按顺序累积chunk
+-> 终态只持久化一条完整assistant message和一份完整final_result
+```
+
+规划/工具选择继续使用只允许JSON的系统提示；摘要、报告和最终正文使用独立的正文系统
+提示，禁止JSON约束污染用户可见回答。确定性问候、身份说明、安全拒绝和必要澄清可以
+直接返回，因此允许0次工具、0 Token并瞬时完成。流式生成期间仍检查用户停止信号；
+停止后关闭上游生成器并沿用既有`stopped`事件和部分消息持久化语义。普通RAG继续使用
+原有独立异步SSE链路，不依赖Agent模型适配器。
+
 ### 13.5 安全、成本和故障约束
 
 - 使用LangGraph显式状态图，不写无限`while`循环。

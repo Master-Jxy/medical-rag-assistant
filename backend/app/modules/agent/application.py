@@ -296,7 +296,12 @@ class AgentApplicationService:
                     },
                 }
                 active_step = None
-            yield from self._finish_run(user_id, run_id, final_state)
+            yield from self._finish_run(
+                user_id,
+                run_id,
+                final_state,
+                graph=graph,
+            )
         except GeneratorExit:
             self.cancellation.request_stop(user_id, run_id)
             if active_step is not None:
@@ -332,26 +337,92 @@ class AgentApplicationService:
         finally:
             self.cancellation.clear(user_id, run_id)
 
-    def _finish_run(self, user_id: str, run_id: str, state):
+    def _finish_run(self, user_id: str, run_id: str, state, *, graph=None):
         status = state["status"]
         if status == AgentRunStatus.COMPLETED:
-            output = state.get("final_output") or "任务已完成。"
+            output = state.get("final_output")
+            used_tokens = state["used_tokens"]
+            estimated_cost_cny = state["estimated_cost_cny"]
+            if not output and graph is not None:
+                answer_stream = graph.stream_final_answer(state)
+                if answer_stream is not None:
+                    output_parts = []
+                    for chunk in answer_stream:
+                        if self.cancellation.is_requested(user_id, run_id):
+                            close_stream = getattr(answer_stream, "close", None)
+                            if callable(close_stream):
+                                close_stream()
+                            self._safe_stop(user_id, run_id)
+                            self._emit(
+                                "agent_stop",
+                                user_id,
+                                run_id,
+                                "stopped",
+                                error_type="user_requested",
+                            )
+                            yield {
+                                "event": "stopped",
+                                "data": {
+                                    "run_id": run_id,
+                                    "reason": "user_requested",
+                                },
+                            }
+                            return
+                        if chunk.content:
+                            output_parts.append(chunk.content)
+                            yield {
+                                "event": "token",
+                                "data": {"content": chunk.content},
+                            }
+                        used_tokens += chunk.used_tokens
+                        estimated_cost_cny += chunk.estimated_cost_cny
+                        budget_reason = None
+                        if used_tokens > state["max_tokens"]:
+                            budget_reason = "token_budget"
+                        elif (
+                            estimated_cost_cny
+                            > state["max_estimated_cost_cny"]
+                        ):
+                            budget_reason = "cost_budget"
+                        if budget_reason:
+                            close_stream = getattr(answer_stream, "close", None)
+                            if callable(close_stream):
+                                close_stream()
+                            self._safe_stop(user_id, run_id)
+                            self._emit(
+                                "agent_stop",
+                                user_id,
+                                run_id,
+                                "stopped",
+                                error_type=budget_reason,
+                            )
+                            yield {
+                                "event": "stopped",
+                                "data": {
+                                    "run_id": run_id,
+                                    "reason": budget_reason,
+                                },
+                            }
+                            return
+                    output = "".join(output_parts)
+            output = output or "任务已完成。"
             self.repository.complete_run(
                 user_id,
                 run_id,
                 final_result=output,
-                used_tokens=state["used_tokens"],
-                estimated_cost_cny=state["estimated_cost_cny"],
+                used_tokens=used_tokens,
+                estimated_cost_cny=estimated_cost_cny,
             )
             self.session.commit()
-            yield {"event": "token", "data": {"content": output}}
+            if state.get("final_output"):
+                yield {"event": "token", "data": {"content": output}}
             self._emit("agent_run", user_id, run_id, "success")
             yield {
                 "event": "run_completed",
                 "data": {
                     "run_id": run_id,
-                    "used_tokens": state["used_tokens"],
-                    "estimated_cost_cny": state["estimated_cost_cny"],
+                    "used_tokens": used_tokens,
+                    "estimated_cost_cny": estimated_cost_cny,
                 },
             }
         elif status == AgentRunStatus.STOPPED:

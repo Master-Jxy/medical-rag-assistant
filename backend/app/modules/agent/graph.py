@@ -65,6 +65,12 @@ class BoundedAgentGraph:
         ):
             yield AgentGraphState(**value)
 
+    def stream_final_answer(self, state: AgentGraphState):
+        stream_finalize = getattr(self.planner, "stream_finalize", None)
+        if not callable(stream_finalize):
+            return None
+        return stream_finalize(state)
+
     def _build_graph(self):
         builder = StateGraph(AgentGraphState)
         builder.add_node("classify_and_plan", self._classify_and_plan)
@@ -211,6 +217,11 @@ class BoundedAgentGraph:
 
     def _finalize(self, state: AgentGraphState) -> dict[str, object]:
         if state.get("final_output"):
+            return {
+                "current_node": AgentNode.FINALIZE,
+                "status": AgentRunStatus.COMPLETED,
+            }
+        if callable(getattr(self.planner, "stream_finalize", None)):
             return {
                 "current_node": AgentNode.FINALIZE,
                 "status": AgentRunStatus.COMPLETED,
