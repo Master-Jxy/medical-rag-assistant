@@ -37,13 +37,15 @@ class StubTool:
 
     def __init__(self, delay: float = 0) -> None:
         self.delay = delay
+        self.contexts: list[AgentToolContext] = []
 
     def invoke(
         self,
         context: AgentToolContext,
         arguments: AgentToolArguments,
     ) -> AgentToolResult:
-        del context, arguments
+        self.contexts.append(context)
+        del arguments
         if self.delay:
             sleep(self.delay)
         return AgentToolResult(summary="已找到资料", source_ids=["doc-1"])
@@ -85,9 +87,10 @@ def initial_state(policy: AgentPolicy):
 
 
 def test_graph_runs_explicit_nodes_and_finishes() -> None:
+    tool = StubTool()
     runner = BoundedAgentGraph(
         planner=StubPlanner(),
-        registry=ToolRegistry([StubTool()]),
+        registry=ToolRegistry([tool]),
     )
     result = runner.invoke(initial_state(AgentPolicy(enabled=True)))
 
@@ -95,6 +98,7 @@ def test_graph_runs_explicit_nodes_and_finishes() -> None:
     assert result["step_count"] == 1
     assert result["tool_result_summaries"] == ["已找到资料"]
     assert result["final_output"] == "基于资料完成整理。"
+    assert tool.contexts[0].task_context == "整理患者安全资料"
     assert {"classify_and_plan", "select_tool", "execute_tool", "inspect_result"} <= set(
         runner.graph.get_graph().nodes
     )

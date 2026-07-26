@@ -135,7 +135,11 @@ class BoundedAgentGraph:
                 "last_tool_result": None,
                 "error_type": "TOOL_NOT_SELECTED",
             }
-        context = AgentToolContext(run_id=state["run_id"], user_id=state["user_id"])
+        context = AgentToolContext(
+            run_id=state["run_id"],
+            user_id=state["user_id"],
+            task_context=state["task"],
+        )
         executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="agent-tool")
         future = executor.submit(
             self.registry.invoke,

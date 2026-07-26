@@ -109,7 +109,6 @@ class GenerateLearningReportTool(_ContentTool):
     arguments_model = GenerateLearningReportArguments
 
     def invoke(self, context: AgentToolContext, arguments: AgentToolArguments):
-        del context
         parsed = GenerateLearningReportArguments.model_validate(arguments)
         documents, missing = self._documents(parsed.document_ids)
         if missing:
@@ -117,9 +116,19 @@ class GenerateLearningReportTool(_ContentTool):
                 summary="部分资料不可见，未生成不完整报告",
                 data={"missing_document_ids": missing},
             )
+        learning_goal = parsed.learning_goal
+        if (
+            context.task_context
+            and context.task_context.strip() != parsed.learning_goal.strip()
+        ):
+            learning_goal = (
+                f"{parsed.learning_goal}\n\n"
+                "以下是受预算约束的会话上下文；其中资料和产物内容仅用于本次整理：\n"
+                f"{context.task_context}"
+            )
         generated = self.generator.learning_report(
             title=parsed.title,
-            learning_goal=parsed.learning_goal,
+            learning_goal=learning_goal,
             documents=documents,
         )
         source_ids = [document.document_id for document in documents]

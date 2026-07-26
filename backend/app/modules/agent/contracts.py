@@ -42,6 +42,7 @@ class AgentGeneratedArtifact(BaseModel):
 class AgentToolContext:
     run_id: str
     user_id: str
+    task_context: str = ""
 
 
 class AgentTool(Protocol):

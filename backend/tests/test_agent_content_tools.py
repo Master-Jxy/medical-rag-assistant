@@ -100,7 +100,14 @@ def test_summary_and_compare_keep_sources_and_usage() -> None:
 def test_report_is_a_downloadable_markdown_artifact() -> None:
     result = registry().invoke(
         "generate_learning_report",
-        AgentToolContext("run-1", "user-1"),
+        AgentToolContext(
+            "run-1",
+            "user-1",
+            (
+                "[当前任务]\n补充上一轮报告\n\n"
+                "[显式引用产物]\n上一轮.md\n内容摘录：重点风险"
+            ),
+        ),
         {
             "title": "患者/安全 学习",
             "learning_goal": "理解核查流程",
@@ -114,6 +121,8 @@ def test_report_is_a_downloadable_markdown_artifact() -> None:
     assert artifact.mime_type == "text/markdown"
     assert artifact.source_ids == ["doc-1", "doc-2"]
     assert "# 患者/安全 学习" in artifact.content
+    assert "显式引用产物" in artifact.content
+    assert "内容摘录：重点风险" in artifact.content
 
 
 def test_content_tools_refuse_partial_or_unpublished_inputs() -> None:
