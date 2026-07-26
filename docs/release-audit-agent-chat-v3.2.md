@@ -104,3 +104,14 @@
   - `我最近一直头疼`：正常触发不诊断、不提供医疗建议的安全边界。
 - 三轮均为completed、0 step、无SSE error，共987 Token，估算费用约¥0.00352；
   临时账号、thread、message、run和Redis键清理后均为0，四个容器healthy。
+
+## 9. 输入框自动聚焦交互
+
+- `AgentComposer`只暴露受disabled状态约束的`focus()`界面能力，不让会话API或SSE
+  解析器直接操作DOM。
+- Agent页面在首次加载、新建会话、切换历史会话以及发送/重试流收尾并恢复服务端状态后，
+  通过下一次Vue渲染周期聚焦输入框。
+- 新增真实DOM焦点回归用例，覆盖新建、切换和模型回复结束三个场景。
+- 前端10个测试文件41项、SSE UTF-8解析、Vite正式构建和`git diff --check`通过。
+- 交互提交：`df407a9`；本次只需替换Web静态包并重建web容器，不调用模型，不修改
+  后端、MySQL、Redis、迁移或业务数据。
