@@ -1424,9 +1424,10 @@ Chroma客户端、系统命令或隐藏推理。
 产物；验收账号、thread/message/run/step/artifact和精确幂等/限流键随后全部清理，
 正式重试恢复2，知识库保持27份文档、103个Chroma片段和27个上传文件。
 
-### 13.9 Agent Chat v3.1 修复边界 `[目标]`
+### 13.9 Agent Chat v3.1 修复边界 `[已实现并上线]`
 
-v3.1不是增加更多Agent工具，而是修复v3.0产品主链路。当前代码审计证据：
+v3.1不是增加更多Agent工具，而是修复v3.0产品主链路。以下审计问题已经由
+`0019_agent_message_order`、统一timeline reducer、两栏页面和显式四类路由修复：
 
 - `AgentConversationApplication`按user message、run、assistant message顺序写入，业务
   创建顺序正确。

@@ -12,13 +12,11 @@
 
 下一任务定向阅读：
 
-- `docs/conversational-agent-design.md` 的第16节
-- `docs/development-roadmap.md` 的阶段14，只读任务14.1
-- `docs/technical-design.md` 的13.8～13.9
-- `backend/app/modules/agent/thread_models.py`
-- `backend/app/modules/agent/thread_repository.py`
-- `backend/app/modules/agent/conversation_application.py`中消息创建事务
-- `backend/tests/test_agent_thread_repository.py`、Agent会话API与迁移测试的直接相关部分
+- `docs/conversational-agent-design.md` 的16.8～16.10
+- `docs/development-roadmap.md` 的任务14.8
+- `docs/deployment.md` 的备份、发布和回滚边界
+- `backend/scripts/cleanup_legacy_agent_runs.py`
+- 真实模型调用前再定向读取Agent Planner、Tool和费用计量相关实现与测试
 
 ## 2. 当前状态
 
@@ -26,8 +24,8 @@
 
 - 阶段7已经完成：`RAG v1.2.1`已部署，最终受控线上验收通过。
 - 阶段8的任务8.1～8.5已经完成，并作为`RAG v1.3`提交、推送和部署。
-- 服务器运行`Agent Chat v3.0`代码行为提交`bee1ee7`及生产同源API修复`beabb3b`，
-  四个容器健康。
+- 服务器运行`Agent Chat v3.1`提交`bd6a724`，数据库为
+  `0019_agent_message_order (head)`，四个容器健康。
 - 本轮阶段8部署没有调用真实Embedding、Reranker或Qwen，没有产生模型费用；临时验收账号已删除，业务数据恢复原基线。
 - 阶段9～13已经完成；阶段13已在现有受控LangGraph之上增加Codex式多轮会话与消息工作台。
 - 已确认目标规则：普通用户提交资料但不直接发布，管理员审核后才进入公共知识库；RAG与Agent使用独立页面并只共享`published`公共资料。
@@ -75,15 +73,21 @@
 - 任务13.8已完成：数据库为`0018_agent_threads_messages (head)`；同一thread三轮真实
   报告、显式产物引用、SSE和持久化关联通过，共3次Qwen、0次Embedding/Reranker、
   0次自动重试，累计费用¥0.044025。临时数据精确清理，正式重试恢复2。
-- 2026-07-26完成Agent Chat v3.1设计审计，尚未修改业务代码、数据库或生产：
-  - user/assistant写入顺序正确，但消息查询按`created_at + UUID`排序；同一秒记录在
-    MySQL上可能交换，现有SQLite分页测试没有覆盖相同时间戳的user/assistant。
-  - Vue仍加载`thread_id=NULL`旧独立run，并保留“旧版独立任务”、legacy专用消息和永久
-    “来源与产物”第三栏。
-  - 当前LangGraph实际是可提前结束的工具循环，5步是上限；Planner缺少直接回答和澄清
-    路由，导致身份、问候或反馈可能误调用知识工具。
-  - v3.1将先修顺序真相，再退出旧入口、改两栏聊天、统一事件归并，最后增加四类任务
-    路由和按需工具循环。完整依据见对话Agent设计第16节。
+- 阶段14的14.1～14.7及14.8无费用部分已经完成：
+  - `0019`增加thread内递增`sequence_no`、`turn_id`和行锁序号预留；生产10条历史消息
+    已回填为1～10，唯一序号10条、空turn 0条，thread下一序号为11。
+  - 前端旧独立任务入口和永久右栏已退出；REST/SSE由timeline reducer按稳定实体ID
+    归并，两栏聊天页把过程、来源和产物放回对应助手消息。
+  - Planner/Graph支持`direct_reply/clarification/tool_required/refuse`，工具按需
+    0～5次；问候可形成0 step、0 Token、0费用run。
+  - 生产发布前备份`backup-20260726T142800Z`的MySQL、app_data、Chroma、Redis及清单
+    SHA-256全部通过；部署后四容器健康。
+  - 线上同一临时thread按真实60秒限流分两批完成20轮问候：40条消息序号1～40、
+    20个turn、20个run、0 step、0 Token、费用0，退出码0；清理后恢复5账号、1个正式
+    Agent thread、10条Agent消息、11个run，临时账号残留0。
+  - 旧清理脚本dry-run识别6个`thread_id IS NULL` run、6个专属step、0 artifact/file，
+    `deleted=False`；5个threaded run及其他业务数据未改。
+  - 生产旧记录真实删除和真实模型场景仍等待两个独立的当次确认，不得提前写成完成。
 
 ## 3. 阶段7最终证据
 
@@ -108,6 +112,15 @@
 Telemetry只观察业务，不记录完整问题、回答、Prompt、密码、JWT、API Key、邮箱或医学正文；关闭或写入失败都不能改变原业务结果。
 
 ## 5. 最新验证
+
+2026-07-26阶段14发布与无费用验收：
+
+- 后端完整测试347项、前端10个文件38项、SSE分片、正式构建、`pip check`、
+  Alembic单头和`git diff --check`全部通过。
+- 本地真实浏览器通过登录、Agent两栏页、零工具问候，以及1440/1280/390宽度无整页
+  横向溢出；移动端会话抽屉可打开。
+- 生产迁移为`0019`，四容器健康，HTTPS健康200；正式包使用`/api/v1`且不含本地API。
+- 20轮在线无费用验收与清理通过；没有调用Qwen、Embedding或Reranker。
 
 2026-07-25发布前回归：
 
@@ -368,33 +381,29 @@ Telemetry只观察业务，不记录完整问题、回答、Prompt、密码、JW
 
 ## 6. 工作区与禁止事项
 
-- 当前分支为`main`；本地、GitHub和生产均包含`Agent Chat v3.0`代码行为提交
-  `bee1ee7`及生产登录修复`beabb3b`，生产数据库为`0018`。
-- 生产源码工作树干净，四个容器健康；全量备份、旧镜像、旧前端和发布前提交
-  `97a9d10e17ee`保留回滚路径。阶段13真实三轮验收、清理、恢复和文档冻结已完成。
+- 当前分支为`main`；本地、GitHub和生产均包含阶段14发布提交`bd6a724`，生产数据库为
+  `0019`。
+- 生产源码工作树干净，四个容器健康；全量备份
+  `backup-20260726T142800Z`、旧前端和发布前提交`2347f48`保留回滚路径。
 - 阶段8代码、阶段7最终验收校验器、测试和文档已按`docs/release-audit-rag-v1.3.md`精确提交并推送。
 - `backend/tests/test_auth_api.py`在`git status`中可能因Windows换行显示修改，但内容与HEAD一致，不属于发布范围。
 - `Platform v1.4`应用、迁移、测试、前端和部署恢复修改已经整体发布，后续文档提交不得夹带业务行为变化。
 - 不得清理、覆盖或回退现有修改；禁止`git reset --hard`和批量清理。
 - 后续付费模型验证仍需遵守独立预算闸门；不得把本地Mock证据写成真实多轮质量验收。
-- 本轮只允许更新设计文档；生产仍运行v3.0。不得在没有新迁移、测试、发布和在线验收时
-  把README或简历改写成v3.1已完成。
+- 生产旧独立run清理和真实模型验收仍需分别取得当次明确确认；不得用无费用问候验收
+  替代真实工具/模型质量证据。
 
 ## 7. 唯一下一任务
 
-**任务14.1：建立Agent消息的确定顺序基线。**
+**任务14.8闸门收口：生产旧独立run清理与真实模型验收。**
 
 本小步边界：
 
-- 新Alembic迁移为`agent_threads`增加`next_message_sequence`，为`agent_messages`
-  增加thread内递增`sequence_no`和可空`turn_id`；优先按run触发/响应关系回填历史，再
-  建立`UNIQUE(thread_id, sequence_no)`。
-- 一轮发送使用thread行锁一次预留user和assistant两个连续序号，并在同一事务更新
-  thread计数器；禁止无锁的“查询MAX后加1”。
-- 消息列表、最近消息、上下文和摘要查询统一按sequence；Schema/API返回sequence与
-  turn，前端暂不改版但不能破坏兼容。
-- 增加同一时间戳user/assistant、分页、并发分配、SQLite迁移升级/降级和MySQL排序契约
-  测试。先运行定向测试，再按迁移风险运行后端完整回归。
-- 本任务不删除旧run、不改Agent页面、不改LangGraph/工具/Prompt、不调用Qwen、
-  Embedding或Reranker、不部署。
-- 完成后只把handoff的唯一下一任务推进到14.2；不得跨步实现14.2～14.8。
+- 删除闸门当前dry-run为6个legacy run、6个step、0 artifact/file；只有用户明确确认
+  `DELETE_LEGACY_AGENT_RUNS`后才执行，随后复核5个threaded run、正式thread/message、
+  RAG会话、文档、文件和Chroma基线不变。
+- 真实模型闸门必须先固定场景、最大Qwen/Embedding/Reranker次数、预计费用、超时、
+  自动重试、停止条件和清理方案，再取得同一对话的明确确认。
+- 两个闸门互相独立；只确认其中一个时不得执行另一个。
+- 闸门执行并清理复核通过后，才能把阶段14和`Agent Chat v3.1`最终标记为完成，并把
+  唯一下一任务推进到高风险写工具人工确认节点的设计。
