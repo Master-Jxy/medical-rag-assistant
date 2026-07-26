@@ -352,6 +352,7 @@ def test_three_rounds_reuse_recent_messages_and_explicit_artifact() -> None:
         assert "第一轮生成报告" in planner.contexts[1]
         assert "根据刚才结果补充风险" in planner.contexts[2]
         assert "报告.md" in planner.contexts[2]
+        assert "内容摘录：# 报告" in planner.contexts[2]
         assert lock.acquired == lock.released == 3
     engine.dispose()
 

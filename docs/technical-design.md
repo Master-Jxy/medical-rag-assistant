@@ -1392,7 +1392,9 @@ agent_thread
 
 任务13.2～13.7已按上述边界实现：`AgentConversationApplication`在一次消息请求内编排
 user message、run、assistant message和独立SSE；`AgentContextBuilder`按当前任务、显式
-消息/来源/产物、最近8条消息、提取式滚动摘要和用户已启用记忆组合上下文。Agent会话
+消息/来源/产物、最近8条消息、提取式滚动摘要和用户已启用记忆组合上下文。显式产物
+引用只读取当前用户拥有的产物，并携带文件名、来源ID和最多1200字符的内容摘录，使
+后续任务能真正续写产物，同时继续受整体Token预算约束。Agent会话
 幂等记录使用独立`agent-chat`命名空间，同一用户同一thread使用独立生成锁；网络断开
 收敛为`stopped`，进程重启后的遗留run/step/assistant message在新会话链路首次访问时
 收敛为带稳定错误码的`failed`。旧run API及`thread_id=NULL`历史保持可读。
