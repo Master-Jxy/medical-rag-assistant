@@ -6,6 +6,7 @@ from pathlib import Path
 
 APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 AGENT_ROOT = APP_ROOT / "modules" / "agent"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def imported_modules(path: Path) -> set[str]:
@@ -91,3 +92,21 @@ def test_agent_tools_only_depend_on_public_ports() -> None:
             offenders[path.name] = matches
 
     assert offenders == {}
+
+
+def test_compose_forwards_bounded_agent_policy_to_backend() -> None:
+    compose_text = (PROJECT_ROOT / "compose.yaml").read_text(encoding="utf-8")
+    env_example = (PROJECT_ROOT / "deploy" / ".env.example").read_text(
+        encoding="utf-8"
+    )
+    required = {
+        "AGENT_ENABLED",
+        "AGENT_MAX_STEPS",
+        "AGENT_TOOL_TIMEOUT_SECONDS",
+        "AGENT_RUN_TIMEOUT_SECONDS",
+        "AGENT_MAX_TOKENS",
+        "AGENT_MAX_ESTIMATED_COST_CNY",
+        "AGENT_MODEL_MAX_OUTPUT_TOKENS",
+    }
+    assert all(f"{name}:" in compose_text for name in required)
+    assert all(f"{name}=" in env_example for name in required)
