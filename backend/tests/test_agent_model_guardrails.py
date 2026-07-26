@@ -3,6 +3,7 @@
 import pytest
 
 from app.infrastructure.agent_model import LangChainAgentPlanner
+from app.modules.agent.planner import PlanDecision
 
 
 class FailIfModelCalled:
@@ -127,3 +128,18 @@ def test_missing_comparison_target_routes_to_clarification() -> None:
     )
     assert decision.route == "clarification"
     assert "至少两份" in decision.response_message
+
+
+@pytest.mark.parametrize("route", ["direct_reply", "clarification", "refuse"])
+def test_non_tool_model_routes_accept_null_public_plan(route) -> None:
+    decision = PlanDecision.model_validate(
+        {
+            "route": route,
+            "plan": None,
+            "allowed": route != "refuse",
+            "response_message": "公开回复",
+            "refusal_message": "超出能力范围" if route == "refuse" else None,
+        }
+    )
+
+    assert decision.plan == []

@@ -2,7 +2,7 @@
 
 from typing import Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.agent.state import AgentGraphState
 
@@ -28,6 +28,12 @@ class PlanDecision(BaseModel):
     refusal_message: str | None = Field(default=None, max_length=500)
     response_message: str | None = Field(default=None, max_length=2000)
     usage: PlannerUsage = Field(default_factory=PlannerUsage)
+
+    @field_validator("plan", mode="before")
+    @classmethod
+    def normalize_empty_plan(cls, value):
+        """非工具路由常被模型表示为null，统一为无公开执行计划。"""
+        return [] if value is None else value
 
 
 class ToolDecision(BaseModel):
