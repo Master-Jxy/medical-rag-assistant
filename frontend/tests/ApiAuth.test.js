@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { streamConversation } from '../src/api/conversations.js'
-import http from '../src/api/http.js'
+import http, { apiBaseUrl } from '../src/api/http.js'
 import { getAccessToken, setAccessToken } from '../src/auth/token.js'
 
 beforeEach(() => {
@@ -10,6 +10,10 @@ beforeEach(() => {
 })
 
 describe('认证请求头和 401 处理', () => {
+  it('未注入环境变量时使用同源 API，避免生产包连接访问者本机', () => {
+    expect(apiBaseUrl).toBe('/api/v1')
+  })
+
   it('Axios 请求自动附带 Bearer Token', async () => {
     setAccessToken('axios-token')
     let requestConfig

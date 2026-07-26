@@ -4,7 +4,7 @@ import { getAccessToken, notifyUnauthorized } from '../auth/token.js'
 
 // 前端只访问 FastAPI，不保存也不接触阿里云模型密钥。
 export const apiBaseUrl =
-  import.meta.env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1'
+  import.meta.env?.VITE_API_BASE_URL || '/api/v1'
 
 const http = axios.create({
   baseURL: apiBaseUrl,
