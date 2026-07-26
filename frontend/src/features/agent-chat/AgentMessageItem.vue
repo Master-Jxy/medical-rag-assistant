@@ -53,6 +53,7 @@ const artifacts = computed(() => {
         :plan="plan"
         :steps="steps"
         :run="run"
+        :status="message.status"
         :active="isActive"
       />
 

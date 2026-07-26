@@ -100,7 +100,20 @@ def test_current_forbidden_task_still_wins_over_safe_conversation_history() -> N
     assert decision.plan == ["拒绝越权任务"]
 
 
-@pytest.mark.parametrize("task", ["你好", "你是谁", "不错"])
+@pytest.mark.parametrize(
+    "task",
+    [
+        "你好",
+        "您好！",
+        "你是谁",
+        "你是谁呢？",
+        "介绍一下自己",
+        "请介绍一下自己。",
+        "你能做什么",
+        "不错",
+        "谢谢",
+    ],
+)
 def test_small_talk_routes_to_zero_tool_direct_reply(task) -> None:
     decision = LangChainAgentPlanner._deterministic_plan_decision(task)
     assert decision.route == "direct_reply"

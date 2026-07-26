@@ -193,17 +193,69 @@ class LangChainAgentPlanner(AgentPlanner):
     @staticmethod
     def _deterministic_plan_decision(task: str) -> PlanDecision | None:
         normalized = task.strip().rstrip("。！!？?")
-        direct_replies = {
-            "你好": "你好，我是资料整理 Agent，可以帮助你检索、摘要、比较已发布的医学资料并生成学习报告。",
-            "你是谁": "我是受控的医学资料整理 Agent，只处理已发布知识库资料，不提供诊断或处方。",
-            "不错": "谢谢认可。你可以继续让我摘要资料、比较文档或生成学习报告。",
-            "谢谢": "不客气。需要继续整理资料时直接告诉我目标即可。",
+        greeting_phrases = {
+            "你好",
+            "您好",
+            "嗨",
+            "hello",
+            "hi",
         }
-        if normalized in direct_replies:
+        identity_phrases = {
+            "你是谁",
+            "你是谁呢",
+            "你是什么助手",
+            "介绍一下自己",
+            "请介绍一下自己",
+            "自我介绍一下",
+        }
+        capability_phrases = {
+            "你能做什么",
+            "你会做什么",
+            "你有什么功能",
+            "你可以做什么",
+            "能帮我做什么",
+        }
+        positive_phrases = {
+            "不错",
+            "很好",
+            "好的",
+            "谢谢",
+            "多谢",
+        }
+        if normalized.lower() in greeting_phrases:
             return PlanDecision(
                 route="direct_reply",
                 plan=[],
-                response_message=direct_replies[normalized],
+                response_message=(
+                    "你好，我是资料整理 Agent，可以帮助你检索、摘要、比较"
+                    "已发布的医学资料并生成学习报告。"
+                ),
+            )
+        if normalized in identity_phrases:
+            return PlanDecision(
+                route="direct_reply",
+                plan=[],
+                response_message=(
+                    "我是受控的医学资料整理 Agent，只处理已发布知识库资料，"
+                    "可以协助检索、摘要、比较和生成学习报告，不提供诊断或处方。"
+                ),
+            )
+        if normalized in capability_phrases:
+            return PlanDecision(
+                route="direct_reply",
+                plan=[],
+                response_message=(
+                    "我可以检索公共医学知识库、整理单份资料摘要、比较多份资料，"
+                    "并生成带来源的学习报告。"
+                ),
+            )
+        if normalized in positive_phrases:
+            return PlanDecision(
+                route="direct_reply",
+                plan=[],
+                response_message=(
+                    "谢谢认可。你可以继续让我摘要资料、比较文档或生成学习报告。"
+                ),
             )
         forbidden_phrases = (
             "系统命令",

@@ -21,6 +21,7 @@ vi.mock('../src/api/agent.js', () => agentApi)
 vi.mock('../src/api/citations.js', () => citationApi)
 
 import AgentView from '../src/views/AgentView.vue'
+import AgentRunProgress from '../src/features/agent-chat/AgentRunProgress.vue'
 import {
   initialAgentStreamState,
   reduceAgentEvent,
@@ -123,6 +124,25 @@ beforeEach(() => {
 })
 
 describe('Codex式资料Agent工作台', () => {
+  it('零工具失败任务不会伪装成成功的直接回答', () => {
+    const wrapper = mount(AgentRunProgress, {
+      props: {
+        run: {
+          status: 'failed',
+          used_tokens: 0,
+          estimated_cost_cny: 0,
+          steps: [],
+        },
+        status: 'failed',
+      },
+    })
+
+    expect(wrapper.text()).toContain('处理失败 · 0 次工具调用')
+    expect(wrapper.text()).toContain('任务未完成')
+    expect(wrapper.text()).toContain('任务在形成有效回答前失败，请重试')
+    expect(wrapper.text()).not.toContain('该任务无需调用工具，已直接形成回答')
+  })
+
   it('展示会话、连续消息、步骤、来源和产物', async () => {
     const wrapper = mountView()
     const messageArea = wrapper.get('[data-testid="agent-message-area"]').element

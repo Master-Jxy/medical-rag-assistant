@@ -5,6 +5,7 @@ const props = defineProps({
   plan: { type: Array, default: () => [] },
   steps: { type: Array, default: () => [] },
   run: { type: Object, default: null },
+  status: { type: String, default: '' },
   active: Boolean,
 })
 
@@ -34,6 +35,7 @@ const statusLabels = {
 }
 
 const toolCount = computed(() => props.steps.length)
+const effectiveStatus = computed(() => props.run?.status || props.status)
 const displayedPlan = computed(() => {
   if (props.plan.length) return props.plan
   if (props.steps.length) return ['根据任务选择受控工具，并在每次调用后检查结果']
@@ -51,8 +53,26 @@ const durationText = computed(() => {
 
 const summaryText = computed(() => {
   if (props.active) return `正在处理 · 已调用 ${toolCount.value} 次工具`
+  if (effectiveStatus.value === 'failed') {
+    return `处理失败 · ${toolCount.value} 次工具调用`
+  }
+  if (effectiveStatus.value === 'stopped') {
+    return `已停止 · ${toolCount.value} 次工具调用`
+  }
   const prefix = durationText.value ? `已处理 ${durationText.value}` : '处理完成'
   return `${prefix} · ${toolCount.value} 次工具调用`
+})
+const routeHeading = computed(() => {
+  if (props.active) return '判断任务路由'
+  if (effectiveStatus.value === 'failed') return '任务未完成'
+  if (effectiveStatus.value === 'stopped') return '任务已停止'
+  return '直接回答'
+})
+const routeDescription = computed(() => {
+  if (props.active) return '正在判断是否需要调用工具。'
+  if (effectiveStatus.value === 'failed') return '任务在形成有效回答前失败，请重试。'
+  if (effectiveStatus.value === 'stopped') return '任务已停止，没有继续生成回答。'
+  return '该任务无需调用工具，已直接形成回答。'
 })
 
 function toolLabel(step) {
@@ -95,10 +115,10 @@ function decisionText(step, index) {
       </section>
 
       <section v-if="!displayedPlan.length && !steps.length" class="progress-event decision-event">
-        <span class="event-mark">✓</span>
+        <span class="event-mark">{{ ['failed', 'stopped'].includes(effectiveStatus) ? '!' : '✓' }}</span>
         <div>
-          <strong>{{ active ? '判断任务路由' : '直接回答' }}</strong>
-          <p>{{ active ? '正在判断是否需要调用工具。' : '该任务无需调用工具，已直接形成回答。' }}</p>
+          <strong>{{ routeHeading }}</strong>
+          <p>{{ routeDescription }}</p>
         </div>
       </section>
 
