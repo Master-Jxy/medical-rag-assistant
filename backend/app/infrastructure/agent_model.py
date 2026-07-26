@@ -111,7 +111,8 @@ class LangChainAgentPlanner(AgentPlanner):
         self.registry = registry
 
     def classify_and_plan(self, state):
-        deterministic = self._deterministic_plan_decision(state["task"])
+        routing_task = self._current_user_task(state["task"])
+        deterministic = self._deterministic_plan_decision(routing_task)
         if deterministic is not None:
             return deterministic
         decision, usage = self.client.invoke_json(
@@ -130,7 +131,8 @@ class LangChainAgentPlanner(AgentPlanner):
         return decision.model_copy(update={"plan": public_plan, "usage": usage})
 
     def select_tool(self, state):
-        deterministic = self._deterministic_tool_decision(state["task"])
+        routing_task = self._current_user_task(state["task"])
+        deterministic = self._deterministic_tool_decision(routing_task)
         if deterministic is not None:
             return deterministic
         decision, usage = self.client.invoke_json(
@@ -174,6 +176,16 @@ class LangChainAgentPlanner(AgentPlanner):
             InspectionDecision,
         )
         return decision.model_copy(update={"usage": usage})
+
+    @staticmethod
+    def _current_user_task(context: str) -> str:
+        """只把当前用户消息用于确定性路由，完整上下文仍交给模型。"""
+        marker = "[当前任务]\n"
+        if not context.startswith(marker):
+            return context
+        current = context[len(marker) :]
+        next_section = current.find("\n\n[")
+        return current if next_section < 0 else current[:next_section]
 
     @staticmethod
     def _deterministic_plan_decision(task: str) -> PlanDecision | None:

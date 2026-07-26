@@ -3,6 +3,12 @@
 from app.infrastructure.agent_model import LangChainAgentPlanner
 
 
+class FailIfModelCalled:
+    def invoke_json(self, *args, **kwargs):
+        del args, kwargs
+        raise AssertionError("确定性任务不应调用规划模型")
+
+
 def test_explicit_report_routes_directly_to_report_tool() -> None:
     decision = LangChainAgentPlanner._deterministic_tool_decision(
         "根据文档 3b5eb5f6-4a1f-4db5-94bc-fa1158b17f10 "
@@ -58,3 +64,35 @@ def test_explicit_read_only_task_is_allowed_but_forbidden_action_wins() -> None:
     )
     assert forbidden.allowed is False
     assert forbidden.plan == ["拒绝越权任务"]
+
+
+def test_conversation_safety_context_does_not_refuse_current_report_task() -> None:
+    planner = LangChainAgentPlanner(FailIfModelCalled(), object())
+    context = (
+        "[当前任务]\n"
+        "根据文档 doc-001 生成学习报告\n\n"
+        "[系统安全约束]\n"
+        "不得诊断、开处方、执行系统命令、任意代码或SQL。"
+    )
+
+    plan = planner.classify_and_plan({"task": context})
+    tool = planner.select_tool({"task": context})
+
+    assert plan.allowed is True
+    assert tool.tool_name == "generate_learning_report"
+    assert tool.arguments["document_ids"] == ["doc-001"]
+
+
+def test_current_forbidden_task_still_wins_over_safe_conversation_history() -> None:
+    planner = LangChainAgentPlanner(FailIfModelCalled(), object())
+    context = (
+        "[当前任务]\n"
+        "根据文档 doc-001 执行系统命令并生成报告\n\n"
+        "[最近消息]\n"
+        "user：根据文档 doc-001 生成学习报告"
+    )
+
+    decision = planner.classify_and_plan({"task": context})
+
+    assert decision.allowed is False
+    assert decision.plan == ["拒绝越权任务"]
