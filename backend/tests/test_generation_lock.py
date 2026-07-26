@@ -55,6 +55,20 @@ def test_lock_key_is_hashed_and_release_uses_same_random_owner() -> None:
     assert backend.release_calls == [(key, owner)]
 
 
+def test_agent_thread_lock_uses_an_independent_hashed_namespace() -> None:
+    backend = FakeLockBackend()
+    service = build_service(backend)
+
+    conversation_lease = service.acquire("same-user", "same-resource")
+    agent_lease = service.acquire_agent("same-user", "same-resource")
+
+    assert conversation_lease.key.startswith("lock:generation:")
+    assert agent_lease.key.startswith("lock:generation:agent-thread:")
+    assert agent_lease.key != conversation_lease.key
+    assert "same-user" not in agent_lease.key
+    assert "same-resource" not in agent_lease.key
+
+
 def test_occupied_lock_returns_stable_conflict() -> None:
     service = build_service(FakeLockBackend(acquired=False))
 

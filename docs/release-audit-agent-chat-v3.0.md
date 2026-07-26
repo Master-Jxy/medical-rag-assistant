@@ -14,7 +14,7 @@ Agent工具白名单不变。
 - 幂等键和thread生成锁使用独立命名空间；进程重启遗留非终态记录收敛为稳定失败。
 - 前端提供会话、消息/执行过程、来源/产物三栏，移动端改为双抽屉；用户可显式选择
   历史消息、来源和产物继续下一轮，并能切换活动/归档会话和恢复归档会话。
-- 后端完整336项、前端10个文件36项、SSE解析、Vite生产构建、Python编译、
+- 后端完整338项、前端10个文件36项、SSE解析、Vite生产构建、Python编译、
   `pip check`通过；Alembic单一head为`0018_agent_threads_messages`。
 - 1440、1280、390真实浏览器无整页横向溢出；移动抽屉、三类显式引用可达，控制台
   无错误。
@@ -39,7 +39,7 @@ Agent工具白名单不变。
 
 ## 生产候选部署
 
-- 候选`b81ad5d`已推送至GitHub并通过已校验Git bundle快进服务器；已校验的前端构建
+- 候选`87454ba`已推送至GitHub并通过已校验Git bundle快进服务器；已校验的前端构建
   已替换，backend/web已重建，数据库为`0018_agent_threads_messages (head)`。
 - 四容器健康，HTTPS健康200、HTTP固定308；文档/提交/版本27/27/27、Chroma 103和
   旧Agent run/step/artifact 6/6/0保持不变，新thread/message为0。

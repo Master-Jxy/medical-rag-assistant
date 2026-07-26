@@ -138,6 +138,36 @@ def build_dependencies(tmp_path):
     return engine, override_session, user, backend, service, rag
 
 
+def test_agent_idempotency_uses_an_independent_namespace_and_reference_fingerprint(
+    tmp_path,
+) -> None:
+    engine, _, _, backend, service, _ = build_dependencies(tmp_path)
+    try:
+        conversation = service.begin(
+            "same-user",
+            "chat",
+            "same-client-key",
+            "same-resource",
+            "same-content",
+            4,
+        )
+        agent = service.begin_agent(
+            "same-user",
+            "same-client-key",
+            "same-resource",
+            "same-content",
+            '{"artifact_ids":["artifact-1"]}',
+        )
+
+        assert conversation.key.startswith("idempotency:conversation-chat:")
+        assert agent.key.startswith("idempotency:agent-chat:")
+        assert agent.key != conversation.key
+        assert agent.fingerprint != conversation.fingerprint
+        assert set(backend.records) == {conversation.key, agent.key}
+    finally:
+        engine.dispose()
+
+
 def install_overrides(override_session, service, rag):
     app.dependency_overrides[get_db_session] = override_session
     app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE

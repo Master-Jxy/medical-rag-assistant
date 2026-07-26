@@ -564,7 +564,7 @@ features/agent-chat/
 - 发布前备份MySQL、文件、Chroma和Redis。
 - 验收通过后冻结为`Agent Chat v3.0`。
 
-本地发布候选证据：后端完整336项、前端10个文件36项、独立SSE解析、正式构建、
+本地发布候选证据：后端完整338项、前端10个文件36项、独立SSE解析、正式构建、
 Python编译与依赖检查通过；1440、1280和390真实浏览器覆盖三栏布局、移动抽屉及
 消息/来源/产物三类显式引用，均无整页横向溢出或控制台错误。以上使用临时SQLite、
 Fake Planner和Mock工具，未调用Embedding、Reranker或Qwen。
