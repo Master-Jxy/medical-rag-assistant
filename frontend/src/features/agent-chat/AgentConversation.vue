@@ -12,7 +12,7 @@ defineEmits(['retry', 'select-source', 'select-artifact', 'toggle-reference'])
 <template>
   <section class="conversation" aria-live="polite">
     <div v-if="!messages.length" class="empty">
-      输入一项资料整理任务，Agent会把公开计划、工具步骤、来源和产物保存在当前会话。
+      输入一项资料整理任务；运行时展示公开计划，消息、工具步骤、来源和产物会保存在当前会话。
     </div>
     <AgentMessageItem
       v-for="message in messages"

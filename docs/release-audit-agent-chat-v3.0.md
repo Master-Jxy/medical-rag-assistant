@@ -39,7 +39,7 @@ Agent工具白名单不变。
 
 ## 生产候选部署
 
-- 候选`87454ba`已推送至GitHub并通过已校验Git bundle快进服务器；已校验的前端构建
+- 候选行为基线`6f5e7a8`已推送至GitHub并通过已校验Git bundle快进服务器；已校验的前端构建
   已替换，backend/web已重建，数据库为`0018_agent_threads_messages (head)`。
 - 四容器健康，HTTPS健康200、HTTP固定308；文档/提交/版本27/27/27、Chroma 103和
   旧Agent run/step/artifact 6/6/0保持不变，新thread/message为0。
