@@ -115,3 +115,23 @@
 - 前端10个测试文件41项、SSE UTF-8解析、Vite正式构建和`git diff --check`通过。
 - 交互提交：`df407a9`；本次只需替换Web静态包并重建web容器，不调用模型，不修改
   后端、MySQL、Redis、迁移或业务数据。
+
+## 10. RAG聚焦与Agent原生流式发布
+
+- 业务提交：`2208815068887a31393cd257b7c521d1cd986782`，已推送到`origin/main`并
+  通过完整Git bundle在服务器执行`fetch`与`merge --ff-only`，生产源码工作树干净。
+- 发布前完整备份：
+  `/home/deploy/medical-rag-backups/backup-20260726T174443Z`；MySQL、`app_data`、
+  Chroma、Redis、`deploy/.env`、Compose和清单的SHA-256全部通过。
+- 旧backend/web镜像以`rollback-5e394b10-20260727T014452`标签保留，旧前端目录保存在
+  `/home/deploy/release-assets/20260727T014452`。
+- 本机已验证的`frontend/dist`完整上传到服务器；线上资源
+  `index-DF0YvWV8.js`的SHA-256为
+  `01c0094a8728dfa70b2511b8b4051447dd4f249146805fcda2b9498d04135f9d`，
+  与本机一致，使用同源`/api/v1`且不含`127.0.0.1:8000`。
+- 只重建并替换backend和web；MySQL、Redis和命名数据卷未重建或删除。最终四个容器
+  healthy，Alembic为`0019_agent_message_order (head)`，公网HTTPS主页和健康接口均
+  返回200，HTTP固定返回308。
+- 本次发布没有调用Qwen、Embedding或Reranker，没有创建临时账号或修改业务数据。
+  公网Agent多token SSE仍需新的费用授权后按独立预算闸门验收；RAG与Agent输入框聚焦
+  由用户现有浏览器会话补充确认。
