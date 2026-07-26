@@ -84,3 +84,23 @@
   HTTP 200、completed、0 step、0 Token、0估算费用且无SSE error。
 - 验收临时账号、thread、message、run和Redis键均清理为0；四个容器healthy，
   Alembic保持`0019_agent_message_order (head)`。
+
+## 8. 模型非工具路由兼容修复
+
+真实用户问题`我最近一直头疼`在模型规划阶段被正确路由为安全拒绝，但Qwen返回
+`"plan": null`；原`PlanDecision`要求列表，导致Pydantic校验失败并被外层统一记录为
+`AGENT_EXECUTION_FAILED`。同类问题会影响不需要工具的直接回答、澄清和拒绝路由。
+
+- `PlanDecision`在输入校验阶段把`plan: null`规范化为`[]`，仍保留最多5项公开计划
+  和严格额外字段检查。
+- 新增direct_reply、clarification、refuse三类回归用例；后端356项、前端40项、
+  SSE解析、Vite正式构建、`pip check`和`git diff --check`全部通过。
+- 发布前备份：
+  `/home/deploy/medical-rag-backups/backup-20260726T171557Z`，全部SHA-256校验通过。
+- 修复提交：`993472c`；仅重建backend，web、MySQL、Redis和数据卷未重建。
+- 线上同一临时thread真实调用`qwen3-max`验证三轮：
+  - `测试`：返回具体医学资料任务的澄清提示。
+  - `讲一下辛亥革命`：正常说明超出医学资料处理范围。
+  - `我最近一直头疼`：正常触发不诊断、不提供医疗建议的安全边界。
+- 三轮均为completed、0 step、无SSE error，共987 Token，估算费用约¥0.00352；
+  临时账号、thread、message、run和Redis键清理后均为0，四个容器healthy。
