@@ -53,9 +53,34 @@ class AgentRepository:
         task: str,
         policy: AgentPolicy,
         model_name: str | None = None,
+        thread_id: str | None = None,
+        trigger_message_id: str | None = None,
     ) -> AgentRun:
+        if (thread_id is None) != (trigger_message_id is None):
+            raise AgentRunNotFoundError()
+        if thread_id is not None and trigger_message_id is not None:
+            from app.modules.agent.thread_models import AgentMessage, AgentThread
+
+            owned_thread = self.session.scalar(
+                select(AgentThread.id).where(
+                    AgentThread.id == thread_id,
+                    AgentThread.user_id == user_id,
+                )
+            )
+            owned_message = self.session.scalar(
+                select(AgentMessage.id).where(
+                    AgentMessage.id == trigger_message_id,
+                    AgentMessage.thread_id == thread_id,
+                    AgentMessage.user_id == user_id,
+                    AgentMessage.role == "user",
+                )
+            )
+            if owned_thread is None or owned_message is None:
+                raise AgentRunNotFoundError()
         run = AgentRun(
             user_id=user_id,
+            thread_id=thread_id,
+            trigger_message_id=trigger_message_id,
             task=task.strip(),
             status=AgentRunStatus.PENDING,
             model_name=model_name,
@@ -64,6 +89,30 @@ class AgentRepository:
             max_estimated_cost_cny=policy.max_estimated_cost_cny,
         )
         self.session.add(run)
+        self.session.flush()
+        return run
+
+    def link_response_message(
+        self,
+        user_id: str,
+        run_id: str,
+        response_message_id: str,
+    ) -> AgentRun:
+        from app.modules.agent.thread_models import AgentMessage
+
+        run = self.get_run(user_id, run_id)
+        message = self.session.scalar(
+            select(AgentMessage).where(
+                AgentMessage.id == response_message_id,
+                AgentMessage.user_id == user_id,
+                AgentMessage.thread_id == run.thread_id,
+                AgentMessage.role == "assistant",
+                AgentMessage.run_id == run.id,
+            )
+        )
+        if message is None:
+            raise AgentRunNotFoundError()
+        run.response_message_id = message.id
         self.session.flush()
         return run
 

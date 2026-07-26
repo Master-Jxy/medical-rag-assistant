@@ -33,6 +33,25 @@ class AgentRun(Base):
     user_id: Mapped[str] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
+    thread_id: Mapped[str | None] = mapped_column(
+        ForeignKey("agent_threads.id", ondelete="CASCADE")
+    )
+    trigger_message_id: Mapped[str | None] = mapped_column(
+        ForeignKey(
+            "agent_messages.id",
+            name="fk_agent_runs_trigger_message",
+            ondelete="SET NULL",
+            use_alter=True,
+        )
+    )
+    response_message_id: Mapped[str | None] = mapped_column(
+        ForeignKey(
+            "agent_messages.id",
+            name="fk_agent_runs_response_message",
+            ondelete="SET NULL",
+            use_alter=True,
+        )
+    )
     task: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     step_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -89,6 +108,15 @@ class AgentRun(Base):
         ),
         Index("ix_agent_runs_user_created", "user_id", "created_at"),
         Index("ix_agent_runs_user_status", "user_id", "status"),
+        Index("ix_agent_runs_thread_created", "thread_id", "created_at"),
+        UniqueConstraint(
+            "trigger_message_id",
+            name="uq_agent_runs_trigger_message_id",
+        ),
+        UniqueConstraint(
+            "response_message_id",
+            name="uq_agent_runs_response_message_id",
+        ),
     )
 
 

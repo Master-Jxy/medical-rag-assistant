@@ -100,6 +100,37 @@ class IdempotencyService:
             return IdempotencyClaim(key, fingerprint, record)
         return IdempotencyClaim(key, fingerprint)
 
+    def begin_agent(
+        self,
+        user_id: str,
+        client_request_id: str,
+        thread_id: str,
+        content: str,
+        reference_fingerprint: str,
+    ) -> IdempotencyClaim:
+        subject = hashlib.sha256(
+            f"{user_id}:agent-message:{client_request_id}".encode("utf-8")
+        ).hexdigest()
+        fingerprint = hashlib.sha256(
+            f"{thread_id}\0{content}\0{reference_fingerprint}".encode("utf-8")
+        ).hexdigest()
+        key = f"idempotency:agent-chat:{subject}"
+        try:
+            record = self.backend.begin_idempotency(
+                key, fingerprint, self.in_progress_ttl_seconds
+            )
+        except IdempotencyBackendUnavailable as exc:
+            self.observability.record_failure(IDEMPOTENCY, type(exc).__name__)
+            raise IdempotencyUnavailableError() from exc
+        self.observability.record_success(IDEMPOTENCY)
+        if record.status is IdempotencyStatus.IN_PROGRESS:
+            raise IdempotencyRequestInProgressError()
+        if record.status is IdempotencyStatus.CONFLICT:
+            raise IdempotencyKeyReusedError()
+        if record.status is IdempotencyStatus.COMPLETED:
+            return IdempotencyClaim(key, fingerprint, record)
+        return IdempotencyClaim(key, fingerprint)
+
     def complete(
         self,
         claim: IdempotencyClaim,
@@ -126,6 +157,23 @@ class IdempotencyService:
             self.observability.record_failure(IDEMPOTENCY, "RecordStateMismatch")
             raise IdempotencyUnavailableError()
         self.observability.record_success(IDEMPOTENCY)
+
+    def complete_agent(
+        self,
+        claim: IdempotencyClaim,
+        *,
+        request_id: str,
+        thread_id: str,
+        user_message_id: str,
+        assistant_message_id: str,
+    ) -> None:
+        self.complete(
+            claim,
+            request_id=request_id,
+            conversation_id=thread_id,
+            user_message_id=user_message_id,
+            assistant_message_id=assistant_message_id,
+        )
 
     def abandon(self, claim: IdempotencyClaim) -> None:
         try:

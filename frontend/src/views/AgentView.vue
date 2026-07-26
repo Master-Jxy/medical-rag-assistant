@@ -1,108 +1,258 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import {
-  createAgentRun,
   downloadAgentArtifact,
   getAgentRun,
   listAgentRuns,
-  stopAgentRun,
-  streamAgentRun,
 } from '../api/agent.js'
 import { getApiErrorMessage } from '../api/http.js'
+import { getDocumentTrace, openDocumentPreview } from '../api/citations.js'
+import AgentComposer from '../features/agent-chat/AgentComposer.vue'
+import AgentContextDrawer from '../features/agent-chat/AgentContextDrawer.vue'
+import AgentConversation from '../features/agent-chat/AgentConversation.vue'
+import AgentThreadSidebar from '../features/agent-chat/AgentThreadSidebar.vue'
+import { useAgentStream } from '../features/agent-chat/useAgentStream.js'
+import { useAgentThread } from '../features/agent-chat/useAgentThread.js'
 
-const task = ref('')
-const runs = ref([])
-const selected = ref(null)
-const livePlan = ref([])
-const liveSteps = ref([])
-const liveOutput = ref('')
-const loading = ref(true)
-const running = ref(false)
+const threadState = useAgentThread()
+const optimisticMessages = ref([])
 const errorMessage = ref('')
 const notice = ref('')
+const legacyRuns = ref([])
+const legacySelected = ref(null)
+const selectedSource = ref(null)
+const threadDrawerOpen = ref(false)
+const contextDrawerOpen = ref(false)
 const downloadingId = ref('')
+const references = ref({ messageIds: [], sourceIds: [], artifactIds: [] })
 
-const canSubmit = computed(() => task.value.trim() && !running.value)
-const statusLabel = {
-  pending: '待执行',
-  running: '运行中',
-  completed: '已完成',
-  failed: '失败',
-  stopped: '已停止',
-}
+const referenceLabels = computed(() => [
+  ...references.value.messageIds.map((id) => ({
+    key: `message:${id}`,
+    type: 'message',
+    id,
+    label: threadState.messages.value.find((item) => item.id === id)?.content?.slice(0, 18)
+      || '历史消息',
+  })),
+  ...references.value.sourceIds.map((id) => ({
+    key: `source:${id}`,
+    type: 'source',
+    id,
+    label: sources.value.find((item) => item.document_id === id)?.file_name || `来源 ${id.slice(0, 8)}`,
+  })),
+  ...references.value.artifactIds.map((id) => ({
+    key: `artifact:${id}`,
+    type: 'artifact',
+    id,
+    label: artifacts.value.find((item) => item.id === id)?.file_name || '已有产物',
+  })),
+])
 
-async function loadRuns(selectFirst = false) {
-  const result = await listAgentRuns()
-  runs.value = result.items
-  if (selectFirst && runs.value.length) await selectRun(runs.value[0].id)
-}
+const stream = useAgentStream(async () => {
+  optimisticMessages.value = []
+  await threadState.reloadCurrent()
+})
 
-async function selectRun(id) {
-  selected.value = await getAgentRun(id)
-  livePlan.value = []
-  liveSteps.value = selected.value.steps || []
-  liveOutput.value = selected.value.final_result || ''
-}
-
-function handleEvent(event, data) {
-  if (event === 'plan_ready') livePlan.value = data.plan || []
-  if (event === 'tool_started') {
-    liveSteps.value.push({
-      id: `live-${data.step}`,
-      sequence: data.step,
-      tool_name: data.tool_name,
-      status: 'running',
-      result_summary: null,
+const displayMessages = computed(() => {
+  if (legacySelected.value) {
+    return [{
+      id: `legacy-${legacySelected.value.id}`,
+      role: 'assistant',
+      status: legacySelected.value.status,
+      content: legacySelected.value.final_result || legacySelected.value.task,
+      run_id: legacySelected.value.id,
+      metadata: {
+        source_ids: [],
+        artifact_ids: (legacySelected.value.artifacts || []).map((item) => item.id),
+      },
+    }]
+  }
+  const rows = [...threadState.messages.value, ...optimisticMessages.value]
+  if (
+    stream.state.value.assistantMessageId
+    && !rows.some((item) => item.id === stream.state.value.assistantMessageId)
+  ) {
+    rows.push({
+      id: stream.state.value.assistantMessageId,
+      role: 'assistant',
+      status: stream.state.value.phase,
+      content: stream.state.value.output,
+      run_id: stream.state.value.runId,
+      metadata: {
+        source_ids: stream.state.value.sources.map((item) => item.document_id).filter(Boolean),
+        artifact_ids: stream.state.value.artifacts.map((item) => item.artifact_id).filter(Boolean),
+      },
     })
   }
-  if (event === 'tool_completed') {
-    const step = liveSteps.value.findLast((item) => item.tool_name === data.tool_name)
-    if (step) {
-      step.status = data.status
-      step.result_summary = data.summary
-    }
-  }
-  if (event === 'token') liveOutput.value += data.content || ''
-  if (event === 'stopped') notice.value = '运行已安全停止。'
-}
+  return rows
+})
 
-async function submit() {
-  const value = task.value.trim()
-  if (!value || running.value) return
-  running.value = true
+const runDetails = computed(() => {
+  if (!legacySelected.value) return threadState.runDetails.value
+  return { [legacySelected.value.id]: legacySelected.value }
+})
+
+const sources = computed(() => {
+  const rows = displayMessages.value.flatMap((item) => {
+    if (item.metadata?.sources?.length) return item.metadata.sources
+    return (item.metadata?.source_ids || []).map((document_id) => ({ document_id }))
+  })
+  rows.push(...stream.state.value.sources)
+  return rows.filter(
+    (item, index, all) => item.document_id
+      && all.findIndex((other) => (
+        other.document_id === item.document_id
+        && other.chunk_id === item.chunk_id
+        && other.page === item.page
+      )) === index,
+  )
+})
+
+const artifacts = computed(() => {
+  const stored = Object.values(runDetails.value).flatMap((run) => run?.artifacts || [])
+  const live = stream.state.value.artifacts.map((item) => ({
+    id: item.artifact_id,
+    file_name: item.file_name,
+    mime_type: item.mime_type,
+  }))
+  return [...stored, ...live].filter(
+    (item, index, rows) => rows.findIndex((other) => other.id === item.id) === index,
+  )
+})
+
+async function selectThread(thread) {
   errorMessage.value = ''
-  notice.value = ''
-  livePlan.value = []
-  liveSteps.value = []
-  liveOutput.value = ''
+  legacySelected.value = null
   try {
-    const run = await createAgentRun(value)
-    selected.value = run
-    task.value = ''
-    await streamAgentRun(run.id, { onEvent: handleEvent })
-    selected.value = await getAgentRun(run.id)
-    liveSteps.value = selected.value.steps || []
-    liveOutput.value = selected.value.final_result || liveOutput.value
-    await loadRuns()
+    await threadState.selectThread(thread)
+    references.value = { messageIds: [], sourceIds: [], artifactIds: [] }
+    threadDrawerOpen.value = false
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
-    if (selected.value?.id) {
-      try {
-        selected.value = await getAgentRun(selected.value.id)
-      } catch {
-        // 保留已有可见状态。
-      }
+  }
+}
+
+async function createThread() {
+  errorMessage.value = ''
+  try {
+    await threadState.newThread()
+    legacySelected.value = null
+    threadDrawerOpen.value = false
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+  }
+}
+
+async function renameThread(thread) {
+  const title = window.prompt('输入新的会话名称', thread.title)?.trim()
+  if (!title) return
+  try {
+    await threadState.renameThread(thread, title)
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+  }
+}
+
+async function archiveThread(thread) {
+  try {
+    await threadState.archiveThread(thread)
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+  }
+}
+
+async function removeThread(thread) {
+  if (!window.confirm(`删除“${thread.title}”及其消息、运行和产物？`)) return
+  try {
+    await threadState.removeThread(thread)
+    notice.value = '会话已删除。'
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+  }
+}
+
+async function send(content) {
+  errorMessage.value = ''
+  notice.value = ''
+  legacySelected.value = null
+  try {
+    let thread = threadState.currentThread.value
+    if (!thread) thread = await threadState.newThread()
+    if (thread.title === '新对话') {
+      await threadState.renameThread(thread, content.slice(0, 30))
     }
-  } finally {
-    running.value = false
+    optimisticMessages.value = [{
+      id: `pending-${Date.now()}`,
+      role: 'user',
+      status: 'pending',
+      content,
+      run_id: null,
+      metadata: {},
+    }]
+    await stream.send(thread.id, content, references.value)
+    references.value = { messageIds: [], sourceIds: [], artifactIds: [] }
+  } catch (error) {
+    optimisticMessages.value = []
+    errorMessage.value = getApiErrorMessage(error)
+  }
+}
+
+function toggleReference(type, item) {
+  const field = `${type}Ids`
+  const id = type === 'message'
+    ? item.id
+    : type === 'source'
+      ? item.document_id
+      : item.id
+  const values = references.value[field]
+  references.value = {
+    ...references.value,
+    [field]: values.includes(id)
+      ? values.filter((value) => value !== id)
+      : [...values, id],
+  }
+}
+
+function removeReference(item) {
+  toggleReference(item.type, item.type === 'source' ? { document_id: item.id } : item)
+}
+
+async function retry(messageId) {
+  errorMessage.value = ''
+  try {
+    await stream.retry(messageId)
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
   }
 }
 
 async function stop() {
-  if (!selected.value?.id || !running.value) return
   try {
-    const result = await stopAgentRun(selected.value.id)
-    notice.value = result.message
+    await stream.stop()
+    notice.value = '正在安全停止当前任务。'
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+  }
+}
+
+async function selectLegacy(run) {
+  try {
+    legacySelected.value = await getAgentRun(run.id)
+    threadState.currentThread.value = null
+    threadState.messages.value = []
+    threadDrawerOpen.value = false
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+  }
+}
+
+async function selectSource(source, open = false) {
+  const documentId = typeof source === 'string' ? source : source.document_id
+  const page = typeof source === 'string' ? null : source.page
+  try {
+    selectedSource.value = await getDocumentTrace(documentId)
+    contextDrawerOpen.value = true
+    if (open) await openDocumentPreview(documentId, page)
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
   }
@@ -110,7 +260,6 @@ async function stop() {
 
 async function download(artifact) {
   downloadingId.value = artifact.id
-  errorMessage.value = ''
   try {
     const blob = await downloadAgentArtifact(artifact.id)
     const url = URL.createObjectURL(blob)
@@ -128,11 +277,13 @@ async function download(artifact) {
 
 onMounted(async () => {
   try {
-    await loadRuns(true)
+    const [runs] = await Promise.all([
+      listAgentRuns(100),
+      threadState.loadThreads(true),
+    ])
+    legacyRuns.value = runs.items.filter((item) => !item.thread_id)
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
-  } finally {
-    loading.value = false
   }
 })
 </script>
@@ -141,138 +292,103 @@ onMounted(async () => {
   <section class="agent-page">
     <header class="page-toolbar">
       <div>
-        <span>CONTROLLED AGENT</span>
+        <span>AGENT CHAT V3</span>
         <h1>资料整理 Agent</h1>
-        <p>只读取已发布公共知识，最多执行 5 步；不会诊断、开处方或执行系统命令。</p>
+        <p>连续会话承载任务上下文；公开展示计划、工具、来源与产物，不展示隐藏推理。</p>
+      </div>
+      <div class="mobile-tools">
+        <button aria-label="打开Agent会话列表" @click="threadDrawerOpen = true">会话</button>
+        <button aria-label="打开来源与产物" @click="contextDrawerOpen = true">上下文</button>
       </div>
     </header>
 
-    <div v-if="errorMessage" class="state-panel error">{{ errorMessage }}</div>
+    <div v-if="errorMessage || stream.state.value.error" class="state-panel error">
+      {{ errorMessage || stream.state.value.error }}
+    </div>
     <div v-if="notice" class="state-panel success">{{ notice }}</div>
 
-    <form class="agent-composer" @submit.prevent="submit">
-      <label for="agent-task">整理任务</label>
-      <textarea
-        id="agent-task"
-        v-model="task"
-        maxlength="4000"
-        rows="4"
-        placeholder="例如：比较两份患者安全资料的适用范围，并生成学习报告"
-      />
-      <div>
-        <small>{{ task.length }}/4000</small>
-        <el-button v-if="running" type="danger" @click="stop">停止运行</el-button>
-        <el-button type="primary" native-type="submit" :disabled="!canSubmit" :loading="running">
-          开始整理
-        </el-button>
+    <div class="agent-workspace">
+      <div class="drawer-shell threads" :class="{ open: threadDrawerOpen }">
+        <button class="drawer-close" aria-label="关闭Agent会话列表" @click="threadDrawerOpen = false">×</button>
+        <AgentThreadSidebar
+          :threads="threadState.threads.value"
+          :selected-id="threadState.currentThread.value?.id || ''"
+          :legacy-runs="legacyRuns"
+          :loading="threadState.loading.value"
+          @new="createThread"
+          @select="selectThread"
+          @rename="renameThread"
+          @archive="archiveThread"
+          @delete="removeThread"
+          @legacy="selectLegacy"
+        />
       </div>
-    </form>
 
-    <div class="agent-layout">
-      <aside class="run-panel">
-        <div class="panel-title"><h2>运行历史</h2><button @click="loadRuns()">刷新</button></div>
-        <div v-if="loading" class="empty-state">正在加载…</div>
-        <div v-else-if="!runs.length" class="empty-state">暂无运行记录。</div>
-        <button
-          v-for="run in runs"
-          :key="run.id"
-          class="run-item"
-          :class="{ active: selected?.id === run.id }"
-          @click="selectRun(run.id)"
-        >
-          <strong>{{ run.task }}</strong>
-          <span>{{ statusLabel[run.status] || run.status }} · {{ run.step_count }}/{{ run.max_steps }} 步</span>
-        </button>
-      </aside>
+      <main class="conversation-shell">
+        <div class="conversation-title">
+          <strong>{{ legacySelected?.task || threadState.currentThread.value?.title || '新Agent会话' }}</strong>
+          <span v-if="stream.running.value">运行中</span>
+        </div>
+        <AgentConversation
+          :messages="displayMessages"
+          :run-details="runDetails"
+          :live="stream.state.value"
+          @retry="retry"
+          @select-source="selectSource"
+          @select-artifact="contextDrawerOpen = true"
+          @toggle-reference="toggleReference('message', $event)"
+        />
+        <AgentComposer
+          :disabled="stream.running.value"
+          :running="stream.running.value"
+          :references="referenceLabels"
+          @send="send"
+          @stop="stop"
+          @remove-reference="removeReference"
+        />
+      </main>
 
-      <article class="run-detail">
-        <div v-if="!selected" class="empty-state">选择历史运行，或创建一项新任务。</div>
-        <template v-else>
-          <header>
-            <div><small>当前任务</small><h2>{{ selected.task }}</h2></div>
-            <span class="status-badge">{{ statusLabel[selected.status] || selected.status }}</span>
-          </header>
-
-          <section v-if="livePlan.length" class="detail-section">
-            <h3>执行计划</h3>
-            <ol><li v-for="item in livePlan" :key="item">{{ item }}</li></ol>
-          </section>
-
-          <section class="detail-section">
-            <h3>步骤时间线</h3>
-            <div v-if="!liveSteps.length" class="empty-state compact">尚未执行工具。</div>
-            <div v-for="step in liveSteps" :key="step.id" class="timeline-item">
-              <i />
-              <div>
-                <strong>第 {{ step.sequence }} 步 · {{ step.tool_name || step.node_name }}</strong>
-                <span>{{ statusLabel[step.status] || step.status }}</span>
-                <p v-if="step.result_summary">{{ step.result_summary }}</p>
-              </div>
-            </div>
-          </section>
-
-          <section v-if="liveOutput" class="detail-section">
-            <h3>最终结果</h3>
-            <pre>{{ liveOutput }}</pre>
-          </section>
-
-          <section v-if="selected.artifacts?.length" class="detail-section">
-            <h3>可下载产物</h3>
-            <button
-              v-for="artifact in selected.artifacts"
-              :key="artifact.id"
-              class="artifact-link"
-              :disabled="downloadingId === artifact.id"
-              @click="download(artifact)"
-            >
-              {{ downloadingId === artifact.id ? '正在下载…' : artifact.file_name }}
-            </button>
-          </section>
-
-          <footer>
-            Token：{{ selected.used_tokens ?? 0 }} · 预估费用：¥{{ Number(selected.estimated_cost_cny || 0).toFixed(4) }}
-          </footer>
-        </template>
-      </article>
+      <div class="drawer-shell context" :class="{ open: contextDrawerOpen }">
+        <button class="drawer-close" aria-label="关闭来源与产物" @click="contextDrawerOpen = false">×</button>
+        <AgentContextDrawer
+          :sources="sources"
+          :artifacts="artifacts"
+          :selected-source="selectedSource"
+          :referenced-source-ids="references.sourceIds"
+          :referenced-artifact-ids="references.artifactIds"
+          @open-source="selectSource($event, true)"
+          @download="download"
+          @toggle-source-reference="toggleReference('source', $event)"
+          @toggle-artifact-reference="toggleReference('artifact', $event)"
+        />
+      </div>
     </div>
   </section>
 </template>
 
 <style scoped>
 .agent-page { min-width: 0; }
-.agent-composer, .run-panel, .run-detail { border: 1px solid var(--border); background: #fff; border-radius: 8px; }
-.agent-composer { margin: 18px 0; padding: 18px; }
-.agent-composer label { display: block; margin-bottom: 8px; font-weight: 700; }
-.agent-composer textarea { width: 100%; resize: vertical; border: 1px solid var(--border); border-radius: 6px; padding: 12px; font: inherit; box-sizing: border-box; }
-.agent-composer > div { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 10px; }
-.agent-composer small { margin-right: auto; color: var(--muted); }
-.agent-layout { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 16px; }
-.run-panel { padding: 12px; align-self: start; max-height: 620px; overflow: auto; }
-.panel-title, .run-detail > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.panel-title h2, .run-detail h2 { margin: 0; font-size: 17px; }
-.panel-title button { border: 0; background: none; color: var(--primary); cursor: pointer; }
-.run-item { width: 100%; text-align: left; display: grid; gap: 5px; margin-top: 8px; padding: 11px; border: 1px solid transparent; border-radius: 6px; background: #f7f9f8; cursor: pointer; }
-.run-item.active { border-color: var(--primary); background: #f1f8f5; }
-.run-item strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.run-item span, .run-detail small, .run-detail footer { color: var(--muted); font-size: 12px; }
-.run-detail { min-height: 420px; padding: 18px; }
-.run-detail > header { padding-bottom: 14px; border-bottom: 1px solid var(--border); }
-.detail-section { margin-top: 18px; }
-.detail-section h3 { margin: 0 0 10px; font-size: 14px; }
-.detail-section ol { margin: 0; padding-left: 22px; }
-.timeline-item { display: grid; grid-template-columns: 10px 1fr; gap: 10px; margin: 12px 0; }
-.timeline-item i { width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--primary); }
-.timeline-item div { display: grid; gap: 4px; }
-.timeline-item span { color: var(--muted); font-size: 12px; }
-.timeline-item p { margin: 2px 0 0; color: #46534f; }
-.detail-section pre { margin: 0; padding: 14px; white-space: pre-wrap; overflow-wrap: anywhere; background: #f7f9f8; border-radius: 6px; font: inherit; line-height: 1.65; }
-.artifact-link { display: block; margin: 8px 0; padding: 0; border: 0; background: none; color: var(--primary); cursor: pointer; }
-.run-detail footer { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--border); }
-.empty-state { padding: 24px 8px; text-align: center; color: var(--muted); }
-.empty-state.compact { padding: 10px 0; text-align: left; }
-@media (max-width: 760px) {
-  .agent-layout { grid-template-columns: 1fr; }
-  .run-panel { max-height: 280px; }
-  .agent-composer > div { flex-wrap: wrap; }
+.page-toolbar { display: flex; justify-content: space-between; gap: 16px; }
+.agent-workspace { height: min(720px, calc(100vh - 190px)); min-height: 560px; display: grid; grid-template-columns: minmax(220px, 270px) minmax(0, 1fr) minmax(220px, 280px); gap: 12px; }
+.drawer-shell { min-width: 0; min-height: 0; }
+.drawer-close, .mobile-tools { display: none; }
+.conversation-shell { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #f6f8f7; border: 1px solid var(--border); border-radius: 8px; }
+.conversation-title { height: 48px; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: #fff; }
+.conversation-title span { color: #276749; font-size: 12px; }
+.conversation-shell :deep(.conversation) { height: calc(100% - 48px); box-sizing: border-box; }
+@media (max-width: 1000px) {
+  .mobile-tools { display: flex; gap: 8px; }
+  .mobile-tools button { padding: 7px 10px; border: 1px solid var(--border); border-radius: 5px; background: #fff; }
+  .agent-workspace { grid-template-columns: minmax(0, 1fr); }
+  .drawer-shell { display: none; position: fixed; z-index: 30; top: 72px; bottom: 12px; width: min(330px, calc(100vw - 24px)); }
+  .drawer-shell.open { display: block; }
+  .drawer-shell.threads { left: 12px; }
+  .drawer-shell.context { right: 12px; }
+  .drawer-close { display: block; position: absolute; z-index: 2; top: 8px; right: 10px; border: 0; background: transparent; font-size: 22px; cursor: pointer; }
+  .drawer-shell :deep(aside) { box-shadow: 0 16px 40px rgb(20 40 31 / 22%); }
+}
+@media (max-width: 480px) {
+  .agent-workspace { height: calc(100vh - 160px); min-height: 520px; }
+  .page-toolbar p { display: none; }
 }
 </style>

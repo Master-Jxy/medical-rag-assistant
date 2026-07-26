@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-**核心 RAG、用户治理、资料审核、管理中台、云端恢复和受信任HTTPS均已部署。**
+**核心RAG、用户治理、资料审核、管理中台、受控Agent、知识质量、云端恢复和受信任HTTPS均已部署。**
 
 当前已实现：
 
@@ -42,10 +42,12 @@
 - 已完成结构化JSON日志、阶段耗时、聚合指标、日志轮转以及管理员只读统计接口和页面，并作为`RAG v1.3`提交、推送和部署。
 - 三层角色、资料审核、知识资产、任务审计、个人与管理页面已作为`Platform v1.4`提交、推送和部署。
 - 自动备份、受控恢复、公网IP受信任HTTPS、自动续期和整机重启已冻结为`Cloud v2.1`；当前没有自有品牌域名。
+- 五个只读白名单工具、最多5步LangGraph、运行历史、步骤时间线、停止和报告产物已作为`Agent v2.2`发布。
+- 回答反馈、人工复核、滚动摘要、用户显式记忆、PDF解析告警、引用追溯和知识复核已作为`Knowledge v2.3`发布。
 
 尚未实现，不能当作当前功能宣传：
 
-- 独立受控资料整理 Agent。
+- Codex式Agent多轮会话、连续任务、消息历史和三栏对话工作台。
 - 自有品牌域名与适用的DNS/备案配置。
 
 ## 系统架构
@@ -67,6 +69,8 @@ flowchart LR
 ```text
 资料提交 -> 隔离保存与解析预览 -> 管理员审核 -> 切片/Embedding -> Chroma -> MySQL发布登记
 用户提问 -> 读取会话历史 -> 召回片段 -> 组装 Prompt -> 模型流式生成 -> 保存 MySQL -> 展示引用
+Agent任务 -> LangGraph规划 -> 白名单工具循环 -> 保存步骤/产物 -> SSE展示公开过程
+阶段13目标 -> Agent会话/消息 -> 关联多次运行 -> 连续追问与产物引用
 ```
 
 项目采用**模块化单体**：保持一个应用易于运行和部署，同时约束路由、服务、数据库、向量库和 Agent 的依赖方向，避免功能增长后相互耦合。
@@ -77,7 +81,7 @@ flowchart LR
 | --- | --- |
 | 前端 | Vue 3、Vite、Element Plus、Axios |
 | 后端 | Python、FastAPI、Pydantic、Uvicorn |
-| RAG | LangChain、通义千问、DashScope Embedding、Chroma |
+| RAG / Agent | LangChain、LangGraph、通义千问、DashScope Embedding、Chroma |
 | 数据 | MySQL、SQLAlchemy、PyMySQL |
 | 实时响应 | Server-Sent Events (SSE) |
 | 测试 | pytest、Vitest、Vue Test Utils、happy-dom |
@@ -90,6 +94,7 @@ flowchart LR
 - **公共知识库**：提交 PDF/TXT、查看已发布资料；提交成功不等于已发布。
 - **管理中台**：审核、知识资产、任务、审计、系统资料与运行统计。
 - **超级管理**：用户角色和账号状态治理。
+- **资料Agent**：运行受控资料任务，查看计划、工具步骤、来源和可下载产物。
 
 ## 目录
 
@@ -230,14 +235,16 @@ npm --prefix frontend run build
 4. 页面、角色或交互任务再读 `docs/product-and-ui-design.md` 的对应章节。
 5. `docs/project-vision.md` 只在产品范围变化时读取。
 6. `docs/deployment.md` 与发布审计只在部署、验收或回滚任务中读取。
+7. 阶段13对话Agent任务定向读取 `docs/conversational-agent-design.md`。
 
 ## 下一步
 
 当前唯一下一任务始终以 `docs/handoff.md` 为准。当前总体顺序为：
 
 ```text
-独立LangGraph资料Agent
--> 知识质量、可控记忆与复杂文档解析
+阶段1～12稳定性观察
+-> 阶段13 Codex式对话Agent工作台
+-> 可选：人工确认、后台任务、CI/CD和更丰富的受控工具
 ```
 
 每次只做一个可验证的小任务，详细范围以 `docs/handoff.md` 和 `docs/development-roadmap.md` 为准。

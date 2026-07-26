@@ -62,6 +62,33 @@ class AgentRunConflictError(AppError):
         )
 
 
+class AgentThreadNotFoundAppError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "未找到指定Agent会话",
+            code="AGENT_THREAD_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class AgentMessageNotFoundAppError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "未找到指定Agent消息",
+            code="AGENT_MESSAGE_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class AgentMessageConflictError(AppError):
+    def __init__(self, message: str = "当前Agent消息状态不允许该操作") -> None:
+        super().__init__(
+            message,
+            code="AGENT_MESSAGE_CONFLICT",
+            status_code=409,
+        )
+
+
 class UnsupportedFileTypeError(AppError):
     def __init__(self) -> None:
         super().__init__("仅支持 PDF 和 TXT 文件", code="UNSUPPORTED_FILE_TYPE", status_code=400)

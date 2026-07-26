@@ -1,6 +1,6 @@
 # 技术设计与演进架构
 
-> 最后更新：2026-07-25
+> 最后更新：2026-07-26
 > 文档用途：说明当前真实实现、目标架构、数据契约和后续演进边界。
 > 状态标记：`[现状]` 表示代码已经具备，`[目标]` 表示尚未实现，`[迁移]` 表示后续开发时逐步调整。
 
@@ -14,7 +14,8 @@
 | RAG评估、检索、重排 | 10 |
 | 可观测性 | 11 |
 | 用户治理、资料审核、管理中台 | 12 |
-| LangGraph Agent | 13 |
+| LangGraph Agent与阶段十二知识质量 | 13 |
+| Codex式对话Agent | 13.8与`docs/conversational-agent-design.md` |
 | 错误、配置、测试、部署 | 14～18 |
 
 不要为了确认一个小任务而读取全部历史实验段落；先查对应摘要，只有定位设计依据时再展开细节。
@@ -1184,7 +1185,7 @@ MySQL、文件和Chroma不是一个事务。失败时优先删除本次新向量
 
 页面结构、可视化和各角色菜单见`docs/product-and-ui-design.md`。
 
-## 13. 阶段十一：LangGraph Agent 设计 `[目标]`
+## 13. 阶段十一：LangGraph Agent 设计 `[已完成：Agent v2.2]`
 
 Agent 是独立的“医学资料整理”能力，不替换现有稳定RAG问答，也不把普通聊天改造成不可控循环。LangChain负责模型、Prompt、工具与外部集成，LangGraph负责显式状态图、条件分支、停止和运行上下文。
 
@@ -1358,6 +1359,49 @@ PyPDF仍是生产解析基线。解析结果增加`parse_quality`，逐页标记
 | POST | `/api/v1/admin/knowledge-assets/governance/scan` | 创建到期复核任务 |
 | POST | `/api/v1/admin/knowledge-assets/{id}/review` | 完成复核并关闭任务 |
 
+### 13.8 阶段十三对话式Agent演进 `[发布候选]`
+
+阶段十三不替换现有LangGraph、工具、run/step/artifact或普通RAG，而是在Agent运行层之上
+增加会话与消息层：
+
+```text
+agent_thread
+-> agent_message(user)
+-> agent_run
+-> agent_steps / agent_artifacts
+-> agent_message(assistant)
+-> 下一条用户消息继续当前thread
+```
+
+新增`agent_threads/agent_messages`，并让`agent_runs`可关联thread、触发消息和响应消息。
+上下文由当前消息、显式引用、最近消息、滚动摘要和用户启用的长期记忆按Token预算组合。
+页面采用左侧会话、中间消息与执行过程、右侧来源与产物的Codex式布局；只展示公开计划、
+工具状态和结果，不展示或持久化Chain-of-Thought。
+
+任务13.1已通过`0018_agent_threads_messages`落地持久化基线：thread保存用户、标题、
+`active/archived`状态、滚动摘要位置和最后消息时间；message保存冗余用户归属、
+`user/assistant/system`角色、可见内容、稳定状态、可空run/回复关系及白名单metadata。
+旧run的thread、触发消息和响应消息字段迁移后保持`NULL`，不重写历史数据。Repository
+按当前用户过滤会话与消息，删除thread时只级联其messages、runs、steps和artifacts；
+公共知识、普通RAG会话和阶段12记忆不属于该删除范围。
+
+现有run API在迁移期保留，新会话API通过`AgentConversationApplication`编排消息和运行，
+不把多轮上下文职责塞入`AgentApplicationService`。完整数据模型、API、SSE、UI、兼容、
+任务拆分和验收标准见
+[`docs/conversational-agent-design.md`](conversational-agent-design.md)。
+
+任务13.2～13.7已按上述边界实现：`AgentConversationApplication`在一次消息请求内编排
+user message、run、assistant message和独立SSE；`AgentContextBuilder`按当前任务、显式
+消息/来源/产物、最近8条消息、提取式滚动摘要和用户已启用记忆组合上下文。Agent会话
+幂等记录使用独立`agent-chat`命名空间，同一用户同一thread使用独立生成锁；网络断开
+收敛为`stopped`，进程重启后的遗留run/step/assistant message在新会话链路首次访问时
+收敛为带稳定错误码的`failed`。旧run API及`thread_id=NULL`历史保持可读。
+
+前端已拆为`features/agent-chat`下的thread、stream、reducer、消息、过程、输入和上下文
+组件。用户可以显式选择历史消息、来源或产物作为下一轮引用；Vue只传ID，不在浏览器
+拼接模型上下文。来源只持久化文档、切片、文件名和页码白名单，隐藏推理、Prompt、
+scratchpad和第三方原始异常仍不得进入API、数据库或页面。
+
 ## 14. 统一接口与错误规范
 
 普通 JSON 错误建议保持：
@@ -1427,6 +1471,7 @@ Agent 使用 13.4 节的独立事件，不允许把 `tool_started` 等事件塞�
 10. 架构边界测试：管理页面不持有业务规则，Agent工具不直接导入Repository/第三方SDK，普通聊天不依赖Agent。
 11. 故障注入：Redis、Chroma、模型、审核发布和工具超时后，错误状态与补偿符合约定。
 12. 前端体验测试：1280/1440桌面和390移动端无溢出遮挡，加载、空、失败、无权限、降级和重试状态可见。
+13. 对话Agent测试：thread/message/run用户隔离、连续上下文、显式引用、发送幂等、同thread生成锁、刷新恢复、停止重试和级联删除。
 
 涉及外部模型的自动化测试默认使用假实现，避免重复付费和不稳定结果。
 

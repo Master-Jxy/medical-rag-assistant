@@ -47,6 +47,8 @@ def test_empty_database_upgrades_to_owned_conversation_schema(tmp_path) -> None:
         "agent_runs",
         "agent_steps",
         "agent_artifacts",
+        "agent_threads",
+        "agent_messages",
         "answer_feedback",
         "conversation_summaries",
         "user_memory_settings",
@@ -72,6 +74,25 @@ def test_empty_database_upgrades_to_owned_conversation_schema(tmp_path) -> None:
         "review_status",
     } <= {
         column["name"] for column in inspector.get_columns("document_versions")
+    }
+    assert {
+        "thread_id",
+        "trigger_message_id",
+        "response_message_id",
+    } <= {
+        column["name"] for column in inspector.get_columns("agent_runs")
+    }
+    assert {
+        "thread_id",
+        "user_id",
+        "role",
+        "content",
+        "status",
+        "run_id",
+        "reply_to_message_id",
+        "metadata",
+    } <= {
+        column["name"] for column in inspector.get_columns("agent_messages")
     }
 
     columns = {column["name"]: column for column in inspector.get_columns("conversations")}
@@ -339,6 +360,59 @@ def test_upgrade_removes_only_orphaned_published_system_submission(tmp_path) -> 
                 "SELECT COUNT(*) FROM knowledge_submissions "
                 "WHERE id = 'withdrawn-user'"
             )
+        ) == 1
+
+
+def test_agent_thread_migration_preserves_legacy_runs_and_downgrades(tmp_path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'agent-threads.db'}"
+    config = build_alembic_config(database_url)
+    command.upgrade(config, "0017_knowledge_governance")
+    engine = build_engine(database_url)
+    now = datetime.now(timezone.utc)
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users "
+                "(id, email, password_hash, is_active, role, created_at, updated_at) "
+                "VALUES ('legacy-agent-user', 'agent@example.com', 'hash', 1, "
+                "'user', :now, :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO agent_runs "
+                "(id, user_id, task, status, step_count, model_name, max_steps, "
+                "max_tokens, max_estimated_cost_cny, used_tokens, estimated_cost_cny, "
+                "final_result, error_type, created_at, updated_at, started_at, finished_at) "
+                "VALUES ('legacy-run', 'legacy-agent-user', '旧版独立任务', 'completed', "
+                "0, 'mock', 5, 12000, 0.05, 0, 0, '完成', NULL, :now, :now, :now, :now)"
+            ),
+            {"now": now},
+        )
+
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        assert connection.execute(
+            text(
+                "SELECT thread_id, trigger_message_id, response_message_id "
+                "FROM agent_runs WHERE id = 'legacy-run'"
+            )
+        ).one() == (None, None, None)
+
+    command.downgrade(config, "0017_knowledge_governance")
+    inspector = inspect(engine)
+    assert "agent_threads" not in inspector.get_table_names()
+    assert "agent_messages" not in inspector.get_table_names()
+    assert {
+        column["name"] for column in inspector.get_columns("agent_runs")
+    }.isdisjoint(
+        {"thread_id", "trigger_message_id", "response_message_id"}
+    )
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text("SELECT COUNT(*) FROM agent_runs WHERE id = 'legacy-run'")
         ) == 1
 
 

@@ -1,0 +1,34 @@
+<script setup>
+import AgentMessageItem from './AgentMessageItem.vue'
+
+defineProps({
+  messages: { type: Array, default: () => [] },
+  runDetails: { type: Object, default: () => ({}) },
+  live: { type: Object, default: null },
+})
+defineEmits(['retry', 'select-source', 'select-artifact', 'toggle-reference'])
+</script>
+
+<template>
+  <section class="conversation" aria-live="polite">
+    <div v-if="!messages.length" class="empty">
+      输入一项资料整理任务，Agent会把公开计划、工具步骤、来源和产物保存在当前会话。
+    </div>
+    <AgentMessageItem
+      v-for="message in messages"
+      :key="message.id"
+      :message="message"
+      :run="runDetails[message.run_id] || runDetails[message.id] || null"
+      :live="live?.assistantMessageId === message.id ? live : null"
+      @retry="$emit('retry', $event)"
+      @select-source="$emit('select-source', $event)"
+      @select-artifact="$emit('select-artifact', $event)"
+      @toggle-reference="$emit('toggle-reference', $event)"
+    />
+  </section>
+</template>
+
+<style scoped>
+.conversation { min-height: 0; padding: 14px 18px 120px; overflow: auto; }
+.empty { max-width: 560px; margin: 80px auto; color: var(--muted); text-align: center; line-height: 1.7; }
+</style>

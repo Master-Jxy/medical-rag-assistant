@@ -104,7 +104,11 @@ class AgentApplicationService:
             raise AgentRunNotFoundAppError() from exc
 
     def stream_run(
-        self, user_id: str, run_id: str
+        self,
+        user_id: str,
+        run_id: str,
+        *,
+        task_context: str | None = None,
     ) -> Iterator[dict[str, object]]:
         try:
             run = self.repository.get_run(user_id, run_id)
@@ -120,7 +124,7 @@ class AgentApplicationService:
         state = create_initial_state(
             run_id=run_id,
             user_id=user_id,
-            task=run.task,
+            task=task_context or run.task,
             policy=self.policy,
         )
         graph = self.graph_factory(user_id, run_id)
@@ -179,6 +183,32 @@ class AgentApplicationService:
                         error_type=current.get("error_type"),
                     )
                     if isinstance(result, dict):
+                        source_ids = [
+                            str(item) for item in result.get("source_ids", [])
+                        ]
+                        if source_ids:
+                            source_items = []
+                            data = result.get("data")
+                            if isinstance(data, dict):
+                                for item in data.get("items", []):
+                                    if isinstance(item, dict):
+                                        source_items.append(
+                                            {
+                                                "document_id": item.get(
+                                                    "document_id"
+                                                ),
+                                                "chunk_id": item.get("chunk_id"),
+                                                "file_name": item.get("file_name"),
+                                                "page": item.get("page"),
+                                            }
+                                        )
+                            yield {
+                                "event": "sources",
+                                "data": {
+                                    "source_ids": source_ids,
+                                    "items": source_items,
+                                },
+                            }
                         for artifact in result.get("artifacts", []):
                             stored = self.repository.add_artifact(
                                 user_id=user_id,

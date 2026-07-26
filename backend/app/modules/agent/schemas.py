@@ -43,6 +43,9 @@ class AgentRunResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    thread_id: str | None = None
+    trigger_message_id: str | None = None
+    response_message_id: str | None = None
     task: str
     status: str
     step_count: int

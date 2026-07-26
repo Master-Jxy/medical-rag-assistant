@@ -58,11 +58,27 @@ class GenerationLockService:
         )
 
     def acquire(self, user_id: str, conversation_id: str) -> GenerationLockLease:
+        return self._acquire(user_id, conversation_id, namespace=None)
+
+    def acquire_agent(self, user_id: str, thread_id: str) -> GenerationLockLease:
+        return self._acquire(user_id, thread_id, namespace="agent-thread")
+
+    def _acquire(
+        self,
+        user_id: str,
+        resource_id: str,
+        *,
+        namespace: str | None,
+    ) -> GenerationLockLease:
         subject = hashlib.sha256(
-            f"{user_id}:{conversation_id}".encode("utf-8")
+            f"{user_id}:{resource_id}".encode("utf-8")
         ).hexdigest()
         lease = GenerationLockLease(
-            key=f"lock:generation:{subject}",
+            key=(
+                f"lock:generation:{namespace}:{subject}"
+                if namespace
+                else f"lock:generation:{subject}"
+            ),
             owner_token=uuid4().hex,
         )
         try:

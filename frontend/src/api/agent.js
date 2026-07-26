@@ -6,6 +6,38 @@ export async function createAgentRun(task) {
   return response.data
 }
 
+export async function createAgentThread(title = '新对话') {
+  return (await http.post('/agent/threads', { title })).data
+}
+
+export async function listAgentThreads(status = 'active') {
+  return (await http.get('/agent/threads', {
+    params: { status, offset: 0, limit: 100 },
+  })).data
+}
+
+export async function getAgentThread(threadId) {
+  return (await http.get(`/agent/threads/${encodeURIComponent(threadId)}`)).data
+}
+
+export async function updateAgentThread(threadId, changes) {
+  return (await http.patch(
+    `/agent/threads/${encodeURIComponent(threadId)}`,
+    changes,
+  )).data
+}
+
+export async function deleteAgentThread(threadId) {
+  return (await http.delete(`/agent/threads/${encodeURIComponent(threadId)}`)).data
+}
+
+export async function listAgentMessages(threadId, limit = 50) {
+  return (await http.get(
+    `/agent/threads/${encodeURIComponent(threadId)}/messages`,
+    { params: { offset: 0, limit } },
+  )).data
+}
+
 export async function listAgentRuns(limit = 20) {
   const response = await http.get('/agent/runs', { params: { offset: 0, limit } })
   return response.data
@@ -59,14 +91,52 @@ function dispatch(item, handlers) {
 }
 
 export async function streamAgentRun(runId, handlers = {}) {
-  const response = await fetch(
-    `${apiBaseUrl}/agent/runs/${encodeURIComponent(runId)}/stream`,
+  return streamAgentEndpoint(
+    `/agent/runs/${encodeURIComponent(runId)}/stream`,
+    { handlers },
+  )
+}
+
+export async function streamAgentMessage(
+  threadId,
+  payload,
+  idempotencyKey,
+  handlers = {},
+) {
+  return streamAgentEndpoint(
+    `/agent/threads/${encodeURIComponent(threadId)}/messages/stream`,
     {
-      method: 'POST',
-      headers: { ...getAuthorizationHeaders() },
-      signal: handlers.signal,
+      payload,
+      idempotencyKey,
+      handlers,
     },
   )
+}
+
+export async function retryAgentMessage(
+  messageId,
+  idempotencyKey,
+  handlers = {},
+) {
+  return streamAgentEndpoint(
+    `/agent/messages/${encodeURIComponent(messageId)}/retry`,
+    { idempotencyKey, handlers },
+  )
+}
+
+async function streamAgentEndpoint(
+  path,
+  { payload, idempotencyKey, handlers = {} },
+) {
+  const headers = { ...getAuthorizationHeaders() }
+  if (payload) headers['Content-Type'] = 'application/json'
+  if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    method: 'POST',
+    headers,
+    body: payload ? JSON.stringify(payload) : undefined,
+    signal: handlers.signal,
+  })
   if (!response.ok) {
     if (response.status === 401) notifyUnauthorized()
     throw await createApiErrorFromResponse(response)
