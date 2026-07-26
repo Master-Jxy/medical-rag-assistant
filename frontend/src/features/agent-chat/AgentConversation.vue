@@ -1,7 +1,9 @@
 <script setup>
+import { ref, watch } from 'vue'
 import AgentMessageItem from './AgentMessageItem.vue'
+import { scrollToLatest } from '../../utils/scroll.js'
 
-defineProps({
+const props = defineProps({
   messages: { type: Array, default: () => [] },
   runDetails: { type: Object, default: () => ({}) },
   live: { type: Object, default: null },
@@ -14,10 +16,25 @@ defineEmits([
   'toggle-source-reference',
   'toggle-artifact-reference',
 ])
+
+const conversationArea = ref(null)
+
+watch(
+  () => props.messages.map(
+    (message) => `${message.id}:${message.content?.length || 0}:${message.status}`,
+  ).join('|'),
+  () => scrollToLatest(conversationArea),
+  { immediate: true, flush: 'post' },
+)
 </script>
 
 <template>
-  <section class="conversation" aria-live="polite">
+  <section
+    ref="conversationArea"
+    class="conversation"
+    data-testid="agent-message-area"
+    aria-live="polite"
+  >
     <div v-if="!messages.length" class="empty">
       输入一项资料整理任务；运行时展示公开计划，消息、工具步骤、来源和产物会保存在当前会话。
     </div>

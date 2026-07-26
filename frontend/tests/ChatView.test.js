@@ -168,11 +168,19 @@ describe('ChatView 会话交互', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('第一段回答')
 
+    const messageArea = wrapper.get('[data-testid="rag-message-area"]').element
+    Object.defineProperty(messageArea, 'scrollHeight', {
+      configurable: true,
+      value: 4321,
+    })
+    messageArea.scrollTop = 0
     await wrapper.get('[data-conversation-id="conversation-2"] [data-testid="conversation-main"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('第二段回答')
     expect(wrapper.text()).not.toContain('第一段回答')
+    expect(messageArea.scrollTop).toBe(4321)
+    expect(messageArea.style.scrollBehavior).toBe('')
   })
 
   it('引用来源默认整组收起，并可点击展开和再次收起', async () => {

@@ -26,7 +26,7 @@ export async function deleteAgentThread(threadId) {
   return (await http.delete(`/agent/threads/${encodeURIComponent(threadId)}`)).data
 }
 
-export async function listAgentMessages(threadId, limit = 50) {
+export async function listAgentMessages(threadId, limit = 100) {
   return (await http.get(
     `/agent/threads/${encodeURIComponent(threadId)}/messages`,
     { params: { offset: 0, limit } },

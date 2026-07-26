@@ -125,6 +125,12 @@ beforeEach(() => {
 describe('Codex式资料Agent工作台', () => {
   it('展示会话、连续消息、步骤、来源和产物', async () => {
     const wrapper = mountView()
+    const messageArea = wrapper.get('[data-testid="agent-message-area"]').element
+    Object.defineProperty(messageArea, 'scrollHeight', {
+      configurable: true,
+      value: 6789,
+    })
+    messageArea.scrollTop = 0
     await flushPromises()
 
     expect(wrapper.text()).toContain('AGENT CHAT V3')
@@ -133,6 +139,8 @@ describe('Codex式资料Agent工作台', () => {
     expect(wrapper.text()).toContain('generate_learning_report')
     expect(wrapper.text()).toContain('患者安全.pdf')
     expect(wrapper.text()).toContain('学习报告.md')
+    expect(messageArea.scrollTop).toBe(6789)
+    expect(messageArea.style.scrollBehavior).toBe('')
   })
 
   it('发送消息时使用会话SSE并在完成后恢复服务端状态', async () => {

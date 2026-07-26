@@ -1,5 +1,5 @@
 <script setup>
-import { nextTick, onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 
 import {
   createConversation,
@@ -9,6 +9,7 @@ import {
   stopConversationStream,
   streamConversation,
 } from '../api/conversations.js'
+import { scrollToLatest } from '../utils/scroll.js'
 import { getApiErrorMessage } from '../api/http.js'
 import { submitAnswerFeedback } from '../api/quality.js'
 import { getDocumentTrace, openDocumentPreview } from '../api/citations.js'
@@ -107,9 +108,8 @@ async function openSource(source) {
   catch (error) { errorMessage.value = getApiErrorMessage(error) }
 }
 
-async function scrollToBottom() {
-  await nextTick()
-  if (messageArea.value) messageArea.value.scrollTop = messageArea.value.scrollHeight
+function scrollToBottom() {
+  return scrollToLatest(messageArea)
 }
 
 async function refreshConversationList() {
@@ -127,11 +127,11 @@ async function selectConversation(conversationId) {
     messages.value = conversation.messages.length
       ? conversation.messages.map(mapStoredMessage)
       : [{ ...WELCOME_MESSAGE }]
-    await scrollToBottom()
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
   } finally {
     loadingMessages.value = false
+    await scrollToBottom()
   }
 }
 
@@ -353,7 +353,12 @@ onMounted(async () => {
       </aside>
 
       <div class="chat-panel">
-        <div ref="messageArea" class="message-area" aria-live="polite">
+        <div
+          ref="messageArea"
+          class="message-area"
+          data-testid="rag-message-area"
+          aria-live="polite"
+        >
           <div v-if="loadingMessages" class="message-loading">正在读取会话记录…</div>
           <article
             v-for="message in messages"
@@ -478,7 +483,7 @@ onMounted(async () => {
 .conversation-delete { padding: 6px 7px; border: 0; border-radius: 7px; color: #ad5547; background: transparent; font-size: 10px; cursor: pointer; opacity: 0; }
 .conversation-item:hover .conversation-delete, .conversation-item:focus-within .conversation-delete { opacity: 1; }
 .chat-panel { min-width: 0; overflow: hidden; }
-.message-area { height: min(52vh, 530px); min-height: 380px; overflow-y: auto; padding: 32px; scroll-behavior: smooth; }
+.message-area { height: min(52vh, 530px); min-height: 380px; overflow-y: auto; padding: 32px; }
 .message-loading { display: grid; height: 100%; place-items: center; color: var(--muted); font-size: 13px; }
 .message-row { display: flex; gap: 13px; margin-bottom: 28px; }
 .message-row.user { flex-direction: row-reverse; }
