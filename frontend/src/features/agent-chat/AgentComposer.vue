@@ -33,7 +33,7 @@ function handleKeydown(event) {
 
 <template>
   <form class="composer" @submit.prevent="submit">
-    <label for="agent-message">给资料 Agent 发送任务</label>
+    <label for="agent-message">给 Agent 发送任务</label>
     <div v-if="references.length" class="references" aria-label="本轮显式引用">
       <button
         v-for="item in references"

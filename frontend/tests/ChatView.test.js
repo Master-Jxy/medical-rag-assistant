@@ -70,6 +70,36 @@ beforeEach(() => {
 })
 
 describe('ChatView 会话交互', () => {
+  it('仅把RAG助手回答渲染为安全Markdown', async () => {
+    api.getConversation.mockResolvedValue({
+      id: 'conversation-1',
+      messages: [
+        {
+          id: 'markdown-user',
+          role: 'user',
+          content: '**用户原文**',
+          status: 'completed',
+          sources: [],
+        },
+        {
+          id: 'markdown-assistant',
+          role: 'assistant',
+          content: '**回答重点**\n\n- 第一项\n- 第二项',
+          status: 'completed',
+          sources: [],
+        },
+      ],
+    })
+
+    const wrapper = mountChatView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="markdown-content"] strong').text()).toBe('回答重点')
+    expect(wrapper.findAll('[data-testid="markdown-content"] li')).toHaveLength(2)
+    expect(wrapper.text()).toContain('**用户原文**')
+    expect(wrapper.findAll('strong').some((item) => item.text() === '用户原文')).toBe(false)
+  })
+
   it('进入、切换、新建会话和回答结束后聚焦问题输入框', async () => {
     let finishStream
     api.streamConversation.mockImplementation(() => new Promise((resolve) => {

@@ -130,6 +130,27 @@ beforeEach(() => {
 })
 
 describe('Codex式资料Agent工作台', () => {
+  it('仅把Agent助手回答渲染为安全Markdown并使用统一名称', async () => {
+    agentApi.listAgentMessages.mockResolvedValue({
+      items: [{
+        ...messages[0],
+        content: '**用户原文**',
+      }, {
+        ...messages[1],
+        content: '**Agent重点**\n\n- 已完成整理',
+      }],
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="markdown-content"] strong').text()).toBe('Agent重点')
+    expect(wrapper.get('[data-testid="markdown-content"] li').text()).toBe('已完成整理')
+    expect(wrapper.text()).toContain('**用户原文**')
+    expect(wrapper.text()).not.toContain('资料整理 Agent')
+    expect(wrapper.text()).not.toContain('资料 Agent')
+  })
+
   it('零工具失败任务不会伪装成成功的直接回答', () => {
     const wrapper = mount(AgentRunProgress, {
       props: {

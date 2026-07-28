@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import MarkdownContent from '../../components/MarkdownContent.vue'
 import AgentRunProgress from './AgentRunProgress.vue'
 
 const props = defineProps({
@@ -46,7 +47,7 @@ const artifacts = computed(() => {
   <article class="message-row" :class="message.role">
     <div class="avatar">{{ message.role === 'user' ? '你' : 'M' }}</div>
     <div class="message-body">
-      <span class="role-name">{{ message.role === 'user' ? '我的问题' : '资料 Agent' }}</span>
+      <span class="role-name">{{ message.role === 'user' ? '我的问题' : 'Agent' }}</span>
 
       <AgentRunProgress
         v-if="isAssistant && (plan.length || steps.length || run || isActive)"
@@ -63,7 +64,12 @@ const artifacts = computed(() => {
         :class="{ thinking: isActive && !content, failed: message.status === 'failed' }"
       >
         <template v-if="content">
-          {{ content }}<i v-if="isActive" class="stream-cursor"></i>
+          <MarkdownContent
+            v-if="isAssistant"
+            :content="content"
+            :streaming="isActive"
+          />
+          <template v-else>{{ content }}</template>
         </template>
         <template v-else>
           <i></i><i></i><i></i><span>正在理解任务并准备下一步</span>
@@ -242,7 +248,7 @@ const artifacts = computed(() => {
 .user .message-actions { justify-content: flex-end; }
 .message-actions button { color: #81908b; }
 .thinking { display: flex; align-items: center; gap: 5px; color: var(--muted); }
-.thinking > i:not(.stream-cursor) {
+.thinking > i {
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -252,17 +258,7 @@ const artifacts = computed(() => {
 .thinking > i:nth-child(2) { animation-delay: .2s; }
 .thinking > i:nth-child(3) { animation-delay: .4s; }
 .thinking span { margin-left: 5px; font-size: 13px; }
-.stream-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 1em;
-  margin-left: 3px;
-  vertical-align: -2px;
-  background: var(--primary);
-  animation: blink .8s infinite;
-}
 @keyframes pulse { to { opacity: .25; transform: translateY(-2px); } }
-@keyframes blink { 50% { opacity: 0; } }
 @media (max-width: 760px) {
   .message-body { width: calc(100% - 47px); }
 }

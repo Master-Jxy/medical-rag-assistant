@@ -13,6 +13,7 @@ import { scrollToLatest } from '../utils/scroll.js'
 import { getApiErrorMessage } from '../api/http.js'
 import { submitAnswerFeedback } from '../api/quality.js'
 import { getDocumentTrace, openDocumentPreview } from '../api/citations.js'
+import MarkdownContent from '../components/MarkdownContent.vue'
 import { createUuid } from '../utils/uuid.js'
 
 const WELCOME_MESSAGE = {
@@ -386,7 +387,12 @@ onMounted(async () => {
               <span class="role-name">{{ message.role === 'user' ? '我的问题' : '知识库助手' }}</span>
               <div class="bubble" data-testid="message-bubble" :class="{ thinking: message.streaming && !message.content }">
                 <template v-if="message.content">
-                  {{ message.content }}<i v-if="message.streaming" class="stream-cursor"></i>
+                  <MarkdownContent
+                    v-if="message.role === 'assistant'"
+                    :content="message.content"
+                    :streaming="message.streaming"
+                  />
+                  <template v-else>{{ message.content }}</template>
                 </template>
                 <template v-else-if="message.streaming">
                   <i></i><i></i><i></i><span>正在检索资料并组织回答</span>
@@ -529,9 +535,7 @@ details p { margin: 0; padding: 0 13px 13px; color: var(--muted); font-size: 13p
 .thinking i:nth-child(2) { animation-delay: .2s; }
 .thinking i:nth-child(3) { animation-delay: .4s; }
 .thinking span { margin-left: 5px; font-size: 13px; }
-.stream-cursor { display: inline-block; width: 2px; height: 1em; margin-left: 3px; vertical-align: -2px; background: var(--primary); animation: blink .8s infinite; }
 @keyframes pulse { to { opacity: .25; transform: translateY(-2px); } }
-@keyframes blink { 50% { opacity: 0; } }
 .error-banner { display: flex; justify-content: space-between; gap: 16px; margin: 0 24px 12px; padding: 11px 14px; border-radius: 10px; color: #a33f2f; background: #fff0ed; font-size: 13px; }
 .error-banner button { border: 0; color: inherit; background: transparent; cursor: pointer; }
 .composer { margin: 0 24px 10px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: #fbfdfc; }

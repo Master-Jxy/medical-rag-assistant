@@ -16,7 +16,7 @@ const pageTitle = computed(() => route.meta.title || '医疗知识库助手')
 const publicItems = [
   { to: '/dashboard', label: '工作台' },
   { to: '/chat', label: '知识问答' },
-  { to: '/agent', label: '资料整理 Agent' },
+  { to: '/agent', label: 'Agent' },
   { to: '/knowledge', label: '公共知识库' },
   { to: '/my-documents', label: '我的资料' },
   { to: '/profile', label: '个人中心' },

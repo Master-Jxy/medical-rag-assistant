@@ -272,7 +272,7 @@ onMounted(async () => {
     <header class="page-toolbar">
       <div>
         <span>AGENT CHAT V3.2</span>
-        <h1>资料整理 Agent</h1>
+        <h1>Agent</h1>
         <p>像聊天一样交付任务；运行时展示公开决策与工具调用，完成后自动折叠过程。</p>
       </div>
       <div class="mobile-tools">

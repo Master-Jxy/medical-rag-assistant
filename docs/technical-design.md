@@ -1536,7 +1536,7 @@ threaded Agent及RAG、知识数据保持隔离。真实模型验收在`DASHSCOP
 1/2/1份资料，报告产生1个Markdown产物。临时账号、thread/message/run/step/artifact、
 限流键、生成锁和幂等键均清理，正式重试恢复2。
 
-### 13.10 Agent Chat v3.2 公开决策事件 `[本地已实现]`
+### 13.10 Agent Chat v3.2 公开决策事件 `[已完成并发布]`
 
 现有LangGraph循环没有改写。`AgentApplicationService`在观察到
 `AgentNode.INSPECT_RESULT`后增加`decision` SSE事件，只返回：
