@@ -10,6 +10,7 @@ from app.core.config import Settings
 from app.infrastructure.reranker import DashScopeRerankAdapter
 from app.modules.rag.policies import RerankPolicy
 from app.modules.rag.ports import (
+    GeneratedAnswerChunk,
     RerankResult,
     RerankUsage,
     RetrievedChunk,
@@ -71,13 +72,17 @@ class CapturingAnswer:
         self.received.append(chunks)
         return "回答"
 
-    def stream_answer(self, question, history, chunks) -> Iterator[str]:
+    def stream_answer(
+        self, question, history, chunks
+    ) -> Iterator[GeneratedAnswerChunk]:
         self.received.append(chunks)
-        yield "回答"
+        yield GeneratedAnswerChunk("回答")
 
-    async def astream_answer(self, question, history, chunks) -> AsyncIterator[str]:
+    async def astream_answer(
+        self, question, history, chunks
+    ) -> AsyncIterator[GeneratedAnswerChunk]:
         self.received.append(chunks)
-        yield "回答"
+        yield GeneratedAnswerChunk("回答")
 
 
 def enabled_policy(**overrides) -> RerankPolicy:

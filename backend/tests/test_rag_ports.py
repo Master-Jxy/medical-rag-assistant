@@ -8,7 +8,13 @@ from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.modules.rag.adapters import CurrentChromaKnowledgeSearchAdapter
-from app.modules.rag.ports import ChatHistory, RetrievedChunk
+from app.modules.rag.ports import (
+    ChatHistory,
+    GeneratedAnswer,
+    GeneratedAnswerChunk,
+    ModelUsage,
+    RetrievedChunk,
+)
 from app.modules.rag.ports import KnowledgeSearchOptions, RetrievalMetadataFilter
 from app.modules.rag.policies import RagRetrievalPolicy
 from app.services.rag_service import INSUFFICIENT_KNOWLEDGE_MESSAGE, RagService
@@ -40,6 +46,15 @@ class FixedAnswerGenerator:
         self.stream_calls: list[tuple[str, ChatHistory | None, list[RetrievedChunk]]] = []
         self.astream_calls: list[tuple[str, ChatHistory | None, list[RetrievedChunk]]] = []
 
+    def answer_with_usage(
+        self,
+        question: str,
+        history: ChatHistory | None,
+        chunks: list[RetrievedChunk],
+    ) -> GeneratedAnswer:
+        self.answer_calls.append((question, history, chunks))
+        return GeneratedAnswer("固定回答", ModelUsage.actual(9, 2))
+
     def answer(
         self,
         question: str,
@@ -54,21 +69,22 @@ class FixedAnswerGenerator:
         question: str,
         history: ChatHistory | None,
         chunks: list[RetrievedChunk],
-    ) -> Iterator[str]:
+    ) -> Iterator[GeneratedAnswerChunk]:
         self.stream_calls.append((question, history, chunks))
-        yield "固定"
-        yield ""
-        yield "回答"
+        yield GeneratedAnswerChunk("固定")
+        yield GeneratedAnswerChunk("")
+        yield GeneratedAnswerChunk("回答", ModelUsage.actual(12, 3))
 
     async def astream_answer(
         self,
         question: str,
         history: ChatHistory | None,
         chunks: list[RetrievedChunk],
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[GeneratedAnswerChunk]:
         self.astream_calls.append((question, history, chunks))
-        yield "异步"
-        yield "回答"
+        yield GeneratedAnswerChunk("异步")
+        yield GeneratedAnswerChunk("回答")
+        yield GeneratedAnswerChunk("", ModelUsage.actual(15, 4))
 
 
 def build_service(
@@ -104,6 +120,9 @@ def test_query_builder_port_can_be_replaced_without_changing_orchestrator() -> N
         "chunk_id": None,
     }
 
+    _, _, usage = service.ask_with_usage("当前问题", 4, history)
+    assert usage == ModelUsage.actual(9, 2)
+
 
 def test_knowledge_search_port_can_be_replaced_and_empty_result_keeps_refusal() -> None:
     service, query_builder, search, answer = build_service(chunks=[])
@@ -126,6 +145,12 @@ def test_answer_generator_port_can_be_replaced_for_sync_stream_and_async_stream(
     assert [event["data"] for event in stream_events] == [
         {"content": "固定"},
         {"content": "回答"},
+        {
+            "input_tokens": 12,
+            "output_tokens": 3,
+            "total_tokens": 15,
+            "measurement": "actual",
+        },
         {
             "sources": [
                 {
@@ -150,9 +175,27 @@ def test_answer_generator_async_port_keeps_token_then_sources_order() -> None:
 
     events = asyncio.run(collect_events())
 
-    assert [event["event"] for event in events] == ["token", "token", "sources"]
+    assert [event["event"] for event in events] == [
+        "token",
+        "token",
+        "model_usage",
+        "sources",
+    ]
     assert [event["data"].get("content") for event in events[:2]] == ["异步", "回答"]
     assert answer.astream_calls == [("问题", None, [chunk])]
+
+
+def test_zero_model_usage_precedes_public_refusal_content() -> None:
+    service, _, _, _ = build_service(chunks=[])
+
+    events = list(service.stream_ask("问题", 4))
+
+    assert [event["event"] for event in events] == [
+        "model_usage",
+        "token",
+        "sources",
+    ]
+    assert events[0]["data"]["measurement"] == "not_applicable"
 
 
 def test_default_retrieval_policy_is_disabled_and_keeps_original_refusal() -> None:

@@ -11,7 +11,7 @@ from app.infrastructure.telemetry import (
     RotatingJsonFileTelemetryAdapter,
     create_local_telemetry,
 )
-from app.modules.rag.ports import RetrievedChunk
+from app.modules.rag.ports import GeneratedAnswerChunk, RetrievedChunk
 from app.ports.telemetry import NullTelemetry, TelemetryEvent
 from app.services.rag_service import RagService
 from app.main import create_app
@@ -40,10 +40,10 @@ class Answer:
         return "回答"
 
     def stream_answer(self, question, history, chunks):
-        yield "回答"
+        yield GeneratedAnswerChunk("回答")
 
     async def astream_answer(self, question, history, chunks):
-        yield "回答"
+        yield GeneratedAnswerChunk("回答")
 
 
 class TimeoutAnswer(Answer):

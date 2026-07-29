@@ -1,5 +1,6 @@
 """Agent运行创建、查询、停止、图执行和持久化编排。"""
 
+import logging
 from collections.abc import Callable, Iterator
 from time import monotonic
 
@@ -31,6 +32,12 @@ from app.ports.telemetry import (
     TelemetryPort,
     emit_safely,
 )
+from app.core.config import get_settings
+from app.core.request_context import get_request_id
+from app.modules.rag.ports import ModelUsage, TokenMeasurement
+from app.modules.usage.service import ModelUsageRecorder
+
+logger = logging.getLogger(__name__)
 
 AgentGraphFactory = Callable[[str, str], BoundedAgentGraph]
 
@@ -45,6 +52,9 @@ class AgentApplicationService:
         cancellation: AgentCancellationService,
         model_name: str | None = None,
         telemetry: TelemetryPort | None = None,
+        usage_recorder: ModelUsageRecorder | None = None,
+        input_price_per_million_tokens_cny: float | None = None,
+        output_price_per_million_tokens_cny: float | None = None,
     ) -> None:
         self.session = session
         self.policy = policy
@@ -53,6 +63,19 @@ class AgentApplicationService:
         self.model_name = model_name
         self.telemetry = telemetry or NullTelemetry()
         self.repository = AgentRepository(session)
+        settings = get_settings()
+        self.usage_recorder = usage_recorder or ModelUsageRecorder(session)
+        self.input_price = (
+            settings.agent_input_price_per_million_tokens_cny
+            if input_price_per_million_tokens_cny is None
+            else input_price_per_million_tokens_cny
+        )
+        self.output_price = (
+            settings.agent_output_price_per_million_tokens_cny
+            if output_price_per_million_tokens_cny is None
+            else output_price_per_million_tokens_cny
+        )
+        self._usage_finalized: set[str] = set()
 
     def create_run(self, user_id: str, task: str) -> AgentRunResponse:
         if not self.policy.enabled:
@@ -335,6 +358,13 @@ class AgentApplicationService:
                 },
             }
         finally:
+            if run_id not in self._usage_finalized:
+                self._persist_model_usage(
+                    user_id,
+                    run_id,
+                    graph,
+                    int(final_state.get("used_tokens", 0)),
+                )
             self.cancellation.clear(user_id, run_id)
 
     def _finish_run(self, user_id: str, run_id: str, state, *, graph=None):
@@ -406,12 +436,19 @@ class AgentApplicationService:
                             return
                     output = "".join(output_parts)
             output = output or "任务已完成。"
+            token_measurement = self._persist_model_usage(
+                user_id,
+                run_id,
+                graph,
+                used_tokens,
+            )
             self.repository.complete_run(
                 user_id,
                 run_id,
                 final_result=output,
                 used_tokens=used_tokens,
                 estimated_cost_cny=estimated_cost_cny,
+                token_measurement=token_measurement,
             )
             self.session.commit()
             if state.get("final_output"):
@@ -458,6 +495,89 @@ class AgentApplicationService:
                     "message": "Agent未能完成任务",
                 },
             }
+
+    def _persist_model_usage(
+        self,
+        user_id: str,
+        run_id: str,
+        graph,
+        used_tokens: int,
+    ) -> str:
+        if run_id in self._usage_finalized:
+            run = self.repository.get_run(user_id, run_id)
+            return run.token_measurement
+        drain = getattr(graph, "drain_model_usage", None)
+        observations = list(drain()) if callable(drain) else []
+        if not observations:
+            fallback = (
+                ModelUsage.unknown()
+                if used_tokens > 0
+                else ModelUsage.not_applicable()
+            )
+            operation = (
+                "legacy_unknown"
+                if fallback.measurement is TokenMeasurement.UNKNOWN
+                else "not_applicable"
+            )
+            recorded = self._record_model_usage_safely(
+                call_id=f"agent:{run_id}:{operation}:0",
+                request_id=get_request_id(),
+                user_id=user_id,
+                surface="agent",
+                operation=operation,
+                model_name=self.model_name or "unknown",
+                usage=fallback,
+                input_price_per_million_tokens_cny=self.input_price,
+                output_price_per_million_tokens_cny=self.output_price,
+            )
+            measurement = (
+                fallback.measurement.value
+                if recorded
+                else TokenMeasurement.UNKNOWN.value
+            )
+        else:
+            measurements = []
+            for observation in observations:
+                recorded = self._record_model_usage_safely(
+                    call_id=(
+                        f"agent:{run_id}:{observation.operation}:"
+                        f"{observation.sequence}"
+                    ),
+                    request_id=get_request_id(),
+                    user_id=user_id,
+                    surface="agent",
+                    operation=observation.operation,
+                    model_name=self.model_name or "unknown",
+                    usage=observation.usage,
+                    input_price_per_million_tokens_cny=self.input_price,
+                    output_price_per_million_tokens_cny=self.output_price,
+                )
+                measurements.append(
+                    observation.usage.measurement
+                    if recorded
+                    else TokenMeasurement.UNKNOWN
+                )
+            measurement = (
+                TokenMeasurement.UNKNOWN.value
+                if TokenMeasurement.UNKNOWN in measurements
+                else TokenMeasurement.ACTUAL.value
+            )
+        self.repository.set_token_measurement(user_id, run_id, measurement)
+        self.session.commit()
+        self._usage_finalized.add(run_id)
+        return measurement
+
+    def _record_model_usage_safely(self, **fields) -> bool:
+        try:
+            self.usage_recorder.record(**fields)
+        except Exception as exc:
+            self.session.rollback()
+            logger.warning(
+                "model_usage_record_failed surface=agent error_type=%s",
+                type(exc).__name__,
+            )
+            return False
+        return True
 
     def _safe_stop(self, user_id: str, run_id: str) -> None:
         try:

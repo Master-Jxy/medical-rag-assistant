@@ -3,6 +3,7 @@ import HomeView from '../views/HomeView.vue'
 import ChatView from '../views/ChatView.vue'
 import KnowledgeView from '../views/KnowledgeView.vue'
 import LoginView from '../views/LoginView.vue'
+import PasswordResetView from '../views/PasswordResetView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import ProfileView from '../views/ProfileView.vue'
 import MyDocumentsView from '../views/MyDocumentsView.vue'
@@ -27,6 +28,7 @@ const router = createRouter({
   routes: [
     { path: '/', name: 'home', component: HomeView, meta: { title: '系统概览' } },
     { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true, title: '登录' } },
+    { path: '/password-reset', name: 'password-reset', component: PasswordResetView, meta: { guestOnly: true, title: '重置密码' } },
     { path: '/dashboard', name: 'dashboard', component: DashboardView, meta: { ...authenticated, title: '工作台' } },
     { path: '/chat', name: 'chat', component: ChatView, meta: { ...authenticated, title: '知识问答' } },
     { path: '/agent', name: 'agent', component: AgentView, meta: { ...authenticated, title: 'Agent' } },

@@ -4,6 +4,9 @@ const authApi = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
   loginUser: vi.fn(),
   registerUser: vi.fn(),
+  requestEmailVerification: vi.fn(),
+  requestPasswordReset: vi.fn(),
+  confirmPasswordReset: vi.fn(),
 }))
 
 vi.mock('../src/api/auth.js', () => authApi)

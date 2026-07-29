@@ -4,10 +4,21 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
-from app.modules.auth.models import User
+from app.modules.auth.models import User, utc_now
+from app.modules.auth.email_verification import (
+    EmailVerificationService,
+    InvalidEmailVerificationCodeError,
+)
+from app.modules.auth.ports import VerificationPurpose
 from app.modules.auth.passwords import hash_password, verify_password
 from app.modules.auth.repository import UserRepository
-from app.modules.auth.schemas import LoginRequest, UserCreate, UserResponse
+from app.modules.auth.schemas import (
+    AuthenticatedUser,
+    LoginRequest,
+    PasswordResetConfirm,
+    UserCreate,
+    UserResponse,
+)
 
 
 class EmailAlreadyRegisteredError(AppError):
@@ -46,20 +57,38 @@ class RoleRequiredError(AppError):
 
 
 class UserService:
-    def __init__(self, session: Session) -> None:
+    def __init__(
+        self,
+        session: Session,
+        email_verification: EmailVerificationService,
+    ) -> None:
         self.session = session
         self.repository = UserRepository(session)
+        self.email_verification = email_verification
+
+    def request_registration_code(self, email: str) -> None:
+        self.email_verification.request_code(
+            email=email,
+            purpose=VerificationPurpose.REGISTER,
+            should_send=self.repository.get_by_email(email) is None,
+        )
 
     def register(self, request: UserCreate) -> UserResponse:
         email = str(request.email).lower()
         if self.repository.get_by_email(email) is not None:
             raise EmailAlreadyRegisteredError()
+        self.email_verification.consume_code(
+            email=email,
+            purpose=VerificationPurpose.REGISTER,
+            code=request.verification_code,
+        )
 
         user = User(
             email=email,
             display_name=request.display_name,
             password_hash=hash_password(request.password.get_secret_value()),
             role="user",
+            email_verified_at=utc_now(),
         )
         try:
             self.repository.add(user)
@@ -71,10 +100,47 @@ class UserService:
             raise EmailAlreadyRegisteredError() from exc
         return UserResponse.model_validate(user)
 
-    def authenticate(self, request: LoginRequest) -> UserResponse:
+    def request_password_reset(self, email: str) -> None:
+        user = self.repository.get_by_email(email)
+        try:
+            self.email_verification.request_code(
+                email=email,
+                purpose=VerificationPurpose.PASSWORD_RESET,
+                should_send=user is not None and user.is_active,
+            )
+        except AppError:
+            # 请求端始终使用统一公开响应，避免利用基础设施状态枚举账号。
+            return
+
+    def confirm_password_reset(self, request: PasswordResetConfirm) -> None:
+        email = str(request.email).lower()
+        self.email_verification.consume_code(
+            email=email,
+            purpose=VerificationPurpose.PASSWORD_RESET,
+            code=request.verification_code,
+        )
+        try:
+            user = self.repository.get_by_email_for_update(email)
+            if user is None or not user.is_active:
+                self.session.rollback()
+                raise InvalidEmailVerificationCodeError()
+            self.repository.reset_password(
+                user,
+                password_hash=hash_password(
+                    request.new_password.get_secret_value()
+                ),
+            )
+            self.session.commit()
+        except InvalidEmailVerificationCodeError:
+            raise
+        except Exception:
+            self.session.rollback()
+            raise
+
+    def authenticate(self, request: LoginRequest) -> AuthenticatedUser:
         """邮箱不存在、密码错误或账号停用都返回同一种安全提示。"""
         user = self.repository.get_by_email(str(request.email).lower())
         password = request.password.get_secret_value()
         if user is None or not user.is_active or not verify_password(password, user.password_hash):
             raise InvalidCredentialsError()
-        return UserResponse.model_validate(user)
+        return AuthenticatedUser.model_validate(user)

@@ -399,7 +399,8 @@ Router / CLI
 - 新上传文档也进入公共知识库。
 - 普通用户只能删除自己上传的文档。
 - 系统预置文档不能由普通用户删除。
-- 基础登录版本不做邮箱验证码、找回密码和 Refresh Token。
+- 阶段五的基础登录版本不做邮箱验证码、找回密码和Refresh Token；阶段16本地代码已在
+  此基线上增加邮箱验证、密码重置和`token_version`，但仍不引入Refresh Token。
 
 ### 8.2 新增表与字段
 
@@ -432,10 +433,16 @@ Router / CLI
 | POST | `/api/v1/auth/register` | 创建用户并返回基本信息 |
 | POST | `/api/v1/auth/login` | 校验密码并返回短期 JWT |
 | GET | `/api/v1/auth/me` | 返回当前登录用户 |
+| POST | `/api/v1/auth/email-codes/register` | 发送注册验证码，统一公开响应 |
+| POST | `/api/v1/auth/password-reset/request` | 请求密码重置验证码，统一公开响应 |
+| POST | `/api/v1/auth/password-reset/confirm` | 消费验证码并重置密码、递增Token版本；旧账号同时完成邮箱验证 |
 
 密码使用 Argon2 哈希，JWT 使用短期 HS256 Bearer Token，默认 30 分钟过期，密钥只来自环境变量。登录失败统一提示“邮箱或密码错误”，不能泄漏邮箱是否存在；缺失、伪造、过期 Token 和已不存在的用户统一返回 401。
 
 当前已完成 `users` 模型、Schema、Repository、注册/登录 Service、三个 HTTP 接口、JWT 签发校验和当前用户依赖。全部会话接口已按 `user_id` 隔离；文档上传、列表、删除也已接入认证，所有文档公共可见，删除由后端校验上传者且保护系统文档。Vue 已完成注册登录、Token 持久化、刷新时通过 `/auth/me` 恢复用户、退出、受保护路由、401 统一清理和返回原目标页；普通 Axios 与 SSE 请求都集中附带 Bearer Token。
+
+阶段16本地代码已经在不改变上述基线的前提下新增验证码发送、忘记密码和旧JWT失效
+接口；生产发布前仍运行旧认证版本。接口、迁移和安全边界见第19节。
 
 前端登录数据流：
 
@@ -1600,6 +1607,12 @@ Agent 使用 13.4 节的独立事件，不允许把 `tool_started` 等事件塞�
 - 可选 `RAG_MIN_RELEVANCE_SCORE`、四类 `RAG_FILTER_*` 和 `RAG_INSUFFICIENT_KNOWLEDGE_MESSAGE`
 - `RAG_HYBRID_SEARCH_ENABLED`、两路融合权重和 `RAG_HYBRID_RRF_K`
 - `RAG_RERANK_ENABLED`、模型、候选数、超时、Token单价和单次费用上限
+- 阶段16已实现SMTP配置：`SMTP_HOST`、`SMTP_PORT`、`SMTP_USERNAME`、
+  `SMTP_PASSWORD`、`SMTP_USE_SSL`、`SMTP_TIMEOUT_SECONDS`、`MAIL_FROM_NAME`
+- 阶段16已实现验证码配置：`EMAIL_CODE_TTL_SECONDS`、`EMAIL_CODE_RESEND_SECONDS`、
+  `EMAIL_CODE_MAX_ATTEMPTS`
+- 阶段16已实现聊天计价配置：`CHAT_INPUT_PRICE_PER_MILLION_TOKENS_CNY`、
+  `CHAT_OUTPUT_PRICE_PER_MILLION_TOKENS_CNY`
 
 后续新增：
 
@@ -1627,6 +1640,10 @@ Agent 使用 13.4 节的独立事件，不允许把 `tool_started` 等事件塞�
 11. 故障注入：Redis、Chroma、模型、审核发布和工具超时后，错误状态与补偿符合约定。
 12. 前端体验测试：1280/1440桌面和390移动端无溢出遮挡，加载、空、失败、无权限、降级和重试状态可见。
 13. 对话Agent测试：thread/message/run用户隔离、连续上下文、显式引用、发送幂等、同thread生成锁、刷新恢复、停止重试和级联删除。
+14. 邮箱生命周期测试：验证码过期、重放、并发、错误次数、枚举、SMTP/Redis故障、
+    密码重置和旧JWT失效。
+15. 用量计量测试：实际usage、缺失usage、零模型调用、价格快照、幂等账本、进程重启
+    后聚合，以及RAG/Agent流式取消。
 
 涉及外部模型的自动化测试默认使用假实现，避免重复付费和不稳定结果。
 
@@ -1682,3 +1699,33 @@ TLS层只新增443和固定标识符跳转，继续保留SSE关闭代理缓冲�
 - 部署拓扑改变。
 
 每个任务只更新短入口 `docs/handoff.md`。只有阶段状态变化时更新 `docs/development-roadmap.md`；只有上述架构事项变化时更新本文档，普通修复和验证结果不得在多份文档重复记流水账。
+
+## 19. 阶段十六：邮箱账号生命周期与模型用量计量 `[本地完成，生产待发布]`
+
+阶段16保留模块化单体和现有部署拓扑，只新增两个小型能力边界：
+
+```text
+Auth Service
+-> EmailSenderPort / VerificationStorePort
+-> QQ SMTP / Redis
+
+RAG或Agent Service
+-> ChatModelPort返回正文与ModelUsage
+-> ModelUsageRecorderPort
+-> MySQL脱敏账本 + Telemetry聚合
+```
+
+账号迁移增加`users.email_verified_at`和`users.token_version`；模型计量使用独立
+`model_usage_records`账本保存调用ID、入口、模型、输入/输出Token、计量状态、价格快照
+和估算费用，不保存Prompt、问题、回答或知识正文。
+
+邮箱验证码注册、忘记密码、旧JWT失效、QQ SMTP配置、Redis故障边界、测试账号清理、
+usage穿透、费用公式、前端语义、分步任务和回滚方案统一以
+[`docs/auth-and-model-usage-design.md`](auth-and-model-usage-design.md)为准。
+
+旧测试账号清理不属于Alembic迁移。维护命令必须默认只读、先备份和转移公共资产，
+执行时再次取得用户授权；公共文档、上传文件和Chroma片段不得因账号清理变化。
+
+模型供应商没有返回usage时继续显示未知，不允许用字符数伪造实际Token。确定性回答
+没有调用模型时记录`not_applicable`并显示0 Token、¥0；Embedding和Reranker保持独立
+计量，不混入聊天模型输入/输出。

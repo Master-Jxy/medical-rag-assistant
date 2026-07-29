@@ -28,11 +28,17 @@ from app.core.request_context import new_request_id, reset_request_id, set_reque
 from app.infrastructure.telemetry import create_local_telemetry
 from app.ports.telemetry import TelemetryEvent, TelemetryPort, emit_safely
 from app.infrastructure.redis import RedisInfrastructure
+from app.infrastructure.qq_smtp_email_sender import QQSmtpEmailSender
+from app.infrastructure.redis_email_verification_store import (
+    RedisEmailVerificationStore,
+)
 from app.infrastructure.local_rate_limit import BoundedLocalRateLimitAdapter
 from app.infrastructure.local_concurrency_limit import (
     BoundedLocalConcurrencyLimitAdapter,
 )
 from app.modules.auth.rate_limit import AuthRateLimitService
+from app.modules.auth.email_verification import EmailVerificationService
+from app.modules.auth.ports import EmailSenderPort, EmailVerificationStorePort
 from app.modules.auth.router import router as auth_router
 from app.services.chat_rate_limit_service import ChatRateLimitService
 from app.services.generation_lock_service import GenerationLockService
@@ -52,6 +58,8 @@ def create_app(
     upload_protection_service: UploadProtectionService | None = None,
     telemetry: TelemetryPort | None = None,
     settings: Settings | None = None,
+    email_sender: EmailSenderPort | None = None,
+    email_verification_store: EmailVerificationStorePort | None = None,
 ) -> FastAPI:
     """创建 FastAPI 应用，便于以后测试和扩展配置。"""
     current_settings = settings or get_settings()
@@ -62,6 +70,11 @@ def create_app(
             yield
         finally:
             application.state.redis_infrastructure.close()
+            close_email_store = getattr(
+                application.state.email_verification_store, "close", None
+            )
+            if callable(close_email_store):
+                close_email_store()
             close_telemetry = getattr(application.state.telemetry, "close", None)
             if callable(close_telemetry):
                 try:
@@ -75,6 +88,7 @@ def create_app(
         version="0.1.0",
         lifespan=lifespan,
     )
+    application.state.settings = current_settings
     application.state.telemetry = telemetry or create_local_telemetry(current_settings)
     application.state.agent_cancellation_service = AgentCancellationService()
     application.state.agent_recovery_complete = False
@@ -112,6 +126,24 @@ def create_app(
             reset_request_id(token)
     application.state.redis_infrastructure = (
         redis_infrastructure or RedisInfrastructure(current_settings)
+    )
+    application.state.email_verification_store = (
+        email_verification_store
+        or RedisEmailVerificationStore(current_settings)
+    )
+    application.state.email_sender = email_sender or QQSmtpEmailSender(
+        current_settings
+    )
+    try:
+        email_secret = current_settings.require_jwt_secret_key()
+    except ValueError:
+        # 实际调用端点时仍会由缺失凭据安全失败；应用健康检查保持可用。
+        email_secret = "runtime-disabled-email-verification-secret"
+    application.state.email_verification_service = EmailVerificationService(
+        store=application.state.email_verification_store,
+        sender=application.state.email_sender,
+        settings=current_settings,
+        secret_key=email_secret,
     )
     application.state.protection_observability = ProtectionObservability(
         redis_configured=current_settings.optional_redis_url() is not None,

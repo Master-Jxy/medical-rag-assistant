@@ -1,5 +1,6 @@
 """短期 Bearer JWT 的签发和校验；令牌只包含识别用户所需的最少字段。"""
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -21,34 +22,53 @@ class TokenService:
         return self.expire_minutes * 60
 
     def create_access_token(
-        self, user_id: str, *, expires_delta: timedelta | None = None
+        self,
+        user_id: str,
+        *,
+        token_version: int = 0,
+        expires_delta: timedelta | None = None,
     ) -> str:
         now = datetime.now(timezone.utc)
         expires_at = now + (expires_delta or timedelta(minutes=self.expire_minutes))
         payload = {
             "sub": user_id,
             "type": "access",
+            "ver": token_version,
             "iat": now,
             "exp": expires_at,
         }
         return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
 
-    def decode_access_token(self, token: str) -> str:
+    def decode_access_token(self, token: str) -> "AccessTokenIdentity":
         try:
             payload = jwt.decode(
                 token,
                 self.secret_key,
                 algorithms=[self.algorithm],
-                options={"require": ["sub", "iat", "exp"]},
+                options={"require": ["sub", "iat", "exp", "ver"]},
             )
             user_id = payload.get("sub")
-            if not isinstance(user_id, str) or not user_id or payload.get("type") != "access":
+            token_version = payload.get("ver")
+            if (
+                not isinstance(user_id, str)
+                or not user_id
+                or not isinstance(token_version, int)
+                or isinstance(token_version, bool)
+                or token_version < 0
+                or payload.get("type") != "access"
+            ):
                 raise InvalidAuthTokenError()
-            return user_id
+            return AccessTokenIdentity(user_id=user_id, token_version=token_version)
         except InvalidAuthTokenError:
             raise
         except (InvalidTokenError, TypeError, ValueError) as exc:
             raise InvalidAuthTokenError() from exc
+
+
+@dataclass(frozen=True)
+class AccessTokenIdentity:
+    user_id: str
+    token_version: int
 
 
 def get_token_service() -> TokenService:

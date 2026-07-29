@@ -116,3 +116,45 @@ def test_retrieval_query_uses_last_user_question_for_pronoun_followup() -> None:
 
     assert "高血压有哪些常见症状" in query
     assert "那它一般怎么管理" in query
+
+
+def test_sync_answer_completes_when_usage_ledger_write_fails() -> None:
+    class FailingUsageRecorder:
+        def record(self, **kwargs):
+            raise RuntimeError("fake-ledger-failure")
+
+    engine = build_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    try:
+        with Session(engine, expire_on_commit=False) as session:
+            user = User(
+                id="history-ledger-fail-user",
+                email="history-ledger-fail@example.com",
+                password_hash="not-used",
+            )
+            conversation = Conversation(user_id=user.id, title="账本故障")
+            session.add_all([user, conversation])
+            session.commit()
+            service = ConversationChatService(
+                session,
+                CapturingRagService(),
+                AllowingGenerationLock(),
+                AllowingIdempotency(),
+                usage_recorder=FailingUsageRecorder(),
+            )
+
+            response = service.ask(
+                user.id,
+                conversation.id,
+                "仍应完成",
+                2,
+                "ledger-failure",
+            )
+
+            assert response.answer == "回答：仍应完成"
+            assert [message.status for message in conversation.messages] == [
+                "completed",
+                "completed",
+            ]
+    finally:
+        engine.dispose()

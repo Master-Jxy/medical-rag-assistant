@@ -25,6 +25,12 @@ beforeEach(() => {
     output_tokens: 0,
     token_measurement: 'unknown',
     estimated_cost_cny: null,
+    known_model_calls: 0,
+    unknown_model_calls: 1,
+    no_model_calls: 2,
+    priced_model_calls: 0,
+    unpriced_model_calls: 0,
+    measurement_coverage: 0,
     rate_limit_count: 1,
     redis_degradation_count: 2,
     user_stop_count: 3,
@@ -41,7 +47,9 @@ describe('管理员运行统计页面', () => {
     expect(telemetryApi.getTelemetryStats).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('请求总量')
     expect(wrapper.text()).toContain('90.0%')
-    expect(wrapper.text()).toContain('未知（模型未返回计量）')
+    expect(wrapper.text()).toContain('模型未返回计量')
+    expect(wrapper.text()).toContain('0.0%')
+    expect(wrapper.text()).toContain('未调用模型')
     expect(wrapper.text()).toContain('TimeoutError')
     expect(wrapper.text()).not.toContain('问题正文')
   })

@@ -62,8 +62,7 @@ export async function signIn(credentials) {
 }
 
 export async function signUp(registration) {
-  await registerUser(registration)
-  return signIn({ email: registration.email, password: registration.password })
+  return registerUser(registration)
 }
 
 export function signOut() {

@@ -12,7 +12,10 @@ from app.infrastructure.async_chat_model import DashScopeAsyncChatModel
 from app.infrastructure.vector_store import VectorStoreService
 from app.modules.rag.ports import (
     ChatHistory,
+    GeneratedAnswer,
+    GeneratedAnswerChunk,
     KnowledgeSearchOptions,
+    ModelUsage,
     RetrievedChunk,
 )
 
@@ -127,8 +130,22 @@ class CurrentQwenAnswerGeneratorAdapter:
                 ("human", "{question}"),
             ]
         )
-        self.chain = self.prompt | create_chat_model() | StrOutputParser()
+        self.model = create_chat_model()
+        self.raw_chain = self.prompt | self.model
+        self.chain = self.raw_chain | StrOutputParser()
         self.async_chat_model = DashScopeAsyncChatModel()
+
+    def answer_with_usage(
+        self,
+        question: str,
+        history: ChatHistory | None,
+        chunks: list[RetrievedChunk],
+    ) -> GeneratedAnswer:
+        response = self.raw_chain.invoke(self._inputs(question, history, chunks))
+        return GeneratedAnswer(
+            content=str(response.content),
+            usage=self._parse_langchain_usage(response),
+        )
 
     def answer(
         self,
@@ -138,20 +155,50 @@ class CurrentQwenAnswerGeneratorAdapter:
     ) -> str:
         return self.chain.invoke(self._inputs(question, history, chunks))
 
+    @staticmethod
+    def _parse_langchain_usage(response: object) -> ModelUsage:
+        raw = getattr(response, "usage_metadata", None)
+        if not isinstance(raw, dict):
+            response_metadata = getattr(response, "response_metadata", None)
+            if isinstance(response_metadata, dict):
+                raw = response_metadata.get("token_usage") or response_metadata.get(
+                    "usage"
+                )
+        if not isinstance(raw, dict):
+            return ModelUsage.unknown()
+
+        def optional_token(*names: str) -> int | None:
+            value = next((raw[name] for name in names if name in raw), None)
+            if isinstance(value, bool):
+                return None
+            try:
+                parsed = int(value)
+            except (TypeError, ValueError):
+                return None
+            return parsed if parsed >= 0 else None
+
+        input_tokens = optional_token("input_tokens", "prompt_tokens")
+        output_tokens = optional_token("output_tokens", "completion_tokens")
+        if input_tokens is None or output_tokens is None:
+            return ModelUsage.unknown()
+        return ModelUsage.actual(input_tokens, output_tokens)
+
     def stream_answer(
         self,
         question: str,
         history: ChatHistory | None,
         chunks: list[RetrievedChunk],
-    ) -> Iterator[str]:
-        yield from self.chain.stream(self._inputs(question, history, chunks))
+    ) -> Iterator[GeneratedAnswerChunk]:
+        for content in self.chain.stream(self._inputs(question, history, chunks)):
+            yield GeneratedAnswerChunk(content=str(content))
+        yield GeneratedAnswerChunk(content="", usage=ModelUsage.unknown())
 
     async def astream_answer(
         self,
         question: str,
         history: ChatHistory | None,
         chunks: list[RetrievedChunk],
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[GeneratedAnswerChunk]:
         prompt_value = self.prompt.invoke(self._inputs(question, history, chunks))
         messages = to_dashscope_messages(prompt_value.to_messages())
         async for chunk in self.async_chat_model.stream(messages):

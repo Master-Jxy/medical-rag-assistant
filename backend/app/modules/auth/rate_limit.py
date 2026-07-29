@@ -43,6 +43,25 @@ class AuthRateLimitService:
             self.settings.auth_login_rate_window_seconds,
         )
 
+    def check_email_verification(
+        self,
+        *,
+        action: str,
+        client_address: str,
+        email: str,
+    ) -> None:
+        """发送与校验同时按IP和邮箱保护，存储键由共享服务脱敏。"""
+        for subject_type, subject in (
+            ("ip", client_address),
+            ("email", email.strip().lower()),
+        ):
+            self._check(
+                f"email-{action}-{subject_type}",
+                subject,
+                self.settings.auth_register_rate_limit,
+                self.settings.auth_register_rate_window_seconds,
+            )
+
     def _check(
         self,
         action: str,

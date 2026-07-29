@@ -13,6 +13,7 @@ from app.modules.knowledge.models import (
     KnowledgeSubmission,
 )
 from app.modules.jobs.models import ProcessingJob
+from app.modules.usage.models import ModelUsageRecord
 
 __all__ = [
     "AuditEvent",
@@ -33,4 +34,5 @@ __all__ = [
     "KnowledgeSubmission",
     "DocumentVersion",
     "ProcessingJob",
+    "ModelUsageRecord",
 ]

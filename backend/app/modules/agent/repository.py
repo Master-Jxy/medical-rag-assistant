@@ -172,6 +172,7 @@ class AgentRepository:
         final_result: str,
         used_tokens: int,
         estimated_cost_cny: float,
+        token_measurement: str = "unknown",
     ) -> AgentRun:
         return self._transition(
             user_id,
@@ -181,6 +182,7 @@ class AgentRepository:
             final_result=final_result,
             used_tokens=used_tokens,
             estimated_cost_cny=estimated_cost_cny,
+            token_measurement=token_measurement,
             error_type=None,
             finished_at=datetime.now(timezone.utc),
         )
@@ -204,6 +206,14 @@ class AgentRepository:
             error_type=None,
             finished_at=datetime.now(timezone.utc),
         )
+
+    def set_token_measurement(
+        self, user_id: str, run_id: str, token_measurement: str
+    ) -> AgentRun:
+        run = self.get_run(user_id, run_id)
+        run.token_measurement = token_measurement
+        self.session.flush()
+        return run
 
     def append_step(
         self,

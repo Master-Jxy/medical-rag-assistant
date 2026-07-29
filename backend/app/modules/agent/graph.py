@@ -16,6 +16,10 @@ from app.modules.agent.state import (
     AgentRunStatus,
     AgentStopReason,
 )
+from app.modules.agent.usage import (
+    AgentModelUsageCollector,
+    AgentModelUsageObservation,
+)
 
 Route = Literal["select_tool", "execute_tool", "inspect_result", "finalize", "fail", "stop"]
 
@@ -43,12 +47,19 @@ class BoundedAgentGraph:
         planner: AgentPlanner,
         registry: ToolRegistry,
         stop_requested: Callable[[], bool] | None = None,
+        usage_collector: AgentModelUsageCollector | None = None,
     ) -> None:
         self.planner = planner
         self.registry = registry
         self.stop_requested = stop_requested or (lambda: False)
+        self.usage_collector = usage_collector
         self._started_at = 0.0
         self.graph = self._build_graph()
+
+    def drain_model_usage(self) -> list[AgentModelUsageObservation]:
+        if self.usage_collector is None:
+            return []
+        return self.usage_collector.drain()
 
     def invoke(self, state: AgentGraphState) -> AgentGraphState:
         self._started_at = monotonic()

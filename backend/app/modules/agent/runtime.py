@@ -13,6 +13,7 @@ from app.modules.agent.graph import BoundedAgentGraph
 from app.modules.agent.knowledge_tools import create_read_only_knowledge_registry
 from app.modules.knowledge.public_catalog import PublishedKnowledgeCatalogService
 from app.modules.rag.hybrid_search import create_current_knowledge_search
+from app.modules.agent.usage import AgentModelUsageCollector
 
 
 def create_agent_graph_factory(
@@ -25,7 +26,8 @@ def create_agent_graph_factory(
         # 查询历史和停止运行不应初始化Chroma或模型；只在真正执行时装配。
         search = create_current_knowledge_search(settings)
         catalog = PublishedKnowledgeCatalogService(session, settings=settings)
-        model = LangChainAgentModel(settings)
+        usage_collector = AgentModelUsageCollector()
+        model = LangChainAgentModel(settings, usage_collector.add)
         generator = LangChainAgentContentGenerator(model)
         registry = create_read_only_knowledge_registry(search, catalog, generator)
         planner = LangChainAgentPlanner(model, registry)
@@ -33,6 +35,7 @@ def create_agent_graph_factory(
             planner=planner,
             registry=registry,
             stop_requested=lambda: cancellation.is_requested(user_id, run_id),
+            usage_collector=usage_collector,
         )
 
     return factory

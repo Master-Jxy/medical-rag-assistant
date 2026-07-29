@@ -21,7 +21,10 @@ from app.modules.rag.adapters import (
 from app.modules.rag.ports import (
     AnswerGeneratorPort,
     ChatHistory,
+    GeneratedAnswer,
+    GeneratedAnswerChunk,
     KnowledgeSearchPort,
+    ModelUsage,
     QueryBuilderPort,
     RetrievedChunk,
 )
@@ -74,29 +77,55 @@ class RagService:
         history: ChatHistory | None = None,
     ) -> tuple[str, list[SourceItem]]:
         """输入问题，输出模型回答和结构化引用来源。"""
+        answer, sources, _ = self.ask_with_usage(question, top_k, history)
+        return answer, sources
+
+    def ask_with_usage(
+        self,
+        question: str,
+        top_k: int,
+        history: ChatHistory | None = None,
+    ) -> tuple[str, list[SourceItem], ModelUsage]:
+        """同步回答并返回厂商无关计量；保留ask的既有公开契约。"""
         try:
             chunks = self._retrieve_chunks(question, top_k, history)
             if not chunks:
-                return self.retrieval_policy.insufficient_knowledge_message, []
+                usage = ModelUsage.not_applicable()
+                self._emit_model_generation(monotonic(), "skipped", usage=usage)
+                return self.retrieval_policy.insufficient_knowledge_message, [], usage
             started = monotonic()
             result = "failure"
             error_type = None
+            usage = ModelUsage.unknown()
             try:
-                answer = self.answer_generator.answer(question, history, chunks)
+                answer_with_usage = getattr(
+                    self.answer_generator, "answer_with_usage", None
+                )
+                if answer_with_usage is None:
+                    generated = GeneratedAnswer(
+                        content=self.answer_generator.answer(question, history, chunks),
+                        usage=ModelUsage.unknown(),
+                    )
+                else:
+                    generated = answer_with_usage(question, history, chunks)
+                answer = generated.content
+                usage = generated.usage
                 result = "success"
             except Exception as exc:
                 error_type = type(exc).__name__
                 raise
             finally:
-                self._emit_stage(
-                    "model_generation",
+                self._emit_model_generation(
                     started,
                     result,
                     error_type=error_type,
-                    model_name=self.model_name,
-                    token_measurement="unknown",
+                    usage=usage,
                 )
-            return answer, [self._chunk_to_source_item(chunk) for chunk in chunks]
+            return (
+                answer,
+                [self._chunk_to_source_item(chunk) for chunk in chunks],
+                usage,
+            )
         except ConfigurationError:
             raise
         except Exception as exc:
@@ -112,6 +141,8 @@ class RagService:
         try:
             chunks = self._retrieve_chunks(question, top_k, history)
             if not chunks:
+                usage = ModelUsage.not_applicable()
+                yield {"event": "model_usage", "data": usage.as_dict()}
                 yield {
                     "event": "token",
                     "data": {
@@ -119,30 +150,38 @@ class RagService:
                     },
                 }
                 yield {"event": "sources", "data": {"sources": []}}
+                self._emit_model_generation(
+                    monotonic(), "skipped", usage=usage
+                )
                 return
 
             started = monotonic()
             result = "failure"
             error_type = None
+            usage = ModelUsage.unknown()
             try:
                 for chunk in self.answer_generator.stream_answer(
                     question, history, chunks
                 ):
-                    if chunk:
-                        yield {"event": "token", "data": {"content": chunk}}
+                    if chunk.usage is not None:
+                        usage = chunk.usage
+                    if chunk.content:
+                        yield {
+                            "event": "token",
+                            "data": {"content": chunk.content},
+                        }
                 result = "success"
+                yield {"event": "model_usage", "data": usage.as_dict()}
             except BaseException as exc:
                 error_type = type(exc).__name__
                 result = "stopped" if isinstance(exc, GeneratorExit) else "failure"
                 raise
             finally:
-                self._emit_stage(
-                    "model_generation",
+                self._emit_model_generation(
                     started,
                     result,
                     error_type=error_type,
-                    model_name=self.model_name,
-                    token_measurement="unknown",
+                    usage=usage,
                 )
             yield {
                 "event": "sources",
@@ -168,6 +207,8 @@ class RagService:
         try:
             chunks = self._retrieve_chunks(question, top_k, history)
             if not chunks:
+                usage = ModelUsage.not_applicable()
+                yield {"event": "model_usage", "data": usage.as_dict()}
                 yield {
                     "event": "token",
                     "data": {
@@ -175,17 +216,28 @@ class RagService:
                     },
                 }
                 yield {"event": "sources", "data": {"sources": []}}
+                self._emit_model_generation(
+                    monotonic(), "skipped", usage=usage
+                )
                 return
 
             started = monotonic()
             result = "failure"
             error_type = None
+            usage = ModelUsage.unknown()
             try:
                 async for chunk in self.answer_generator.astream_answer(
                     question, history, chunks
                 ):
-                    yield {"event": "token", "data": {"content": chunk}}
+                    if chunk.usage is not None:
+                        usage = chunk.usage
+                    if chunk.content:
+                        yield {
+                            "event": "token",
+                            "data": {"content": chunk.content},
+                        }
                 result = "success"
+                yield {"event": "model_usage", "data": usage.as_dict()}
             except BaseException as exc:
                 error_type = type(exc).__name__
                 result = (
@@ -195,13 +247,11 @@ class RagService:
                 )
                 raise
             finally:
-                self._emit_stage(
-                    "model_generation",
+                self._emit_model_generation(
                     started,
                     result,
                     error_type=error_type,
-                    model_name=self.model_name,
-                    token_measurement="unknown",
+                    usage=usage,
                 )
             yield {
                 "event": "sources",
@@ -292,6 +342,25 @@ class RagService:
                 duration_ms=round((monotonic() - started) * 1000, 3),
                 **fields,
             ),
+        )
+
+    def _emit_model_generation(
+        self,
+        started: float,
+        result: str,
+        *,
+        usage: ModelUsage,
+        error_type: str | None = None,
+    ) -> None:
+        self._emit_stage(
+            "model_generation",
+            started,
+            result,
+            error_type=error_type,
+            model_name=self.model_name,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            token_measurement=usage.measurement.value,
         )
 
     @staticmethod

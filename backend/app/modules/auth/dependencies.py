@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
 from app.core.config import Settings, get_settings
+from app.core.exceptions import ConfigurationError
 from app.modules.auth.rate_limit import AuthRateLimitService
+from app.modules.auth.email_verification import EmailVerificationService
 from app.modules.auth.repository import UserRepository
 from app.modules.auth.roles import RolePolicy, UserRole
 from app.modules.auth.schemas import UserResponse
@@ -23,8 +25,21 @@ from app.modules.auth.tokens import TokenService, get_token_service
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def get_user_service(session: Session = Depends(get_db_session)) -> UserService:
-    return UserService(session)
+def get_email_verification_service(request: Request) -> EmailVerificationService:
+    try:
+        request.app.state.settings.require_jwt_secret_key()
+    except ValueError as exc:
+        raise ConfigurationError("邮箱验证码服务尚未配置") from exc
+    return request.app.state.email_verification_service
+
+
+def get_user_service(
+    session: Session = Depends(get_db_session),
+    email_verification: EmailVerificationService = Depends(
+        get_email_verification_service
+    ),
+) -> UserService:
+    return UserService(session, email_verification)
 
 
 def get_auth_rate_limit_service(request: Request) -> AuthRateLimitService:
@@ -62,9 +77,13 @@ def get_current_user(
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise InvalidAuthTokenError()
 
-    user_id = token_service.decode_access_token(credentials.credentials)
-    user = UserRepository(session).get_by_id(user_id)
-    if user is None or not user.is_active:
+    identity = token_service.decode_access_token(credentials.credentials)
+    user = UserRepository(session).get_by_id(identity.user_id)
+    if (
+        user is None
+        or not user.is_active
+        or user.token_version != identity.token_version
+    ):
         raise InvalidAuthTokenError()
     request.state.user_id = user.id
     return UserResponse.model_validate(user)

@@ -17,6 +17,12 @@ class TelemetryStatsResponse(BaseModel):
     output_tokens: int
     token_measurement: str
     estimated_cost_cny: float | None
+    known_model_calls: int
+    unknown_model_calls: int
+    no_model_calls: int
+    priced_model_calls: int
+    unpriced_model_calls: int
+    measurement_coverage: float | None
     rate_limit_count: int
     redis_degradation_count: int
     user_stop_count: int

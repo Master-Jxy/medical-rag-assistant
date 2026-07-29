@@ -56,6 +56,7 @@ const run = {
   max_steps: 5,
   used_tokens: 25,
   estimated_cost_cny: 0.002,
+  token_measurement: 'actual',
   final_result: '学习报告已完成。',
   steps: [{
     id: 'step-1',
@@ -168,6 +169,24 @@ describe('Codex式资料Agent工作台', () => {
     expect(wrapper.text()).toContain('任务未完成')
     expect(wrapper.text()).toContain('任务在形成有效回答前失败，请重试')
     expect(wrapper.text()).not.toContain('该任务无需调用工具，已直接形成回答')
+  })
+
+  it('Agent缺少厂商usage时不把0展示成实际Token', () => {
+    const wrapper = mount(AgentRunProgress, {
+      props: {
+        run: {
+          status: 'completed',
+          used_tokens: 0,
+          estimated_cost_cny: 0,
+          token_measurement: 'unknown',
+          steps: [],
+        },
+        status: 'completed',
+      },
+    })
+
+    expect(wrapper.text()).toContain('模型未返回计量')
+    expect(wrapper.text()).toContain('预估费用 未知')
   })
 
   it('展示会话、连续消息、步骤、来源和产物', async () => {

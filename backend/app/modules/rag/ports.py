@@ -4,6 +4,8 @@ from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
 from typing import Protocol, TypeAlias
 
+from app.core.enums import StrEnum
+
 ChatHistory = list[tuple[str, str]]
 MetadataValue: TypeAlias = str | int | float | bool
 
@@ -90,6 +92,59 @@ class RerankResult:
     usage: RerankUsage
 
 
+class TokenMeasurement(StrEnum):
+    ACTUAL = "actual"
+    UNKNOWN = "unknown"
+    NOT_APPLICABLE = "not_applicable"
+
+
+@dataclass(frozen=True, slots=True)
+class ModelUsage:
+    input_tokens: int | None
+    output_tokens: int | None
+    total_tokens: int | None
+    measurement: TokenMeasurement
+
+    @classmethod
+    def actual(cls, input_tokens: int, output_tokens: int) -> "ModelUsage":
+        if input_tokens < 0 or output_tokens < 0:
+            raise ValueError("Token计量不能为负数")
+        return cls(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=input_tokens + output_tokens,
+            measurement=TokenMeasurement.ACTUAL,
+        )
+
+    @classmethod
+    def unknown(cls) -> "ModelUsage":
+        return cls(None, None, None, TokenMeasurement.UNKNOWN)
+
+    @classmethod
+    def not_applicable(cls) -> "ModelUsage":
+        return cls(0, 0, 0, TokenMeasurement.NOT_APPLICABLE)
+
+    def as_dict(self) -> dict[str, int | str | None]:
+        return {
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            "measurement": self.measurement.value,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class GeneratedAnswerChunk:
+    content: str
+    usage: ModelUsage | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class GeneratedAnswer:
+    content: str
+    usage: ModelUsage
+
+
 class QueryBuilderPort(Protocol):
     """根据当前问题和历史生成知识库检索查询。"""
 
@@ -132,6 +187,13 @@ class RerankPort(Protocol):
 class AnswerGeneratorPort(Protocol):
     """使用问题、历史和检索上下文生成普通或流式回答。"""
 
+    def answer_with_usage(
+        self,
+        question: str,
+        history: ChatHistory | None,
+        chunks: list[RetrievedChunk],
+    ) -> GeneratedAnswer: ...
+
     def answer(
         self,
         question: str,
@@ -144,11 +206,11 @@ class AnswerGeneratorPort(Protocol):
         question: str,
         history: ChatHistory | None,
         chunks: list[RetrievedChunk],
-    ) -> Iterator[str]: ...
+    ) -> Iterator[GeneratedAnswerChunk]: ...
 
     def astream_answer(
         self,
         question: str,
         history: ChatHistory | None,
         chunks: list[RetrievedChunk],
-    ) -> AsyncIterator[str]: ...
+    ) -> AsyncIterator[GeneratedAnswerChunk]: ...

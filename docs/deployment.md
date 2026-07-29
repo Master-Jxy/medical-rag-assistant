@@ -45,6 +45,12 @@ chmod 600 deploy/.env
 - `JWT_SECRET_KEY`
 - `MYSQL_PASSWORD`
 - `MYSQL_ROOT_PASSWORD`
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`（QQ SMTP授权码，不是QQ密码）
+
+阶段16发布时还必须核对验证码TTL、重发冷却和错误上限。普通RAG聊天单价允许暂时留空：
+留空不会伪造费用，实际Token仍可记录，但管理页面会明确显示费用“未配置”。配置单价前
+必须按当前供应商官方价格重新核对，不沿用历史快照猜测。
 
 `JWT_SECRET_KEY` 和两个数据库密码应分别生成，不要复用。所有 Compose 命令都必须带：
 

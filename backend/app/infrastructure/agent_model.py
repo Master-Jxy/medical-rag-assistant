@@ -2,7 +2,7 @@
 
 import json
 import re
-from typing import TypeVar
+from typing import Callable, TypeVar
 
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 from pydantic import BaseModel
@@ -24,6 +24,7 @@ from app.modules.agent.planner import (
 )
 from app.modules.agent.registry import ToolRegistry
 from app.modules.knowledge.public_ports import PublishedDocumentContent
+from app.modules.rag.ports import ModelUsage
 
 T = TypeVar("T", bound=BaseModel)
 JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
@@ -43,34 +44,58 @@ AGENT_CONTENT_SYSTEM_PROMPT = """你是受控的医学资料整理Agent，只能
 
 
 class LangChainAgentModel:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        usage_sink: Callable[[str, ModelUsage], None] | None = None,
+    ) -> None:
         self.settings = settings
+        self.usage_sink = usage_sink
         self.model = create_chat_model(settings).bind(
             max_tokens=settings.agent_model_max_output_tokens
         )
 
-    def invoke_json(self, prompt: str, schema: type[T]) -> tuple[T, PlannerUsage]:
-        response = self.model.invoke(
-            [
-                SystemMessage(content=AGENT_SYSTEM_PROMPT),
-                HumanMessage(content=prompt),
-            ]
-        )
+    def invoke_json(
+        self,
+        prompt: str,
+        schema: type[T],
+        *,
+        operation: str = "plan",
+    ) -> tuple[T, PlannerUsage]:
+        try:
+            response = self.model.invoke(
+                [
+                    SystemMessage(content=AGENT_SYSTEM_PROMPT),
+                    HumanMessage(content=prompt),
+                ]
+            )
+        except Exception:
+            self._report_usage(operation, ModelUsage.unknown())
+            raise
+        usage, model_usage = self._usage(response)
+        self._report_usage(operation, model_usage)
         text = str(response.content)
         match = JSON_BLOCK.search(text)
         if match is None:
             raise ValueError("模型没有返回合法JSON")
         decision = schema.model_validate(json.loads(match.group(0)))
-        return decision, self._usage(response)
+        return decision, usage
 
-    def invoke_text(self, prompt: str) -> GeneratedAgentText:
-        response = self.model.invoke(
-            [
-                SystemMessage(content=AGENT_CONTENT_SYSTEM_PROMPT),
-                HumanMessage(content=prompt),
-            ]
-        )
-        usage = self._usage(response)
+    def invoke_text(
+        self, prompt: str, *, operation: str = "tool_summary"
+    ) -> GeneratedAgentText:
+        try:
+            response = self.model.invoke(
+                [
+                    SystemMessage(content=AGENT_CONTENT_SYSTEM_PROMPT),
+                    HumanMessage(content=prompt),
+                ]
+            )
+        except Exception:
+            self._report_usage(operation, ModelUsage.unknown())
+            raise
+        usage, model_usage = self._usage(response)
+        self._report_usage(operation, model_usage)
         content = str(response.content).strip()
         if not content:
             raise ValueError("模型返回空内容")
@@ -80,57 +105,85 @@ class LangChainAgentModel:
             estimated_cost_cny=usage.estimated_cost_cny,
         )
 
-    def stream_text(self, prompt: str):
+    def stream_text(self, prompt: str, *, operation: str = "final_answer"):
         combined = AIMessageChunk(content="")
         emitted = False
-        for chunk in self.model.stream(
-            [
-                SystemMessage(content=AGENT_CONTENT_SYSTEM_PROMPT),
-                HumanMessage(content=prompt),
-            ]
-        ):
-            combined += chunk
-            content = chunk.content
-            if isinstance(content, str) and content:
-                emitted = True
-                yield GeneratedAgentTextChunk(content=content)
-        if not emitted:
-            raise ValueError("模型返回空内容")
-        usage = self._usage(combined)
-        yield GeneratedAgentTextChunk(
-            content="",
-            used_tokens=usage.tokens,
-            estimated_cost_cny=usage.estimated_cost_cny,
-        )
+        usage_reported = False
+        try:
+            for chunk in self.model.stream(
+                [
+                    SystemMessage(content=AGENT_CONTENT_SYSTEM_PROMPT),
+                    HumanMessage(content=prompt),
+                ]
+            ):
+                combined += chunk
+                content = chunk.content
+                if isinstance(content, str) and content:
+                    emitted = True
+                    yield GeneratedAgentTextChunk(content=content)
+            if not emitted:
+                raise ValueError("模型返回空内容")
+            usage, model_usage = self._usage(combined)
+            self._report_usage(operation, model_usage)
+            usage_reported = True
+            yield GeneratedAgentTextChunk(
+                content="",
+                used_tokens=usage.tokens,
+                estimated_cost_cny=usage.estimated_cost_cny,
+            )
+        finally:
+            if not usage_reported:
+                self._report_usage(operation, ModelUsage.unknown())
 
-    def _usage(self, response: AIMessage | AIMessageChunk) -> PlannerUsage:
+    def _usage(
+        self, response: AIMessage | AIMessageChunk
+    ) -> tuple[PlannerUsage, ModelUsage]:
         usage = response.usage_metadata
         if usage is not None:
-            input_tokens = int(usage.get("input_tokens", 0))
-            output_tokens = int(usage.get("output_tokens", 0))
+            input_tokens = self._optional_token(usage.get("input_tokens"))
+            output_tokens = self._optional_token(usage.get("output_tokens"))
         else:
             raw = response.response_metadata.get(
                 "token_usage"
             ) or response.response_metadata.get("usage")
             if not isinstance(raw, dict):
-                # 不能可靠计量时按字符保守估算，避免运行统计继续显示未知。
-                output_tokens = max(1, len(str(response.content)) // 2)
-                input_tokens = 0
+                input_tokens = None
+                output_tokens = None
             else:
-                input_tokens = int(
-                    raw.get("input_tokens", raw.get("prompt_tokens", 0))
+                input_tokens = self._optional_token(
+                    raw.get("input_tokens", raw.get("prompt_tokens"))
                 )
-                output_tokens = int(
-                    raw.get("output_tokens", raw.get("completion_tokens", 0))
+                output_tokens = self._optional_token(
+                    raw.get("output_tokens", raw.get("completion_tokens"))
                 )
+        if input_tokens is None or output_tokens is None:
+            return PlannerUsage(), ModelUsage.unknown()
+        model_usage = ModelUsage.actual(input_tokens, output_tokens)
         estimated_cost = (
             input_tokens * self.settings.agent_input_price_per_million_tokens_cny
             + output_tokens * self.settings.agent_output_price_per_million_tokens_cny
         ) / 1_000_000
-        return PlannerUsage(
-            tokens=input_tokens + output_tokens,
-            estimated_cost_cny=estimated_cost,
+        return (
+            PlannerUsage(
+                tokens=input_tokens + output_tokens,
+                estimated_cost_cny=estimated_cost,
+            ),
+            model_usage,
         )
+
+    def _report_usage(self, operation: str, usage: ModelUsage) -> None:
+        if self.usage_sink is not None:
+            self.usage_sink(operation, usage)
+
+    @staticmethod
+    def _optional_token(value: object) -> int | None:
+        if isinstance(value, bool):
+            return None
+        try:
+            parsed = int(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
+        return parsed if parsed >= 0 else None
 
 
 class LangChainAgentPlanner(AgentPlanner):
@@ -153,6 +206,7 @@ class LangChainAgentPlanner(AgentPlanner):
             'JSON格式：{"route":"tool_required","plan":["步骤1"],'
             '"allowed":true,"response_message":null,"refusal_message":null}',
             PlanDecision,
+            operation="plan",
         )
         public_plan = decision.plan or [
             "选择只读知识工具" if decision.allowed else "拒绝越权任务"
@@ -175,6 +229,7 @@ class LangChainAgentPlanner(AgentPlanner):
             f"工具：{json.dumps(self.registry.definitions(), ensure_ascii=False)}\n"
             'JSON格式：{"tool_name":"名称","arguments":{}}',
             ToolDecision,
+            operation="plan",
         )
         return decision.model_copy(update={"usage": usage})
 
@@ -205,6 +260,7 @@ class LangChainAgentPlanner(AgentPlanner):
             'JSON格式：{"action":"continue|finalize|clarification|fail",'
             '"final_output":null,"error_type":null}',
             InspectionDecision,
+            operation="plan",
         )
         updates = {"usage": usage}
         if decision.action == "finalize":
@@ -382,6 +438,7 @@ class LangChainAgentPlanner(AgentPlanner):
             f"结果：{json.dumps(state['tool_result_summaries'], ensure_ascii=False)}\n"
             'JSON格式：{"output":"最终答复"}',
             FinalDecision,
+            operation="final_answer",
         )
         return decision.model_copy(update={"usage": usage})
 
@@ -390,7 +447,8 @@ class LangChainAgentPlanner(AgentPlanner):
             "根据已有用户可见结果形成最终答复，保留来源标识并加上仅供学习提示。"
             "只输出给用户看的最终答复，不输出JSON、规划或隐藏推理。\n"
             f"任务：{state['task']}\n"
-            f"结果：{json.dumps(state['tool_result_summaries'], ensure_ascii=False)}"
+            f"结果：{json.dumps(state['tool_result_summaries'], ensure_ascii=False)}",
+            operation="final_answer",
         )
 
 
@@ -402,7 +460,8 @@ class LangChainAgentContentGenerator(AgentContentGeneratorPort):
         return self.client.invoke_text(
             "请生成结构化简明摘要，明确写出来源文档ID，不补充正文之外的结论。\n"
             f"文档ID：{document.document_id}\n文件名：{document.file_name}\n"
-            f"关注点：{focus or '整体要点'}\n<document>\n{document.text}\n</document>"
+            f"关注点：{focus or '整体要点'}\n<document>\n{document.text}\n</document>",
+            operation="tool_summary",
         )
 
     def compare(self, documents, dimensions):
@@ -410,7 +469,8 @@ class LangChainAgentContentGenerator(AgentContentGeneratorPort):
             "请用Markdown表格比较资料；没有依据的单元格写“资料未说明”。"
             "每项结论标注来源文档ID。\n"
             f"比较维度：{json.dumps(dimensions or ['核心主题', '适用范围', '注意事项'], ensure_ascii=False)}\n"
-            + self._documents_block(documents)
+            + self._documents_block(documents),
+            operation="tool_summary",
         )
 
     def learning_report(self, *, title, learning_goal, documents):
@@ -418,7 +478,8 @@ class LangChainAgentContentGenerator(AgentContentGeneratorPort):
             f"生成Markdown学习报告《{title}》，学习目标：{learning_goal}。"
             "必须包含摘要、关键要点、差异或注意事项、来源清单和仅供学习提示；"
             "每项结论标注文档ID。\n"
-            + self._documents_block(documents)
+            + self._documents_block(documents),
+            operation="tool_summary",
         )
 
     @staticmethod

@@ -14,15 +14,24 @@ const successRate = computed(() => {
 })
 
 const duration = (value) => (value == null ? '暂无' : `${Number(value).toFixed(1)} ms`)
-const tokenLabel = computed(() =>
-  stats.value?.token_measurement === 'unknown'
-    ? '未知（模型未返回计量）'
-    : `${stats.value?.input_tokens || 0} / ${stats.value?.output_tokens || 0}`,
-)
-const costLabel = computed(() =>
-  stats.value?.estimated_cost_cny == null
-    ? '未知'
-    : `¥ ${Number(stats.value.estimated_cost_cny).toFixed(4)}`,
+const tokenLabel = computed(() => {
+  if (!stats.value) return '暂无'
+  if (!stats.value.known_model_calls && stats.value.unknown_model_calls) {
+    return '模型未返回计量'
+  }
+  return `${stats.value.input_tokens || 0} / ${stats.value.output_tokens || 0}`
+})
+const costLabel = computed(() => {
+  if (!stats.value) return '暂无'
+  if (stats.value.known_model_calls && !stats.value.priced_model_calls) {
+    return 'Token 已知，单价未配置'
+  }
+  return `¥ ${Number(stats.value.estimated_cost_cny || 0).toFixed(4)}`
+})
+const coverageLabel = computed(() =>
+  stats.value?.measurement_coverage == null
+    ? '暂无模型调用'
+    : `${(stats.value.measurement_coverage * 100).toFixed(1)}%`,
 )
 const errorRows = computed(() => Object.entries(stats.value?.error_type_counts || {}))
 
@@ -57,6 +66,20 @@ onMounted(loadStats)
         <article><small>主动停止</small><strong>{{ stats.user_stop_count }}</strong></article>
         <article><small>Token 输入 / 输出</small><strong>{{ tokenLabel }}</strong></article>
         <article><small>估算费用</small><strong>{{ costLabel }}</strong></article>
+        <article><small>计量覆盖率</small><strong>{{ coverageLabel }}</strong></article>
+        <article><small>已知 / 未知模型调用</small><strong>{{ stats.known_model_calls }} / {{ stats.unknown_model_calls }}</strong></article>
+        <article><small>未调用模型</small><strong>{{ stats.no_model_calls }}</strong></article>
+      </section>
+
+      <section class="telemetry-card">
+        <h2>模型计量说明</h2>
+        <div class="counter-row">
+          <span>已配置价格 {{ stats.priced_model_calls }}</span>
+          <span>单价未配置 {{ stats.unpriced_model_calls }}</span>
+          <span v-if="stats.unknown_model_calls">模型未返回计量 {{ stats.unknown_model_calls }}</span>
+          <span v-if="stats.no_model_calls">未调用模型 {{ stats.no_model_calls }}</span>
+        </div>
+        <p class="empty">费用为调用时单价快照计算的估算值；Embedding 与 Reranker 不计入这里。</p>
       </section>
 
       <section class="telemetry-card">
@@ -94,19 +117,19 @@ onMounted(loadStats)
 header { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
 header span { color: var(--primary); font-size: 11px; font-weight: 800; letter-spacing: .16em; }
 header h1 { margin: 8px 0 0; font-size: 34px; }
-button { padding: 9px 15px; border: 1px solid var(--line); border-radius: 10px; background: white; cursor: pointer; }
+button { padding: 9px 15px; border: 1px solid var(--line); border-radius: 8px; background: white; cursor: pointer; }
 button:disabled { opacity: .55; }
-.notice { margin-bottom: 14px; padding: 12px 15px; border-radius: 11px; }
+.notice { margin-bottom: 14px; padding: 12px 15px; border-radius: 8px; }
 .notice.error { color: #a33f2f; background: #fff0ed; }
 .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .metric-grid article, .telemetry-card { border: 1px solid var(--line); background: rgba(255,255,255,.9); }
-.metric-grid article { padding: 20px; border-radius: 16px; }
+.metric-grid article { padding: 20px; border-radius: 8px; }
 .metric-grid small, dt { color: var(--muted); font-size: 12px; }
 .metric-grid strong { display: block; margin-top: 9px; font-size: 21px; }
-.telemetry-card { margin-top: 18px; padding: 22px; border-radius: 18px; }
+.telemetry-card { margin-top: 18px; padding: 22px; border-radius: 8px; }
 .telemetry-card h2 { margin: 0 0 16px; font-size: 17px; }
 dl { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 0; }
-dl div { padding: 12px; border-radius: 11px; background: #f4f8f6; }
+dl div { padding: 12px; border-radius: 8px; background: #f4f8f6; }
 dd { margin: 5px 0 0; font-weight: 700; }
 .counter-row { display: flex; flex-wrap: wrap; gap: 9px; }
 .counter-row span { padding: 7px 10px; border-radius: 999px; background: #eef5f2; font-size: 12px; }

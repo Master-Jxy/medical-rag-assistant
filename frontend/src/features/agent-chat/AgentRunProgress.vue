@@ -153,9 +153,21 @@ function decisionText(step, index) {
       </template>
 
       <footer v-if="run">
-        Token {{ run.used_tokens ?? 0 }}
+        Token
+        {{
+          run.token_measurement === 'unknown'
+            ? '模型未返回计量'
+            : run.token_measurement === 'not_applicable'
+              ? '未调用模型（0）'
+              : (run.used_tokens ?? 0)
+        }}
         <span aria-hidden="true">·</span>
-        预估费用 ¥{{ Number(run.estimated_cost_cny || 0).toFixed(4) }}
+        预估费用
+        {{
+          run.token_measurement === 'unknown'
+            ? '未知'
+            : `¥${Number(run.estimated_cost_cny || 0).toFixed(4)}`
+        }}
       </footer>
     </div>
   </details>

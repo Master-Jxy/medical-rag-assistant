@@ -55,6 +55,8 @@ def stream_chat(
     def event_generator():
         try:
             for item in rag_service.stream_ask(request.question, request.top_k):
+                if item["event"] == "model_usage":
+                    continue
                 yield format_sse(item["event"], item["data"])
             yield format_sse(
                 "done",

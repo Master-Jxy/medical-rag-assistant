@@ -43,18 +43,32 @@ def build_settings(**overrides) -> Settings:
 
 
 def test_register_and_login_use_separate_hashed_keys_and_policies() -> None:
-    primary = RecordingRateLimiter([RateLimitDecision(True, 60), RateLimitDecision(True, 30)])
+    primary = RecordingRateLimiter(
+        [
+            RateLimitDecision(True, 60),
+            RateLimitDecision(True, 30),
+            RateLimitDecision(True, 60),
+            RateLimitDecision(True, 60),
+        ]
+    )
     service = AuthRateLimitService(
         RateLimitService(primary, UnavailableRateLimiter()), build_settings()
     )
 
     service.check_register("203.0.113.9")
     service.check_login("203.0.113.9")
+    service.check_email_verification(
+        action="request",
+        client_address="203.0.113.9",
+        email="Student@Example.com",
+    )
 
-    register_call, login_call = primary.calls
+    register_call, login_call, verification_ip, verification_email = primary.calls
     assert register_call[1:] == (2, 60)
     assert login_call[1:] == (3, 30)
     assert register_call[0] != login_call[0]
+    assert verification_ip[0] != verification_email[0]
+    assert "student@example.com" not in repr(primary.calls)
     assert "203.0.113.9" not in repr(primary.calls)
 
 

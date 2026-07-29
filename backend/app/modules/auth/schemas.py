@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr, field_validator
 
+from app.modules.auth.ports import VerificationPurpose
 from app.modules.auth.roles import UserRole
 
 
@@ -11,6 +12,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: SecretStr = Field(min_length=8, max_length=128)
     display_name: str | None = Field(default=None, max_length=100)
+    verification_code: str = Field(pattern=r"^\d{6}$")
 
     @field_validator("email")
     @classmethod
@@ -36,6 +38,40 @@ class LoginRequest(BaseModel):
         return str(value).strip().lower()
 
 
+class EmailVerificationRequest(BaseModel):
+    email: EmailStr
+    purpose: VerificationPurpose
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+
+class PublicMessageResponse(BaseModel):
+    message: str
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+
+class PasswordResetConfirm(BaseModel):
+    email: EmailStr
+    verification_code: str = Field(pattern=r"^\d{6}$")
+    new_password: SecretStr = Field(min_length=8, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -52,6 +88,10 @@ class UserResponse(BaseModel):
     role: UserRole
     created_at: datetime
     updated_at: datetime
+
+
+class AuthenticatedUser(UserResponse):
+    token_version: int
 
 
 class UserListResponse(BaseModel):

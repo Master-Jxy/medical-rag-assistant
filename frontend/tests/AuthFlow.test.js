@@ -5,6 +5,7 @@ const authApi = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
   loginUser: vi.fn(),
   registerUser: vi.fn(),
+  requestEmailVerification: vi.fn(),
 }))
 
 vi.mock('../src/api/auth.js', () => authApi)
@@ -33,6 +34,9 @@ beforeEach(async () => {
   authApi.loginUser.mockResolvedValue({ access_token: 'test-token', token_type: 'bearer' })
   authApi.getCurrentUser.mockResolvedValue(user)
   authApi.registerUser.mockResolvedValue(user)
+  authApi.requestEmailVerification.mockResolvedValue({
+    message: '如果该邮箱可用于注册，验证码将发送到邮箱。',
+  })
   await router.replace('/')
 })
 
@@ -99,5 +103,37 @@ describe('前端认证流程', () => {
     expect(router.currentRoute.value.name).toBe('admin-reviews')
     await router.push('/super-admin/users')
     expect(router.currentRoute.value.name).toBe('super-admin-users')
+  })
+
+  it('注册先请求验证码并在成功后回到登录模式', async () => {
+    await router.push('/login')
+    const wrapper = mountLogin()
+    await wrapper.findAll('[role="tab"]')[1].trigger('click')
+    await wrapper.get('input[type="email"]').setValue('new@example.com')
+    await wrapper.get('.verification-button').trigger('click')
+    await flushPromises()
+
+    expect(authApi.requestEmailVerification).toHaveBeenCalledWith({
+      email: 'new@example.com',
+      purpose: 'register',
+    })
+    expect(wrapper.get('[role="status"]').text()).toContain('验证码将发送')
+
+    const passwords = wrapper.findAll('input[type="password"]')
+    await wrapper.get('input[autocomplete="one-time-code"]').setValue('123456')
+    await passwords[0].setValue('password123')
+    await passwords[1].setValue('password123')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(authApi.registerUser).toHaveBeenCalledWith({
+      email: 'new@example.com',
+      password: 'password123',
+      display_name: null,
+      verification_code: '123456',
+    })
+    expect(authApi.loginUser).not.toHaveBeenCalled()
+    expect(wrapper.get('h2').text()).toBe('登录知识库')
+    expect(wrapper.get('[role="status"]').text()).toContain('账号创建成功')
   })
 })

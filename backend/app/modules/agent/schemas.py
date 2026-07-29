@@ -55,6 +55,7 @@ class AgentRunResponse(BaseModel):
     max_estimated_cost_cny: float
     used_tokens: int
     estimated_cost_cny: float
+    token_measurement: str
     final_result: str | None
     error_type: str | None
     created_at: datetime

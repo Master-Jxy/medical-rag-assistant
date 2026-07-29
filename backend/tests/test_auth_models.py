@@ -10,6 +10,8 @@ from app.db.base import Base
 from app.core.config import Settings
 from app.db.session import build_engine
 from app.modules.auth.models import User
+from app.modules.auth.email_verification import EmailVerificationService
+from app.modules.auth.fakes import FakeEmailSender, FakeEmailVerificationStore
 from app.modules.auth.roles import UserRole
 from app.modules.auth.passwords import hash_password, verify_password
 from app.modules.auth.schemas import UserCreate
@@ -20,6 +22,21 @@ def build_auth_engine():
     engine = build_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     return engine
+
+
+def build_user_service(session: Session) -> UserService:
+    settings = Settings(
+        _env_file=None,
+        jwt_secret_key="test-email-secret-that-is-longer-than-32-characters",
+    )
+    verification = EmailVerificationService(
+        store=FakeEmailVerificationStore(),
+        sender=FakeEmailSender(),
+        settings=settings,
+        secret_key=settings.require_jwt_secret_key(),
+        code_generator=lambda: "123456",
+    )
+    return UserService(session, verification)
 
 
 def test_password_is_hashed_with_argon2_and_can_be_verified() -> None:
@@ -35,11 +52,14 @@ def test_password_is_hashed_with_argon2_and_can_be_verified() -> None:
 def test_user_service_normalizes_email_and_never_stores_plaintext_password() -> None:
     engine = build_auth_engine()
     with Session(engine) as session:
-        response = UserService(session).register(
+        service = build_user_service(session)
+        service.request_registration_code("student@example.com")
+        response = service.register(
             UserCreate(
                 email="  STUDENT@Example.COM ",
                 password="SafePassword_2026!",
                 display_name="  医学资料学习者  ",
+                verification_code="123456",
             )
         )
         saved = session.scalar(select(User).where(User.id == response.id))
@@ -54,11 +74,24 @@ def test_user_service_normalizes_email_and_never_stores_plaintext_password() -> 
 def test_user_service_rejects_duplicate_email_case_insensitively() -> None:
     engine = build_auth_engine()
     with Session(engine) as session:
-        service = UserService(session)
-        service.register(UserCreate(email="user@example.com", password="password-123"))
+        service = build_user_service(session)
+        service.request_registration_code("user@example.com")
+        service.register(
+            UserCreate(
+                email="user@example.com",
+                password="password-123",
+                verification_code="123456",
+            )
+        )
 
         with pytest.raises(EmailAlreadyRegisteredError) as exc_info:
-            service.register(UserCreate(email="USER@EXAMPLE.COM", password="password-456"))
+            service.register(
+                UserCreate(
+                    email="USER@EXAMPLE.COM",
+                    password="password-456",
+                    verification_code="123456",
+                )
+            )
 
         assert exc_info.value.code == "EMAIL_ALREADY_REGISTERED"
         assert session.scalar(select(func.count()).select_from(User)) == 1

@@ -41,7 +41,23 @@ class Settings(BaseSettings):
     jwt_secret_key: SecretStr | None = Field(default=None)
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = Field(default=30, gt=0, le=24 * 60)
+    smtp_host: str = "smtp.qq.com"
+    smtp_port: int = Field(default=465, ge=1, le=65535)
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_use_ssl: bool = True
+    smtp_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    mail_from_name: str = "医疗知识库助手"
+    email_code_ttl_seconds: int = Field(default=600, ge=60, le=3600)
+    email_code_resend_seconds: int = Field(default=60, ge=1, le=600)
+    email_code_max_attempts: int = Field(default=5, ge=1, le=10)
     chat_model_name: str = "qwen3-max"
+    chat_input_price_per_million_tokens_cny: float | None = Field(
+        default=None, ge=0, le=1000
+    )
+    chat_output_price_per_million_tokens_cny: float | None = Field(
+        default=None, ge=0, le=1000
+    )
     embedding_model_name: str = "text-embedding-v4"
     dashscope_max_retries: int = Field(default=2, ge=0, le=10)
     chroma_persist_dir: Path = BACKEND_DIR / "chroma_db"
@@ -168,6 +184,34 @@ class Settings(BaseSettings):
             raise ValueError("KNOWLEDGE_BASE_VERSION 必须为1-100个非空字符")
         return cleaned
 
+    @field_validator("smtp_host", "mail_from_name")
+    @classmethod
+    def validate_non_empty_mail_setting(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("邮件主机和发件人名称不能为空")
+        return cleaned
+
+    @field_validator("smtp_username", mode="before")
+    @classmethod
+    def normalize_optional_smtp_username(cls, value: object) -> object:
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned or None
+        return value
+
+    @field_validator(
+        "chat_input_price_per_million_tokens_cny",
+        "chat_output_price_per_million_tokens_cny",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_chat_price(cls, value: object) -> object:
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned or None
+        return value
+
     def require_dashscope_api_key(self) -> str:
         """需要调用模型时再检查密钥，避免健康检查被密钥配置影响。"""
         if self.dashscope_api_key is None:
@@ -195,6 +239,15 @@ class Settings(BaseSettings):
         if len(secret) < 32:
             raise ValueError("JWT_SECRET_KEY 长度不能少于 32 个字符")
         return secret
+
+    def require_smtp_credentials(self) -> tuple[str, str]:
+        """真实邮件发送时才读取凭据，健康检查和Fake测试不依赖授权码。"""
+        if self.smtp_username is None or self.smtp_password is None:
+            raise ValueError("未配置 SMTP_USERNAME 或 SMTP_PASSWORD")
+        password = self.smtp_password.get_secret_value().strip()
+        if not password:
+            raise ValueError("SMTP_PASSWORD 不能为空")
+        return self.smtp_username, password
 
 
 @lru_cache

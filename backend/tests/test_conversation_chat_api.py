@@ -4,12 +4,14 @@ import pytest
 
 from fastapi.testclient import TestClient
 from sqlalchemy import event
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.exceptions import RagServiceError
 from app.db.base import Base
 from app.db.session import build_engine, get_db_session
 from app.main import app
+from app.models import ModelUsageRecord
+from app.modules.rag.ports import ModelUsage
 from app.schemas.chat import SourceItem
 from app.modules.auth.tokens import get_token_service
 from app.services.rag_service import get_rag_service
@@ -25,6 +27,12 @@ from tests.auth_helpers import TEST_TOKEN_SERVICE, auth_headers, create_test_use
 
 
 class SuccessfulRagService:
+    model_name = "fake-chat"
+
+    def ask_with_usage(self, question: str, top_k: int, history=None):
+        answer, sources = self.ask(question, top_k, history)
+        return answer, sources, ModelUsage.actual(18, 4)
+
     def ask(self, question: str, top_k: int, history=None):
         assert question == "高血压有哪些常见症状？"
         assert top_k == 3
@@ -128,6 +136,11 @@ def test_conversation_chat_saves_completed_answer_and_sources(tmp_path) -> None:
                 "completed",
                 "completed",
             ]
+            with Session(engine) as session:
+                usage = session.query(ModelUsageRecord).one()
+                assert usage.token_measurement == "actual"
+                assert usage.input_tokens == 18
+                assert usage.output_tokens == 4
             assert detail["messages"][1]["request_id"] == body["request_id"]
             assert detail["messages"][1]["sources"][0]["page"] == 12
             assert (

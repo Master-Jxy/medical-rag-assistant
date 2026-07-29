@@ -56,6 +56,7 @@ def test_empty_database_upgrades_to_owned_conversation_schema(tmp_path) -> None:
         "conversations",
         "messages",
         "message_sources",
+        "model_usage_records",
         "users",
         "documents",
     } <= tables
@@ -118,6 +119,8 @@ def test_empty_database_upgrades_to_owned_conversation_schema(tmp_path) -> None:
     )
     user_columns = {column["name"]: column for column in inspector.get_columns("users")}
     assert user_columns["role"]["nullable"] is False
+    assert user_columns["email_verified_at"]["nullable"] is True
+    assert user_columns["token_version"]["nullable"] is False
     user_checks = {
         constraint["name"]: constraint["sqltext"]
         for constraint in inspector.get_check_constraints("users")
@@ -246,6 +249,99 @@ def test_super_admin_role_migration_preserves_users_and_has_safe_downgrade(
         assert connection.scalar(
             text("SELECT role FROM users WHERE id = 'admin-user'")
         ) == "admin"
+
+
+def test_email_lifecycle_migration_preserves_users_and_downgrades(tmp_path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'email-lifecycle.db'}"
+    config = build_alembic_config(database_url)
+    command.upgrade(config, "0019_agent_message_order")
+    engine = build_engine(database_url)
+    now = datetime.now(timezone.utc)
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users "
+                "(id, email, password_hash, is_active, role, created_at, updated_at) "
+                "VALUES ('legacy-user', 'legacy@example.com', 'hash', 1, 'user', :now, :now)"
+            ),
+            {"now": now},
+        )
+
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT email, email_verified_at, token_version "
+                "FROM users WHERE id = 'legacy-user'"
+            )
+        ).one()
+        assert row == ("legacy@example.com", None, 0)
+
+    command.downgrade(config, "0019_agent_message_order")
+    columns = {column["name"] for column in inspect(engine).get_columns("users")}
+    assert "email_verified_at" not in columns
+    assert "token_version" not in columns
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text("SELECT COUNT(*) FROM users WHERE id = 'legacy-user'")
+        ) == 1
+
+
+def test_model_usage_migration_upgrades_and_downgrades_without_touching_users(
+    tmp_path,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'model-usage.db'}"
+    config = build_alembic_config(database_url)
+    command.upgrade(config, "0020_email_account_lifecycle")
+    engine = build_engine(database_url)
+    now = datetime.now(timezone.utc)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users "
+                "(id, email, password_hash, is_active, role, token_version, "
+                "created_at, updated_at) VALUES "
+                "('usage-user', 'usage@example.com', 'hash', 1, 'user', 0, "
+                ":now, :now)"
+            ),
+            {"now": now},
+        )
+
+    command.upgrade(config, "head")
+    inspector = inspect(engine)
+    assert "model_usage_records" in inspector.get_table_names()
+    assert "token_measurement" in {
+        column["name"] for column in inspector.get_columns("agent_runs")
+    }
+    assert {
+        "call_id",
+        "request_id",
+        "user_id",
+        "surface",
+        "operation",
+        "model_name",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "token_measurement",
+        "input_price_snapshot",
+        "output_price_snapshot",
+        "estimated_cost_cny",
+    } <= {
+        column["name"]
+        for column in inspector.get_columns("model_usage_records")
+    }
+
+    command.downgrade(config, "0020_email_account_lifecycle")
+    assert "model_usage_records" not in inspect(engine).get_table_names()
+    assert "token_measurement" not in {
+        column["name"] for column in inspect(engine).get_columns("agent_runs")
+    }
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text("SELECT COUNT(*) FROM users WHERE id = 'usage-user'")
+        ) == 1
 
 
 def test_stage9_upgrade_registers_legacy_documents_without_duplicate_publication(

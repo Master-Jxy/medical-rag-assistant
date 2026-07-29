@@ -61,6 +61,9 @@ class AgentRun(Base):
     max_estimated_cost_cny: Mapped[float] = mapped_column(Float, nullable=False)
     used_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     estimated_cost_cny: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    token_measurement: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="unknown", server_default="unknown"
+    )
     final_result: Mapped[str | None] = mapped_column(Text)
     error_type: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(
@@ -105,6 +108,10 @@ class AgentRun(Base):
         CheckConstraint(
             "max_estimated_cost_cny >= 0 AND estimated_cost_cny >= 0",
             name="ck_agent_runs_cost",
+        ),
+        CheckConstraint(
+            "token_measurement IN ('actual','unknown','not_applicable')",
+            name="ck_agent_runs_token_measurement",
         ),
         Index("ix_agent_runs_user_created", "user_id", "created_at"),
         Index("ix_agent_runs_user_status", "user_id", "status"),

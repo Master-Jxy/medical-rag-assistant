@@ -3,7 +3,7 @@
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.modules.auth.models import User
+from app.modules.auth.models import User, utc_now
 
 
 class UserRepository:
@@ -12,6 +12,11 @@ class UserRepository:
 
     def get_by_email(self, email: str) -> User | None:
         return self.session.scalar(select(User).where(User.email == email))
+
+    def get_by_email_for_update(self, email: str) -> User | None:
+        return self.session.scalar(
+            select(User).where(User.email == email).with_for_update()
+        )
 
     def get_by_id(self, user_id: str) -> User | None:
         return self.session.get(User, user_id)
@@ -85,5 +90,18 @@ class UserRepository:
 
     def set_active(self, user: User, is_active: bool) -> User:
         user.is_active = is_active
+        self.session.flush()
+        return user
+
+    def reset_password(
+        self,
+        user: User,
+        *,
+        password_hash: str,
+    ) -> User:
+        user.password_hash = password_hash
+        if user.email_verified_at is None:
+            user.email_verified_at = utc_now()
+        user.token_version += 1
         self.session.flush()
         return user

@@ -7,11 +7,15 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.db.base import Base
 from app.db.session import build_engine, get_db_session
 from app.main import app
 from app.modules.auth.models import User
 from app.modules.auth.dependencies import get_auth_rate_limit_service
+from app.modules.auth.dependencies import get_email_verification_service
+from app.modules.auth.email_verification import EmailVerificationService
+from app.modules.auth.fakes import FakeEmailSender, FakeEmailVerificationStore
 from app.modules.auth.rate_limit import AuthRateLimitExceededError
 from app.modules.auth.passwords import verify_password
 from app.modules.auth.tokens import TokenService, get_token_service
@@ -21,6 +25,7 @@ REGISTER_BODY = {
     "email": "Student@Example.com",
     "password": "SafePassword_2026!",
     "display_name": "医学资料学习者",
+    "verification_code": "123456",
 }
 
 
@@ -31,6 +36,11 @@ class AllowAllRateLimiter:
     def check_login(self, client_address: str) -> None:
         pass
 
+    def check_email_verification(
+        self, *, action: str, client_address: str, email: str
+    ) -> None:
+        pass
+
 
 class RejectAllRateLimiter:
     def check_register(self, client_address: str) -> None:
@@ -39,12 +49,24 @@ class RejectAllRateLimiter:
     def check_login(self, client_address: str) -> None:
         raise AuthRateLimitExceededError(23)
 
+    def check_email_verification(
+        self, *, action: str, client_address: str, email: str
+    ) -> None:
+        raise AuthRateLimitExceededError(23)
+
 
 @pytest.fixture
 def auth_client():
     engine = build_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     token_service = TokenService(TEST_SECRET, expire_minutes=30)
+    verification = EmailVerificationService(
+        store=FakeEmailVerificationStore(),
+        sender=FakeEmailSender(),
+        settings=Settings(_env_file=None, jwt_secret_key=TEST_SECRET),
+        secret_key=TEST_SECRET,
+        code_generator=lambda: "123456",
+    )
 
     def override_session():
         with Session(engine) as session:
@@ -52,6 +74,7 @@ def auth_client():
 
     app.dependency_overrides[get_db_session] = override_session
     app.dependency_overrides[get_token_service] = lambda: token_service
+    app.dependency_overrides[get_email_verification_service] = lambda: verification
     app.dependency_overrides[get_auth_rate_limit_service] = AllowAllRateLimiter
     try:
         with TestClient(app) as client:
@@ -62,6 +85,11 @@ def auth_client():
 
 
 def register_user(client: TestClient) -> dict:
+    requested = client.post(
+        "/api/v1/auth/email-verification/request",
+        json={"email": REGISTER_BODY["email"], "purpose": "register"},
+    )
+    assert requested.status_code == 202
     response = client.post("/api/v1/auth/register", json=REGISTER_BODY)
     assert response.status_code == 201
     return response.json()
@@ -97,6 +125,37 @@ def test_register_rejects_duplicate_email(auth_client) -> None:
         "code": "EMAIL_ALREADY_REGISTERED",
         "message": "该邮箱已注册",
     }
+
+
+def test_verification_request_does_not_enumerate_existing_email(auth_client) -> None:
+    client, _, _ = auth_client
+    register_user(client)
+
+    responses = [
+        client.post(
+            "/api/v1/auth/email-verification/request",
+            json={"email": REGISTER_BODY["email"], "purpose": "register"},
+        ),
+        client.post(
+            "/api/v1/auth/email-verification/request",
+            json={"email": "unused@example.com", "purpose": "register"},
+        ),
+    ]
+
+    assert [response.status_code for response in responses] == [202, 202]
+    assert responses[0].json() == responses[1].json()
+
+
+def test_register_without_valid_verification_code_creates_no_user(auth_client) -> None:
+    client, engine, _ = auth_client
+    invalid = {**REGISTER_BODY, "email": "invalid-code@example.com"}
+
+    response = client.post("/api/v1/auth/register", json=invalid)
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_EMAIL_VERIFICATION_CODE"
+    with Session(engine) as session:
+        assert session.scalar(select(User).where(User.email == invalid["email"])) is None
 
 
 def test_login_returns_bearer_token_and_me_returns_current_user(auth_client) -> None:
@@ -173,6 +232,33 @@ def test_valid_token_for_missing_user_is_rejected(auth_client) -> None:
 
     response = client.get(
         "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "INVALID_AUTH_TOKEN"
+
+
+def test_token_without_version_claim_is_rejected(auth_client) -> None:
+    import jwt
+    from datetime import datetime, timedelta, timezone
+
+    client, _, _ = auth_client
+    user = register_user(client)
+    now = datetime.now(timezone.utc)
+    legacy = jwt.encode(
+        {
+            "sub": user["id"],
+            "type": "access",
+            "iat": now,
+            "exp": now + timedelta(minutes=5),
+        },
+        TEST_SECRET,
+        algorithm="HS256",
+    )
+
+    response = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {legacy}"},
     )
 
     assert response.status_code == 401

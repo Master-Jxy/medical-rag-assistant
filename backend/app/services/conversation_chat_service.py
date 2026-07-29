@@ -1,6 +1,7 @@
 """把一次 RAG 问答可靠地写入会话历史。"""
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from uuid import uuid4
@@ -26,6 +27,10 @@ from app.ports.idempotency import IdempotencyRecord
 from app.services.idempotency_service import IdempotencyService
 from app.services.stream_cancellation_service import StreamCancellationService
 from app.modules.memory.service import ConversationMemoryService
+from app.modules.rag.ports import ModelUsage, TokenMeasurement
+from app.modules.usage.service import ModelUsageRecorder
+
+logger = logging.getLogger(__name__)
 
 
 class ConversationChatService:
@@ -39,6 +44,7 @@ class ConversationChatService:
         idempotency: IdempotencyService,
         cancellation: StreamCancellationService | None = None,
         memory: ConversationMemoryService | None = None,
+        usage_recorder: ModelUsageRecorder | None = None,
     ) -> None:
         self.session = session
         self.rag_service = rag_service
@@ -46,6 +52,7 @@ class ConversationChatService:
         self.idempotency = idempotency
         self.cancellation = cancellation or StreamCancellationService()
         self.memory = memory or ConversationMemoryService(session)
+        self.usage_recorder = usage_recorder or ModelUsageRecorder(session)
         settings = get_settings()
         self.max_history_messages = settings.max_history_rounds * 2
         self.max_history_chars = settings.max_history_chars
@@ -83,7 +90,16 @@ class ConversationChatService:
                 user_id, conversation_id, question, request_id
             )
             try:
-                answer, sources = self.rag_service.ask(question, top_k, history=history)
+                ask_with_usage = getattr(self.rag_service, "ask_with_usage", None)
+                if ask_with_usage is None:
+                    answer, sources = self.rag_service.ask(
+                        question, top_k, history=history
+                    )
+                    model_usage = ModelUsage.unknown()
+                else:
+                    answer, sources, model_usage = ask_with_usage(
+                        question, top_k, history=history
+                    )
             except AppError:
                 self._mark_failed(
                     user_id, conversation_id, assistant_message.id, request_id
@@ -105,6 +121,12 @@ class ConversationChatService:
                 sources=sources,
             )
             answer_persisted = True
+            self._record_rag_usage(
+                assistant_message.id,
+                request_id,
+                user_id,
+                model_usage,
+            )
             response = ConversationChatResponse(
                 answer=answer,
                 sources=sources,
@@ -175,6 +197,7 @@ class ConversationChatService:
             sources: list[SourceItem] = []
             completed = False
             answer_persisted = False
+            model_usage = ModelUsage.unknown()
 
             rag_iterator = self._async_rag_stream(question, top_k, history)
             try:
@@ -194,6 +217,15 @@ class ConversationChatService:
                         break
                     if item["event"] == "token":
                         answer_parts.append(item["data"].get("content", ""))
+                    elif item["event"] == "model_usage":
+                        data = item["data"]
+                        model_usage = ModelUsage(
+                            input_tokens=data.get("input_tokens"),
+                            output_tokens=data.get("output_tokens"),
+                            total_tokens=data.get("total_tokens"),
+                            measurement=TokenMeasurement(data["measurement"]),
+                        )
+                        continue
                     elif item["event"] == "sources":
                         sources = [
                             SourceItem.model_validate(source)
@@ -210,6 +242,12 @@ class ConversationChatService:
                         content="".join(answer_parts),
                         status="stopped",
                         sources=[],
+                    )
+                    self._record_rag_usage(
+                        assistant_message.id,
+                        request_id,
+                        user_id,
+                        model_usage,
                     )
                     yield {
                         "event": "stopped",
@@ -232,6 +270,12 @@ class ConversationChatService:
                     content="".join(answer_parts),
                     status="stopped",
                     sources=[],
+                )
+                self._record_rag_usage(
+                    assistant_message.id,
+                    request_id,
+                    user_id,
+                    model_usage,
                 )
                 raise
             except AppError:
@@ -267,6 +311,12 @@ class ConversationChatService:
                     sources=sources,
                 )
                 answer_persisted = True
+                self._record_rag_usage(
+                    assistant_message.id,
+                    request_id,
+                    user_id,
+                    model_usage,
+                )
                 self.idempotency.complete(
                     claim,
                     request_id=request_id,
@@ -294,6 +344,30 @@ class ConversationChatService:
                 self.generation_lock.release(lease)
 
         return event_iterator()
+
+    def _record_rag_usage(
+        self,
+        assistant_message_id: str,
+        request_id: str,
+        user_id: str,
+        usage: ModelUsage,
+    ) -> None:
+        try:
+            self.usage_recorder.record(
+                call_id=f"rag:{assistant_message_id}:answer",
+                request_id=request_id,
+                user_id=user_id,
+                surface="rag",
+                operation="answer",
+                model_name=getattr(self.rag_service, "model_name", "unknown"),
+                usage=usage,
+            )
+        except Exception as exc:
+            self.session.rollback()
+            logger.warning(
+                "model_usage_record_failed surface=rag error_type=%s",
+                type(exc).__name__,
+            )
 
     async def _async_rag_stream(
         self,

@@ -13,7 +13,7 @@ from app.core.exceptions import RagServiceError
 from app.db.base import Base
 from app.db.session import build_engine, get_db_session
 from app.main import app
-from app.models import Conversation
+from app.models import Conversation, ModelUsageRecord
 from app.modules.auth.tokens import get_token_service
 from app.services.conversation_chat_service import ConversationChatService
 from app.services.conversation_service import ConversationService
@@ -34,9 +34,20 @@ from tests.idempotency_helpers import AllowingIdempotency
 
 
 class SuccessfulStreamRagService:
+    model_name = "fake-chat"
+
     def stream_ask(self, question: str, top_k: int, history=None):
         yield {"event": "token", "data": {"content": "流式"}}
         yield {"event": "token", "data": {"content": "回答"}}
+        yield {
+            "event": "model_usage",
+            "data": {
+                "input_tokens": 12,
+                "output_tokens": 3,
+                "total_tokens": 15,
+                "measurement": "actual",
+            },
+        }
         yield {
             "event": "sources",
             "data": {
@@ -125,7 +136,7 @@ def build_test_database(tmp_path):
 
 
 def test_completed_stream_saves_answer_sources_and_done_ids(tmp_path) -> None:
-    engine, _, override_session, user = build_test_database(tmp_path)
+    engine, factory, override_session, user = build_test_database(tmp_path)
     app.dependency_overrides[get_db_session] = override_session
     app.dependency_overrides[get_rag_service] = lambda: SuccessfulStreamRagService()
     app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
@@ -164,6 +175,12 @@ def test_completed_stream_saves_answer_sources_and_done_ids(tmp_path) -> None:
             assert assistant["sources"][0]["file_name"] == "指南.pdf"
             assert generation_lock.released == 1
             assert idempotency.completed == 1
+        with factory() as session:
+            usage_records = session.query(ModelUsageRecord).all()
+            assert len(usage_records) == 1
+            assert usage_records[0].input_tokens == 12
+            assert usage_records[0].output_tokens == 3
+            assert usage_records[0].call_id.endswith(":answer")
     finally:
         app.dependency_overrides.clear()
         engine.dispose()
