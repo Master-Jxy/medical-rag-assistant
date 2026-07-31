@@ -79,6 +79,9 @@ class UserQuotaAssignment(Base):
     plan_id: Mapped[str] = mapped_column(ForeignKey("quota_plans.id"), nullable=False)
     token_limit_override: Mapped[int | None] = mapped_column(Integer)
     request_limit_override: Mapped[int | None] = mapped_column(Integer)
+    estimated_cost_limit_cny_override: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 8)
+    )
     valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
@@ -93,10 +96,18 @@ class QuotaPeriod(Base):
     period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     token_limit: Mapped[int] = mapped_column(Integer, nullable=False)
     request_limit: Mapped[int] = mapped_column(Integer, nullable=False)
+    estimated_cost_limit_cny: Mapped[Decimal | None] = mapped_column(Numeric(20, 8))
     used_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     reserved_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    used_estimated_cost_cny: Mapped[Decimal] = mapped_column(
+        Numeric(20, 8), nullable=False, default=Decimal("0")
+    )
+    reserved_estimated_cost_cny: Mapped[Decimal] = mapped_column(
+        Numeric(20, 8), nullable=False, default=Decimal("0")
+    )
     used_requests: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     reserved_requests: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    policy_migration_version: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
     __table_args__ = (Index("uq_quota_period_user_range", "user_id", "period_start", "period_end", unique=True),)
@@ -111,8 +122,54 @@ class QuotaReservation(Base):
     surface: Mapped[str] = mapped_column(String(20), nullable=False)
     usage_group_id: Mapped[str] = mapped_column(String(36), nullable=False)
     reserved_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    reserved_input_tokens: Mapped[int | None] = mapped_column(Integer)
+    reserved_output_tokens: Mapped[int | None] = mapped_column(Integer)
+    input_price_snapshot: Mapped[Decimal | None] = mapped_column(Numeric(20, 8))
+    output_price_snapshot: Mapped[Decimal | None] = mapped_column(Numeric(20, 8))
+    reserved_estimated_cost_cny: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 8)
+    )
     charged_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    charged_estimated_cost_cny: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 8)
+    )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="reserved")
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class QuotaPolicyEvent(Base):
+    __tablename__ = "quota_policy_events"
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    surface: Mapped[str] = mapped_column(String(20), nullable=False)
+    policy_mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(
+        String(128), nullable=False, unique=True
+    )
+    requested_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    remaining_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    remaining_requests: Mapped[int] = mapped_column(Integer, nullable=False)
+    requested_estimated_cost_cny: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 8)
+    )
+    remaining_estimated_cost_cny: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 8)
+    )
+    would_block: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    reason_code: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    __table_args__ = (
+        Index(
+            "ix_quota_policy_events_user_created",
+            "user_id",
+            "created_at",
+        ),
+    )

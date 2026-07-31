@@ -18,14 +18,22 @@ from app.modules.agent.thread_schemas import AgentMessageStreamRequest
 from app.modules.audit.models import AuditEvent
 from app.modules.auth.tokens import get_token_service
 from app.modules.rag.ports import ModelUsage
+from app.modules.usage.contracts import QuotaPolicyMode
 from app.modules.usage.models import (
     ModelUsageRecord,
     QuotaPlan,
+    QuotaPolicyEvent,
     QuotaReservation,
 )
 from app.modules.usage.quota_service import (
+    DisabledQuotaGate,
     QuotaApplicationService,
     QuotaExceededError,
+)
+from app.modules.usage.estimator import (
+    ConservativeQuotaReservationEstimator,
+    QuotaReservationTooLargeError,
+    RagReservationInput,
 )
 from app.ports.idempotency import IdempotencyRecord, IdempotencyStatus
 from app.services.conversation_chat_service import ConversationChatService
@@ -139,6 +147,26 @@ def build_rag_fixture(token_limit):
     return engine, session, user, conversation
 
 
+def add_maximum_rag_history(session, conversation_id):
+    session.add_all([
+        Message(
+            conversation_id=conversation_id,
+            sequence=1,
+            role="user",
+            content="中" * 3000,
+            status="completed",
+        ),
+        Message(
+            conversation_id=conversation_id,
+            sequence=2,
+            role="assistant",
+            content="中" * 3000,
+            status="completed",
+        ),
+    ])
+    session.commit()
+
+
 def build_rag_service(session, rag, scheduler=None, idempotency=None):
     return ConversationChatService(
         session,
@@ -171,8 +199,37 @@ def test_rag_quota_rejection_happens_before_fake_model_call():
     engine.dispose()
 
 
+def test_rag_shadow_mode_records_would_block_and_still_calls_fake_model():
+    engine, session, user, conversation = build_rag_fixture(token_limit=100)
+    rag = CountingRag()
+    service = build_rag_service(
+        session,
+        rag,
+        idempotency=RecordingConversationIdempotency(),
+    )
+    service.quota_gate = QuotaApplicationService(
+        session,
+        policy_mode=QuotaPolicyMode.SHADOW,
+    )
+
+    response = service.ask(
+        user.id,
+        conversation.id,
+        "question",
+        3,
+        "shadow-rag",
+    )
+
+    assert response.answer == "fake answer"
+    assert rag.calls == 1
+    assert session.query(QuotaPolicyEvent).one().would_block is True
+    assert session.query(QuotaReservation).one().status == "settled"
+    session.close()
+    engine.dispose()
+
+
 def test_rag_actual_usage_settles_once_and_idempotent_replay_does_not_charge_twice():
-    engine, session, user, conversation = build_rag_fixture(token_limit=5000)
+    engine, session, user, conversation = build_rag_fixture(token_limit=10000)
     rag = CountingRag()
     service = build_rag_service(
         session, rag, idempotency=RecordingConversationIdempotency()
@@ -185,13 +242,15 @@ def test_rag_actual_usage_settles_once_and_idempotent_replay_does_not_charge_twi
     reservation = session.query(QuotaReservation).one()
     assert reservation.status == "settled"
     assert reservation.charged_tokens == 22
+    assert first.usage.total_tokens == 22
+    assert first.usage.charged_tokens == 22
     assert service.quota_gate.current(user.id)["used_tokens"] == 22
     session.close()
     engine.dispose()
 
 
 def test_memory_schedule_failure_does_not_change_completed_rag_answer():
-    engine, session, user, conversation = build_rag_fixture(token_limit=5000)
+    engine, session, user, conversation = build_rag_fixture(token_limit=10000)
     rag = CountingRag()
     response = build_rag_service(
         session, rag, RaisingScheduler()
@@ -211,7 +270,7 @@ def test_memory_schedule_failure_does_not_change_completed_rag_answer():
 
 
 def test_failed_rag_stream_with_unknown_usage_charges_reservation():
-    engine, session, user, conversation = build_rag_fixture(token_limit=5000)
+    engine, session, user, conversation = build_rag_fixture(token_limit=10000)
     service = build_rag_service(session, FailingStreamRag())
     iterator = service.stream(
         user.id,
@@ -233,10 +292,120 @@ def test_failed_rag_stream_with_unknown_usage_charges_reservation():
     reservation = session.query(QuotaReservation).one()
     usage = session.query(ModelUsageRecord).one()
     assert reservation.status == "settled"
-    assert reservation.charged_tokens == 4000
+    assert reservation.charged_tokens == reservation.reserved_tokens
+    assert reservation.charged_tokens > 4000
     assert usage.token_measurement == "unknown"
     assert usage.status == "failed"
+    assert service._usage_summary(
+        session.query(Message).filter_by(role="assistant").one().id
+    ).charged_tokens == reservation.reserved_tokens
     assert session.query(Message).filter_by(role="assistant").one().status == "failed"
+    session.close()
+    engine.dispose()
+
+
+def test_rag_estimator_grows_for_history_chunks_and_memory_but_keeps_short_minimum():
+    estimator = ConservativeQuotaReservationEstimator()
+    base = dict(
+        system_prompt="system",
+        question="short",
+        top_k=1,
+        chunk_char_budget=100,
+        source_wrapper_tokens=20,
+        max_output_tokens=500,
+    )
+    short = estimator.estimate_rag(
+        RagReservationInput(history=(), **base)
+    )
+    long_context = estimator.estimate_rag(
+        RagReservationInput(
+            history=(
+                ("user", "既往对话" * 500),
+                ("user", "用户可编辑背景" * 300),
+            ),
+            **{**base, "top_k": 8},
+        )
+    )
+
+    assert short.requested_tokens == 4000
+    assert long_context.requested_tokens > short.requested_tokens
+    assert long_context.estimation_method == "conservative_chars_v1"
+
+
+def test_rag_context_too_large_is_rejected_before_fake_model_call():
+    engine, session, user, conversation = build_rag_fixture(token_limit=1_000_000)
+    add_maximum_rag_history(session, conversation.id)
+    rag = CountingRag()
+    service = build_rag_service(
+        session, rag, idempotency=RecordingConversationIdempotency()
+    )
+
+    with pytest.raises(QuotaReservationTooLargeError):
+        service.ask(user.id, conversation.id, "中" * 2000, 10, "too-large")
+
+    assert rag.calls == 0
+    assert session.query(QuotaReservation).count() == 0
+    assert session.query(Message).filter_by(sequence=4).one().status == "failed"
+    session.close()
+    engine.dispose()
+
+
+def test_rag_off_mode_skips_estimator_and_preserves_long_request_behavior():
+    engine, session, user, conversation = build_rag_fixture(token_limit=1_000_000)
+    add_maximum_rag_history(session, conversation.id)
+    rag = CountingRag()
+    service = build_rag_service(
+        session, rag, idempotency=RecordingConversationIdempotency()
+    )
+    service.quota_gate = DisabledQuotaGate(
+        QuotaApplicationService(session, policy_mode=QuotaPolicyMode.OFF)
+    )
+
+    response = service.ask(
+        user.id,
+        conversation.id,
+        "中" * 2000,
+        10,
+        "off-long-context",
+    )
+
+    assert response.answer == "fake answer"
+    assert rag.calls == 1
+    assert session.query(QuotaReservation).count() == 0
+    assert session.query(QuotaPolicyEvent).count() == 0
+    session.close()
+    engine.dispose()
+
+
+def test_rag_shadow_mode_observes_long_estimate_without_blocking_model():
+    engine, session, user, conversation = build_rag_fixture(token_limit=10_000)
+    add_maximum_rag_history(session, conversation.id)
+    rag = CountingRag()
+    service = build_rag_service(
+        session, rag, idempotency=RecordingConversationIdempotency()
+    )
+    service.quota_gate = QuotaApplicationService(
+        session,
+        policy_mode=QuotaPolicyMode.SHADOW,
+    )
+
+    response = service.ask(
+        user.id,
+        conversation.id,
+        "中" * 2000,
+        10,
+        "shadow-long-context",
+    )
+
+    event = session.query(QuotaPolicyEvent).filter_by(
+        idempotency_key="rag:shadow-long-context"
+    ).one()
+    reservation = session.query(QuotaReservation).one()
+    assert response.answer == "fake answer"
+    assert rag.calls == 1
+    assert event.would_block is True
+    assert reservation.reserved_tokens > 20_000
+    assert reservation.status == "settled"
     session.close()
     engine.dispose()
 
@@ -248,6 +417,12 @@ class CountingPlanner(ReportPlanner):
     def classify_and_plan(self, state):
         self.calls += 1
         return super().classify_and_plan(state)
+
+
+class RaisingReservationEstimator:
+    def estimate_agent(self, value):
+        del value
+        raise AssertionError("off mode must not estimate an Agent reservation")
 
 
 def test_agent_quota_rejection_happens_before_planner_or_model():
@@ -289,6 +464,48 @@ def test_agent_quota_rejection_happens_before_planner_or_model():
         assert planner.calls == 0
         assert session.query(QuotaReservation).count() == 0
         assert AgentRepository(session).list_runs(user.id)[0].status == "failed"
+    engine.dispose()
+
+
+def test_agent_off_mode_skips_reservation_estimator():
+    engine = build_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as session:
+        user = User(id="u", email="u@example.com", password_hash="x")
+        session.add_all([
+            user,
+            QuotaPlan(
+                code="free",
+                name="free",
+                period_type="monthly",
+                token_limit=1_000_000,
+                request_limit=500,
+            ),
+        ])
+        session.flush()
+        thread = AgentThreadRepository(session).create_thread(user_id=user.id)
+        session.commit()
+        service = build_service(
+            session,
+            AllowingAgentLock(),
+            RecordingAgentIdempotency(),
+        )
+        service.quota_gate = DisabledQuotaGate(
+            QuotaApplicationService(session, policy_mode=QuotaPolicyMode.OFF)
+        )
+        service.quota_estimator = RaisingReservationEstimator()
+
+        events = list(service.stream_message(
+            user_id=user.id,
+            thread_id=thread.id,
+            payload=AgentMessageStreamRequest(content="生成报告"),
+            client_request_id="agent-off",
+            request_id="request",
+        ))
+
+        assert any(item["event"] == "message_completed" for item in events)
+        assert session.query(QuotaReservation).count() == 0
+        assert session.query(QuotaPolicyEvent).count() == 0
     engine.dispose()
 
 
@@ -420,9 +637,9 @@ def test_profile_usage_is_user_isolated_and_quota_adjustment_is_audited(tmp_path
             ]
 
             payload = {
-                "plan_code": "free",
                 "token_limit_override": 9000,
                 "request_limit_override": 30,
+                "estimated_cost_limit_cny_override": 12.5,
                 "reason": "本地阶段18测试",
             }
             denied = client.put(
@@ -439,13 +656,34 @@ def test_profile_usage_is_user_isolated_and_quota_adjustment_is_audited(tmp_path
             )
             assert adjusted.status_code == 200
             assert adjusted.json()["token_limit"] == 9000
+            assert adjusted.json()["estimated_cost_limit_cny"] == 12.5
+            restored = client.put(
+                f"/api/v1/admin/users/{user_a.id}/quota",
+                json={
+                    "token_limit_override": None,
+                    "request_limit_override": None,
+                    "estimated_cost_limit_cny_override": None,
+                    "reason": "恢复默认额度",
+                },
+                headers=auth_headers(super_admin.id),
+            )
+            assert restored.status_code == 200
+            assert restored.json()["token_limit"] == 5000
+            assert restored.json()["request_limit"] == 20
+            assert restored.json()["estimated_cost_limit_cny"] is None
 
         with factory() as session:
-            audit = session.query(AuditEvent).one()
+            audits = session.query(AuditEvent).order_by(AuditEvent.created_at).all()
+            assert len(audits) == 2
+            audit = audits[0]
             assert audit.action == "user.quota.adjust"
             assert audit.actor_user_id == super_admin.id
             assert audit.object_id == user_a.id
             assert audit.details["reason"] == "本地阶段18测试"
+            assert audit.details["after_cost_limit"] == "12.5"
+            assert audits[1].details["reason"] == "恢复默认额度"
+            assert audits[1].details["after_cost_limit"] is None
+            assert session.get(User, user_a.id).role == "user"
     finally:
         app.dependency_overrides.clear()
         engine.dispose()

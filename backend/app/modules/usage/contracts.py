@@ -9,6 +9,33 @@ class TokenMeasurement(StrEnum):
     NOT_APPLICABLE = "not_applicable"
 
 
+class QuotaPolicyMode(StrEnum):
+    OFF = "off"
+    SHADOW = "shadow"
+    ENFORCE = "enforce"
+
+
+class QuotaDecisionReason(StrEnum):
+    TOKEN_LIMIT_EXCEEDED = "TOKEN_LIMIT_EXCEEDED"
+    REQUEST_LIMIT_EXCEEDED = "REQUEST_LIMIT_EXCEEDED"
+    COST_LIMIT_EXCEEDED = "COST_LIMIT_EXCEEDED"
+    QUOTA_POLICY_UNAVAILABLE = "QUOTA_POLICY_UNAVAILABLE"
+    RESERVATION_UNDERESTIMATED = "RESERVATION_UNDERESTIMATED"
+
+
+def resolve_quota_policy_mode(
+    configured_mode: str | None,
+    legacy_enforcement_enabled: bool,
+) -> QuotaPolicyMode:
+    if configured_mode is not None:
+        return QuotaPolicyMode(configured_mode)
+    return (
+        QuotaPolicyMode.ENFORCE
+        if legacy_enforcement_enabled
+        else QuotaPolicyMode.OFF
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ModelUsage:
     input_tokens: int | None

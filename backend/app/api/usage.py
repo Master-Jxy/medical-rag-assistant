@@ -8,12 +8,22 @@ from app.modules.usage.query_service import UsageQueryService
 from app.modules.usage.quota_service import QuotaApplicationService
 from app.modules.usage.admin_service import UsageAdminService
 from app.modules.usage.schemas import QuotaAdjustmentRequest
+from app.core.config import get_settings
+from app.modules.usage.contracts import resolve_quota_policy_mode
 
 router = APIRouter(tags=["用量与额度"])
 
 @router.get("/profile/quota")
 def profile_quota(current_user: UserResponse = Depends(get_current_user), session: Session = Depends(get_db_session)):
-    return QuotaApplicationService(session).current(current_user.id)
+    settings = get_settings()
+    return QuotaApplicationService(
+        session,
+        default_plan_code=settings.default_quota_plan_code,
+        policy_mode=resolve_quota_policy_mode(
+            settings.quota_policy_mode,
+            settings.quota_enforcement_enabled,
+        ),
+    ).current(current_user.id)
 
 @router.get("/profile/usage/summary")
 def profile_usage_summary(days: int = Query(30, ge=1, le=90), current_user: UserResponse = Depends(get_current_user), session: Session = Depends(get_db_session)):

@@ -3,6 +3,8 @@
 from functools import lru_cache
 from pathlib import Path
 
+from typing import Literal
+
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -62,10 +64,13 @@ class Settings(BaseSettings):
     memory_extraction_interval_turns: int = Field(default=3, ge=1, le=20)
     memory_rag_max_items: int = Field(default=4, ge=1, le=20)
     memory_agent_max_items: int = Field(default=6, ge=1, le=20)
+    quota_policy_mode: Literal["off", "shadow", "enforce"] | None = None
     quota_enforcement_enabled: bool = False
     default_quota_plan_code: str = "free"
     quota_rag_reserve_tokens: int = Field(default=4000, ge=1, le=200000)
     quota_agent_reserve_tokens: int = Field(default=12000, ge=1, le=200000)
+    quota_rag_max_output_tokens: int = Field(default=2000, ge=100, le=10000)
+    quota_rag_source_wrapper_tokens: int = Field(default=200, ge=0, le=5000)
     embedding_model_name: str = "text-embedding-v4"
     dashscope_max_retries: int = Field(default=2, ge=0, le=10)
     chroma_persist_dir: Path = BACKEND_DIR / "chroma_db"
@@ -217,6 +222,14 @@ class Settings(BaseSettings):
     def normalize_optional_chat_price(cls, value: object) -> object:
         if isinstance(value, str):
             cleaned = value.strip()
+            return cleaned or None
+        return value
+
+    @field_validator("quota_policy_mode", mode="before")
+    @classmethod
+    def normalize_optional_quota_policy_mode(cls, value: object) -> object:
+        if isinstance(value, str):
+            cleaned = value.strip().lower()
             return cleaned or None
         return value
 

@@ -19,7 +19,7 @@ from app.modules.memory.models import (
     UserMemorySetting,
 )
 from app.modules.quality.models import AnswerFeedback
-from app.modules.usage.models import ModelUsageRecord
+from app.modules.usage.models import ModelUsageRecord, QuotaPolicyEvent
 
 DEMO_ACCOUNT_CONFIRM_PHRASE = "DELETE_DEMO_ACCOUNTS"
 KNOWN_USER_FOREIGN_KEYS = {
@@ -34,6 +34,7 @@ KNOWN_USER_FOREIGN_KEYS = {
     ("model_usage_records", "user_id"),
     ("memory_extraction_runs", "user_id"),
     ("quota_periods", "user_id"),
+    ("quota_policy_events", "user_id"),
     ("quota_reservations", "user_id"),
     ("user_quota_assignments", "user_id"),
     ("user_quota_assignments", "updated_by"),
@@ -65,6 +66,7 @@ class DemoAccountCleanupPlan:
     memory_settings_to_delete: int
     memories_to_delete: int
     usage_records_to_anonymize: int
+    quota_policy_events_to_delete: int
     fingerprint: str
 
 
@@ -150,6 +152,7 @@ class DemoAccountMaintenanceService:
                 "memory_settings_to_delete": 0,
                 "memories_to_delete": 0,
                 "usage_records_to_anonymize": 0,
+                "quota_policy_events_to_delete": 0,
             }
         public_submission = (
             KnowledgeSubmission.submitter_id.in_(target_ids)
@@ -213,6 +216,11 @@ class DemoAccountMaintenanceService:
                     ModelUsageRecord.user_id.in_(target_ids)
                 )
             ),
+            "quota_policy_events_to_delete": self._count(
+                select(QuotaPolicyEvent.id).where(
+                    QuotaPolicyEvent.user_id.in_(target_ids)
+                )
+            ),
         }
 
     def _execute_database_cleanup(
@@ -263,6 +271,11 @@ class DemoAccountMaintenanceService:
             update(ModelUsageRecord)
             .where(ModelUsageRecord.user_id.in_(target_ids))
             .values(user_id=None)
+        )
+        self.session.execute(
+            delete(QuotaPolicyEvent).where(
+                QuotaPolicyEvent.user_id.in_(target_ids)
+            )
         )
         conversation_ids = list(
             self.session.scalars(

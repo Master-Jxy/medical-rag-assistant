@@ -17,7 +17,8 @@ from app.modules.knowledge.models import (
 )
 from app.modules.jobs.models import ProcessingJob
 from app.modules.usage.models import (
-    ModelUsageRecord, QuotaPeriod, QuotaPlan, QuotaReservation, UserQuotaAssignment,
+    ModelUsageRecord, QuotaPeriod, QuotaPlan, QuotaPolicyEvent,
+    QuotaReservation, UserQuotaAssignment,
 )
 
 __all__ = [
@@ -46,5 +47,6 @@ __all__ = [
     "QuotaPlan",
     "UserQuotaAssignment",
     "QuotaPeriod",
+    "QuotaPolicyEvent",
     "QuotaReservation",
 ]

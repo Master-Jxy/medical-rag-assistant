@@ -129,6 +129,7 @@ medical-rag-assistant/
 |   |-- development-roadmap.md
 |   |-- product-and-ui-design.md
 |   |-- memory-and-quota-design.md
+|   |-- quota-policy-v2-design.md
 |   |-- release-audit-agent-chat-v3.0.md
 |   `-- handoff.md
 |-- AGENTS.md
@@ -244,6 +245,7 @@ npm --prefix frontend run build
 6. `docs/deployment.md` 与发布审计只在部署、验收或回滚任务中读取。
 7. 对话Agent任务定向读取 `docs/conversational-agent-design.md`；阶段17～18定向读取
    `docs/memory-and-quota-design.md`和handoff指定的小任务。
+8. 阶段19额度任务定向读取`docs/quota-policy-v2-design.md`。
 
 ## 下一步
 
@@ -253,6 +255,7 @@ npm --prefix frontend run build
 阶段1～16（已完成并发布）
 -> 阶段17 自动长期记忆v2（已完成并发布，自动提取开关关闭）
 -> 阶段18 用户额度与用量中心（已完成并发布，额度执行开关关闭）
+-> 阶段19 额度策略v2（本地完成，待生产发布预检）
 -> 可选：CI/CD、对象存储和更丰富的受控工具
 ```
 

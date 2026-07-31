@@ -5,7 +5,7 @@ import UsageMeta from '../src/components/UsageMeta.vue'
 
 describe('UsageMeta', () => {
   it.each([
-    [{ measurement: 'unknown' }, '模型未返回计量'],
+    [{ measurement: 'unknown', charged_tokens: 5711 }, '模型实际 Token 未知 · 额度扣减 5,711 Token'],
     [
       {
         measurement: 'not_applicable',
@@ -13,8 +13,9 @@ describe('UsageMeta', () => {
         output_tokens: 0,
         total_tokens: 0,
         estimated_cost_cny: 0,
+        charged_tokens: 0,
       },
-      '未调用模型 · 0 Token · ¥0',
+      '未调用模型 · 实际 0 Token · 额度扣减 0 Token · ¥0',
     ],
     [
       {
@@ -23,8 +24,9 @@ describe('UsageMeta', () => {
         output_tokens: 436,
         total_tokens: 1722,
         estimated_cost_cny: null,
+        charged_tokens: 1722,
       },
-      '输入 1,286 · 输出 436 · 单价未配置',
+      '模型实际 1,722 Token（输入 1,286 / 输出 436） · 额度扣减 1,722 Token · 单价未配置',
     ],
   ])('明确区分实际、未知和未调用计量 %#', (usage, expected) => {
     expect(mount(UsageMeta, { props: { usage } }).text()).toBe(expected)

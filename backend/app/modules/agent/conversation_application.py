@@ -34,8 +34,14 @@ from app.ports.telemetry import TelemetryPort
 from app.services.generation_lock_service import GenerationLockService
 from app.services.idempotency_service import IdempotencyService
 from app.services.memory_extraction_runtime import build_memory_scheduler
-from app.modules.usage.quota_service import DisabledQuotaGate, QuotaApplicationService
+from app.modules.usage.quota_service import build_quota_gate
 from app.modules.usage.query_service import UsageQueryService
+from app.modules.usage.estimator import (
+    AgentReservationInput,
+    ConservativeQuotaReservationEstimator,
+    QuotaReservationEstimatorPort,
+)
+from app.modules.usage.contracts import QuotaPolicyMode
 
 
 class AgentConversationApplication:
@@ -53,6 +59,7 @@ class AgentConversationApplication:
         telemetry: TelemetryPort | None = None,
         memory_extraction=None,
         quota_gate=None,
+        quota_estimator: QuotaReservationEstimatorPort | None = None,
     ) -> None:
         self.session = session
         self.policy = policy
@@ -64,12 +71,17 @@ class AgentConversationApplication:
         self.thread_service = AgentThreadService(session)
         self.memory_extraction = memory_extraction or build_memory_scheduler(session)
         settings = get_settings()
-        self.quota_gate = quota_gate or (
-            QuotaApplicationService(session)
-            if settings.quota_enforcement_enabled
-            else DisabledQuotaGate()
+        self.quota_gate = quota_gate or build_quota_gate(session, settings)
+        self.quota_estimator = (
+            quota_estimator or ConservativeQuotaReservationEstimator()
         )
-        self.quota_reserve_tokens = settings.quota_agent_reserve_tokens
+        self.quota_agent_policy_tokens = min(
+            settings.quota_agent_reserve_tokens,
+            settings.agent_max_tokens,
+        )
+        self.agent_model_max_output_tokens = settings.agent_model_max_output_tokens
+        self.quota_input_price = settings.agent_input_price_per_million_tokens_cny
+        self.quota_output_price = settings.agent_output_price_per_million_tokens_cny
         self.usage_query = UsageQueryService(session)
         self.agent = AgentApplicationService(
             session,
@@ -167,13 +179,43 @@ class AgentConversationApplication:
                 user_id, run.id, assistant_message.id
             )
             self.session.commit()
-            reservation = self.quota_gate.reserve(
-                user_id,
-                "agent",
-                f"agent:{client_request_id}",
-                self.quota_reserve_tokens,
-                assistant_message.id,
+            context = self.context_builder.build(
+                user_id=user_id,
+                thread_id=thread_id,
+                current_message=user_message,
             )
+            if getattr(
+                self.quota_gate,
+                "policy_mode",
+                QuotaPolicyMode.ENFORCE,
+            ) is QuotaPolicyMode.OFF:
+                reservation = self.quota_gate.reserve(
+                    user_id,
+                    "agent",
+                    f"agent:{client_request_id}",
+                    0,
+                    assistant_message.id,
+                )
+            else:
+                estimate = self.quota_estimator.estimate_agent(
+                    AgentReservationInput(
+                        rendered_context=context.rendered,
+                        estimated_context_tokens=context.estimated_tokens,
+                        max_output_tokens=self.agent_model_max_output_tokens,
+                        policy_token_limit=self.quota_agent_policy_tokens,
+                    )
+                )
+                reservation = self.quota_gate.reserve(
+                    user_id,
+                    "agent",
+                    f"agent:{client_request_id}",
+                    estimate.requested_tokens,
+                    assistant_message.id,
+                    estimated_input_tokens=estimate.estimated_input_tokens,
+                    estimated_output_tokens=estimate.estimated_output_tokens,
+                    input_price_per_million_tokens_cny=self.quota_input_price,
+                    output_price_per_million_tokens_cny=self.quota_output_price,
+                )
             yield {
                 "event": "message_created",
                 "data": {
@@ -186,11 +228,6 @@ class AgentConversationApplication:
                     "turn_id": turn_id,
                 },
             }
-            context = self.context_builder.build(
-                user_id=user_id,
-                thread_id=thread_id,
-                current_message=user_message,
-            )
             agent_stream = self.agent.stream_run(
                 user_id,
                 run.id,

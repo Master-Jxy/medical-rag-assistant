@@ -31,8 +31,17 @@ from app.modules.memory.context_provider import SqlAlchemyMemoryContextProvider
 from app.services.memory_extraction_runtime import build_memory_scheduler
 from app.modules.rag.ports import ModelUsage, TokenMeasurement
 from app.modules.usage.service import ModelUsageRecorder
-from app.modules.usage.models import ModelUsageRecord
-from app.modules.usage.quota_service import DisabledQuotaGate, QuotaApplicationService
+from app.modules.usage.quota_service import build_quota_gate
+from app.modules.usage.query_service import UsageQueryService
+from app.modules.usage.estimator import (
+    ConservativeQuotaReservationEstimator,
+    QuotaReservationEstimate,
+    QuotaReservationEstimatorPort,
+    QuotaReservationTooLargeError,
+    RagReservationInput,
+)
+from app.modules.usage.contracts import QuotaPolicyMode
+from app.modules.rag.adapters import RAG_SYSTEM_PROMPT
 from app.schemas.conversation import UsageSummaryResponse
 
 logger = logging.getLogger(__name__)
@@ -53,6 +62,7 @@ class ConversationChatService:
         memory_context_provider=None,
         memory_extraction=None,
         quota_gate=None,
+        quota_estimator: QuotaReservationEstimatorPort | None = None,
     ) -> None:
         self.session = session
         self.rag_service = rag_service
@@ -64,12 +74,18 @@ class ConversationChatService:
         self.memory_extraction = memory_extraction or build_memory_scheduler(session)
         self.usage_recorder = usage_recorder or ModelUsageRecorder(session)
         settings = get_settings()
-        self.quota_gate = quota_gate or (
-            QuotaApplicationService(session)
-            if settings.quota_enforcement_enabled
-            else DisabledQuotaGate()
+        self.quota_gate = quota_gate or build_quota_gate(session, settings)
+        self.quota_estimator = (
+            quota_estimator
+            or ConservativeQuotaReservationEstimator(
+                rag_min_tokens=settings.quota_rag_reserve_tokens,
+            )
         )
-        self.quota_reserve_tokens = settings.quota_rag_reserve_tokens
+        self.quota_rag_max_output_tokens = settings.quota_rag_max_output_tokens
+        self.quota_rag_source_wrapper_tokens = settings.quota_rag_source_wrapper_tokens
+        self.chunk_size = settings.chunk_size
+        self.quota_input_price = settings.chat_input_price_per_million_tokens_cny
+        self.quota_output_price = settings.chat_output_price_per_million_tokens_cny
         self.max_history_messages = settings.max_history_rounds * 2
         self.max_history_chars = settings.max_history_chars
 
@@ -107,12 +123,13 @@ class ConversationChatService:
                 user_id, conversation_id, question, request_id
             )
             try:
-                reservation = self.quota_gate.reserve(
-                    user_id,
-                    "rag",
-                    f"rag:{client_request_id}",
-                    self.quota_reserve_tokens,
-                    assistant_message.id,
+                reservation = self._reserve_rag_quota(
+                    user_id=user_id,
+                    idempotency_key=f"rag:{client_request_id}",
+                    usage_group_id=assistant_message.id,
+                    question=question,
+                    history=history,
+                    top_k=top_k,
                 )
             except Exception:
                 self._mark_failed(
@@ -225,12 +242,13 @@ class ConversationChatService:
             cancellation_lease = self.cancellation.register(
                 user_id, conversation_id, client_request_id
             )
-            reservation = self.quota_gate.reserve(
-                user_id,
-                "rag",
-                f"rag-stream:{client_request_id}",
-                self.quota_reserve_tokens,
-                assistant_message.id,
+            reservation = self._reserve_rag_quota(
+                user_id=user_id,
+                idempotency_key=f"rag-stream:{client_request_id}",
+                usage_group_id=assistant_message.id,
+                question=question,
+                history=history,
+                top_k=top_k,
             )
         except BaseException:
             if assistant_message is not None:
@@ -459,22 +477,11 @@ class ConversationChatService:
             )
 
     def _usage_summary(self, usage_group_id: str) -> UsageSummaryResponse | None:
-        records = self.session.scalars(select(ModelUsageRecord).where(
-            ModelUsageRecord.usage_group_id == usage_group_id)).all()
-        if not records:
-            return None
-        if any(row.token_measurement == "unknown" for row in records):
-            return UsageSummaryResponse(measurement="unknown")
-        measured = [row for row in records if row.token_measurement == "actual"]
-        if not measured:
-            return UsageSummaryResponse(measurement="not_applicable", input_tokens=0, output_tokens=0, total_tokens=0, estimated_cost_cny=0)
-        costs = [row.estimated_cost_cny for row in measured]
-        return UsageSummaryResponse(
-            measurement="actual",
-            input_tokens=sum(row.input_tokens or 0 for row in measured),
-            output_tokens=sum(row.output_tokens or 0 for row in measured),
-            total_tokens=sum(row.total_tokens or 0 for row in measured),
-            estimated_cost_cny=float(sum(costs)) if all(cost is not None for cost in costs) else None,
+        summary = UsageQueryService(self.session).group_summary(usage_group_id)
+        return (
+            UsageSummaryResponse.model_validate(summary)
+            if summary is not None
+            else None
         )
 
     async def _async_rag_stream(
@@ -685,6 +692,65 @@ class ConversationChatService:
                 selected_prefixes.append((role, clipped))
                 remaining_chars -= len(clipped)
         return [*selected_prefixes, *recent]
+
+    def _estimate_rag_reservation(
+        self,
+        question: str,
+        history: list[tuple[str, str]],
+        top_k: int,
+    ) -> QuotaReservationEstimate:
+        return self.quota_estimator.estimate_rag(
+            RagReservationInput(
+                system_prompt=RAG_SYSTEM_PROMPT,
+                question=question,
+                history=tuple(history),
+                top_k=top_k,
+                chunk_char_budget=self.chunk_size,
+                source_wrapper_tokens=self.quota_rag_source_wrapper_tokens,
+                max_output_tokens=self.quota_rag_max_output_tokens,
+            )
+        )
+
+    def _reserve_rag_quota(
+        self,
+        *,
+        user_id: str,
+        idempotency_key: str,
+        usage_group_id: str,
+        question: str,
+        history: list[tuple[str, str]],
+        top_k: int,
+    ):
+        policy_mode = getattr(
+            self.quota_gate,
+            "policy_mode",
+            QuotaPolicyMode.ENFORCE,
+        )
+        if policy_mode is QuotaPolicyMode.OFF:
+            return self.quota_gate.reserve(
+                user_id,
+                "rag",
+                idempotency_key,
+                0,
+                usage_group_id,
+            )
+        estimate = self._estimate_rag_reservation(question, history, top_k)
+        if (
+            estimate.exceeds_policy_limit
+            and policy_mode is QuotaPolicyMode.ENFORCE
+        ):
+            raise QuotaReservationTooLargeError()
+        return self.quota_gate.reserve(
+            user_id,
+            "rag",
+            idempotency_key,
+            estimate.requested_tokens,
+            usage_group_id,
+            estimated_input_tokens=estimate.estimated_input_tokens,
+            estimated_output_tokens=estimate.estimated_output_tokens,
+            input_price_per_million_tokens_cny=self.quota_input_price,
+            output_price_per_million_tokens_cny=self.quota_output_price,
+        )
 
     def _mark_failed(
         self,

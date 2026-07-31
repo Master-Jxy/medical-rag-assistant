@@ -19,6 +19,7 @@
 | 错误、配置、测试、部署 | 14～18 |
 | 邮箱认证与基础usage账本 | 19与`docs/auth-and-model-usage-design.md` |
 | 长期记忆与用户额度 | 20与`docs/memory-and-quota-design.md` |
+| 额度策略v2 | 21与`docs/quota-policy-v2-design.md` |
 
 不要为了确认一个小任务而读取全部历史实验段落；先查对应摘要，只有定位设计依据时再展开细节。
 
@@ -1733,7 +1734,7 @@ usage穿透、费用公式、前端语义、分步任务和回滚方案统一以
 没有调用模型时记录`not_applicable`并显示0 Token、¥0；Embedding和Reranker保持独立
 计量，不混入聊天模型输入/输出。
 
-## 20. 阶段十七、十八：长期记忆与用户额度 `[本地完成，未发布]`
+## 20. 阶段十七、十八：长期记忆与用户额度 `[已完成并发布，生产开关关闭]`
 
 阶段17、18不改变模块化单体和现有部署拓扑。新增边界固定为：
 
@@ -1769,5 +1770,51 @@ not_applicable扣0；过期reservation按回答账本settle或release。Agent客
 运行流取得最终usage，再结算额度。管理员调整只允许超级管理员并写现有审计模块。
 
 数据模型、API、SSE、界面、开源借鉴、分步任务、测试、停止条件和回滚统一以
-[`docs/memory-and-quota-design.md`](memory-and-quota-design.md)为准。以上均为本地完成
-状态，不代表已部署或生产开关已启用。
+[`docs/memory-and-quota-design.md`](memory-and-quota-design.md)为准。代码和迁移已经
+发布，自动记忆提取和额度执行生产开关仍关闭。
+
+## 21. 阶段十九：额度策略 v2 `[本地完成，待发布预检]`
+
+阶段19不新增账号角色，也不建立第二套额度系统。它在阶段18的Quota Port、MySQL周期、
+reservation和usage账本上演进：
+
+```text
+RAG / Agent
+-> QuotaReservationEstimatorPort
+-> QuotaGatePort
+-> off / shadow / enforce策略
+-> MySQL reservation、period和usage账本
+```
+
+默认内部计划从10万提高到100万Token/月，请求上限保持500。管理员只读全站用量；
+只有超级管理员能受审计地调整用户Token、请求和可选费用覆盖值，角色本身不自动获得
+无限额度。普通用户页面不展示套餐或会员身份。
+
+新增`0025_quota_policy_v2`，禁止修改已发布的`0024`。迁移必须保留历史使用量、
+reservation和人工覆盖值，并安全更新符合条件的当前周期。RAG固定4000预留改为保守
+动态估算；Agent继续受12000 Token策略上限约束。字符估算只能作为调用前reservation，
+回答后的actual仍只来自供应商usage。
+
+当前实现由usage模块的`QuotaReservationEstimatorPort`接收结构化预算。RAG估算包含
+系统Prompt、问题、已经按会话预算截断的历史与相关记忆、`top_k`片段上限、来源包装、
+最大输出和20%余量，建议单次范围4000～20000。off跳过预留估算以保持原链路兼容；
+shadow记录超过建议上限的未截断估算但继续调用；只有enforce在超过上限时于模型前返回
+`QUOTA_RESERVATION_TOO_LARGE`。Agent先构建受控上下文再估算，允许低于但不得超过
+12000策略上限。估算结果只写reservation，不进入actual usage。
+
+`0025`同时增加脱敏`quota_policy_events`、周期费用快照、用户费用覆盖、reservation
+输入/输出估算与价格快照。actual按供应商usage完整扣减，unknown扣全部预留，
+not_applicable扣0；实际Token超过预留时允许本次真实超额并写
+`RESERVATION_UNDERESTIMATED`，下一请求由MySQL余额阻断。可选费用上限默认为空；配置
+费用硬限制但价格不可用时，enforce返回`QUOTA_POLICY_UNAVAILABLE`，shadow只记录继续。
+`quota_billable=false`的自动记忆提取保留系统成本账本，但不进入用户额度结算。
+
+个人额度接口返回Token/请求余额、重置时间、`policy_mode`、80%/95%/耗尽状态及样本足够
+时的剩余回答约数；回答级REST/SSE同时返回实际Token与`charged_tokens`。管理员只读
+would-block、预留低估和预警用户；只有超级管理员能调整Token、请求和可选费用覆盖，
+每次写审计且不改变用户角色，前端不暴露内部计划或套餐概念。
+
+完整配置、迁移、模式、预留、结算、页面、任务和验收设计见
+[`docs/quota-policy-v2-design.md`](quota-policy-v2-design.md)。阶段19代码、0025和
+本地三宽验收已完成；尚未部署，生产仍为0024且执行开关关闭。生产发布与shadow启用
+必须作为独立预检任务，enforce仍需另行观察和确认。

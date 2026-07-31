@@ -1,6 +1,6 @@
 """Alembic 测试：验证最新结构、旧会话清理、用户保留和可降级结构。"""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 
@@ -393,6 +393,148 @@ def test_usage_group_migration_recovers_partial_mysql_style_ddl_and_long_call_id
         assert usage_group_id is not None
         assert len(usage_group_id) == 36
         assert usage_group_id != long_call_id[:36]
+
+
+def test_quota_policy_v2_migration_preserves_usage_reservations_and_overrides(
+    tmp_path,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'quota-policy-v2.db'}"
+    config = build_alembic_config(database_url)
+    command.upgrade(config, "0024_user_quota")
+    engine = build_engine(database_url)
+    now = datetime.now(timezone.utc)
+    current_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    current_end = (
+        current_start.replace(year=current_start.year + 1, month=1)
+        if current_start.month == 12
+        else current_start.replace(month=current_start.month + 1)
+    )
+    historical_start = current_start - timedelta(days=60)
+    historical_end = current_start - timedelta(days=30)
+
+    with engine.begin() as connection:
+        for user_id in ("default-user", "assigned-user", "override-user"):
+            connection.execute(
+                text(
+                    "INSERT INTO users "
+                    "(id, email, password_hash, is_active, role, token_version, "
+                    "created_at, updated_at) VALUES "
+                    "(:id, :email, 'hash', 1, 'user', 0, :now, :now)"
+                ),
+                {
+                    "id": user_id,
+                    "email": f"{user_id}@example.com",
+                    "now": now,
+                },
+            )
+        connection.execute(
+            text(
+                "INSERT INTO user_quota_assignments "
+                "(user_id, plan_id, token_limit_override, request_limit_override, "
+                "valid_from, valid_until, updated_by, updated_at) VALUES "
+                "('assigned-user', :plan_id, NULL, NULL, :now, NULL, NULL, :now), "
+                "('override-user', :plan_id, 250000, 700, :now, NULL, NULL, :now)"
+            ),
+            {
+                "plan_id": "00000000-0000-0000-0000-000000000001",
+                "now": now,
+            },
+        )
+        periods = (
+            ("period-default", "default-user", current_start, current_end, 100_000),
+            ("period-assigned", "assigned-user", current_start, current_end, 100_000),
+            ("period-override", "override-user", current_start, current_end, 250_000),
+            ("period-history", "default-user", historical_start, historical_end, 100_000),
+        )
+        for period_id, user_id, start, end, token_limit in periods:
+            connection.execute(
+                text(
+                    "INSERT INTO quota_periods "
+                    "(id, user_id, period_start, period_end, token_limit, request_limit, "
+                    "used_tokens, reserved_tokens, used_requests, reserved_requests, "
+                    "created_at, updated_at) VALUES "
+                    "(:id, :user_id, :start, :end, :token_limit, 500, "
+                    "12000, 3000, 12, 1, :now, :now)"
+                ),
+                {
+                    "id": period_id,
+                    "user_id": user_id,
+                    "start": start,
+                    "end": end,
+                    "token_limit": token_limit,
+                    "now": now,
+                },
+            )
+        connection.execute(
+            text(
+                "INSERT INTO quota_reservations "
+                "(id, idempotency_key, user_id, quota_period_id, surface, "
+                "usage_group_id, reserved_tokens, charged_tokens, status, "
+                "expires_at, created_at, settled_at) VALUES "
+                "('reservation', 'migration-reservation', 'default-user', "
+                "'period-default', 'rag', 'usage-group', 3000, 0, 'reserved', "
+                ":expires_at, :now, NULL)"
+            ),
+            {"expires_at": now + timedelta(minutes=15), "now": now},
+        )
+
+    command.upgrade(config, "head")
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text("SELECT token_limit FROM quota_plans WHERE code = 'free'")
+        ) == 1_000_000
+        rows = dict(connection.execute(
+            text("SELECT id, token_limit FROM quota_periods")
+        ).all())
+        assert rows == {
+            "period-default": 1_000_000,
+            "period-assigned": 1_000_000,
+            "period-override": 250_000,
+            "period-history": 100_000,
+        }
+        assert connection.execute(
+            text(
+                "SELECT used_tokens, reserved_tokens, used_requests, "
+                "reserved_requests FROM quota_periods "
+                "WHERE id = 'period-default'"
+            )
+        ).one() == (12_000, 3_000, 12, 1)
+        assert connection.scalar(
+            text("SELECT reserved_tokens FROM quota_reservations")
+        ) == 3_000
+        assert connection.scalar(
+            text(
+                "SELECT token_limit_override FROM user_quota_assignments "
+                "WHERE user_id = 'override-user'"
+            )
+        ) == 250_000
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE quota_periods SET token_limit = 750000 "
+                "WHERE id = 'period-default'"
+            )
+        )
+    command.downgrade(config, "0024_user_quota")
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text("SELECT token_limit FROM quota_plans WHERE code = 'free'")
+        ) == 100_000
+        rows = dict(connection.execute(
+            text("SELECT id, token_limit FROM quota_periods")
+        ).all())
+        assert rows == {
+            "period-default": 750_000,
+            "period-assigned": 100_000,
+            "period-override": 250_000,
+            "period-history": 100_000,
+        }
+        assert "policy_migration_version" not in {
+            column["name"]
+            for column in inspect(engine).get_columns("quota_periods")
+        }
 
 
 def test_stage9_upgrade_registers_legacy_documents_without_duplicate_publication(

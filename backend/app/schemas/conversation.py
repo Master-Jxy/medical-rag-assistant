@@ -51,6 +51,7 @@ class UsageSummaryResponse(BaseModel):
     output_tokens: int | None = None
     total_tokens: int | None = None
     estimated_cost_cny: float | None = None
+    charged_tokens: int = 0
 
 
 class MessageResponse(BaseModel):
