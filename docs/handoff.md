@@ -5,13 +5,10 @@
 
 ## 1. 当前真实状态
 
-阶段17和阶段18已完成全部代码、迁移、页面、本地验证和生产发布。生产源码为
-`a1a38531ef067f9e7791f1982a7fe6b3b372312f`，数据库为`0024_user_quota (head)`，
-四容器healthy；**自动记忆提取和额度执行两个生产开关仍保持关闭**。
-
-阶段19的19.1～19.7及生产发布预检修复已完成代码、`0025_quota_policy_v2`、前后端页面
-和全部本地无费用验收；**尚未提交、推送或部署，生产仍是上述阶段18版本和0024**。
-本地默认额度为100万Token/500请求，策略默认off；当前已经具备先以off发布的条件。
+阶段17、18和19已完成代码、迁移、页面、本地验证和生产发布。阶段19功能提交为
+`02687b1d3c19a830709dc321682e8fa9e01fc95f`，生产数据库为
+`0025_quota_policy_v2 (head)`，四容器healthy。默认额度为100万Token/500请求；生产先以
+off完成迁移和无费用验收后已切到shadow观察，**enforce和自动记忆提取仍未启用**。
 
 阶段17：
 
@@ -43,8 +40,8 @@
 
 - `0022_memory_v2`
 - `0023_usage_groups`
-- `0024_user_quota`（当前生产head）
-- `0025_quota_policy_v2`（当前代码与本地MySQL唯一head，尚未生产执行）
+- `0024_user_quota`
+- `0025_quota_policy_v2`（当前代码、本地MySQL和生产唯一head）
 
 本地MySQL最终验证：
 
@@ -90,7 +87,7 @@ Vite production build passed
 - 发布预检发现动态RAG估算发生在Gate前，使off及shadow在合法极限上下文下可能被
   `QUOTA_RESERVATION_TOO_LARGE`阻断。修复后off完全跳过RAG/Agent估算，shadow保留未
   截断估算并继续，只有enforce拒绝；新增3项集成回归，专项31项、完整后端446项通过。
-- Alembic代码与本地MySQL单一head：`0025_quota_policy_v2`；生产仍为0024。
+- Alembic代码、本地MySQL与生产单一head：`0025_quota_policy_v2`。
 - `git diff --check`通过，仅有Windows LF/CRLF提示。
 - 敏感扫描没有真实密钥模式，Git没有跟踪`.env`，浏览器临时密码未写入工作区。
 - 文档相对链接目标全部存在。
@@ -106,16 +103,24 @@ Vite production build passed
   校验通过；旧backend/web镜像和旧前端目录已保留。
 - 生产HTTPS首页、登录、个人中心、管理员用量路由为200，HTTP为308；新旧受保护API
   未登录均为401。静态包哈希与本地正式构建一致。
-- 生产保持27份文档、103个Chroma片段、27个上传文件；8条历史usage分组ID均为36位，
-  默认额度计划1条，周期、reservation和提取任务均为0。
+- 阶段18发布当时保持27份文档、103个Chroma片段、27个上传文件；8条历史usage分组ID
+  均为36位，默认额度计划1条，周期、reservation和提取任务均为0。
+- 阶段19发布前生产已自然增长到13个用户、8个会话、134条消息和18条usage；迁移后这些
+  数量以及27份文档、27个上传文件、103个Chroma片段全部保持。2个当前默认周期从10万
+  安全提高到100万，assignment、reservation和策略事件均为0。
+- 阶段19备份`/home/deploy/medical-rag-backups/backup-20260731T171945Z`及全部SHA-256
+  通过；旧镜像和静态目录已保留。HTTPS/HTTP、401权限、静态哈希和四容器通过。
+- off运行约4分钟且连续三次健康检查无错误后，backend受控切到shadow；运行时实测
+  `quota_policy_mode=shadow`、旧布尔开关false、自动记忆提取false。切换没有主动调用模型，
+  立即检查时usage仍为18、策略事件和reservation仍为0。
 - 线上自动可视浏览器控制在加载公网IP时超时；本机HTTPS与服务器静态/DOM资源正常，
   因此没有把线上1440/1280/390自动点击验收写成通过。
 
 ## 4. 工作区与安全边界
 
 - 工作区保留开始前未提交修改；未回退、覆盖或格式化受保护的auth Service。
-- 当前窗口新增/更新阶段19设计文档、路线图和交接入口；开发窗口应在这些修改之上继续，
-  不得把它们当作无关脏文件回退。
+- 阶段19代码、迁移、测试和页面已提交推送并发布；发布审计见
+  `docs/release-audit-quota-v2.1.md`。
 - 本地浏览器验收新增`phase18-ui-user@example.com`和
   `phase18-ui-super@example.com`测试账号；没有删除任何既有账号或业务数据。
 - 发布提交和迁移恢复提交已推送到GitHub并同步生产；服务器仓库工作树干净。首次
@@ -123,15 +128,15 @@ Vite production build passed
 - 没有调用真实Qwen、Embedding、Reranker、SMTP，没有创建、删除或修改生产账号。
 - 阶段19只创建并随后精确删除了本地并发/浏览器验收账号；原有6个本地账号和业务数据
   保持。没有读取桌面授权码或其他真实凭据。
-- `MEMORY_AUTO_EXTRACTION_ENABLED=false`和`QUOTA_ENFORCEMENT_ENABLED=false`已在
-  生产运行时实测。
-- 真实提取模型usage、真实额度拦截和真实RAG/Agent计量仍未验收，不能把“代码与表结构
-  已上线”写成“两个开关已经启用”。
+- `MEMORY_AUTO_EXTRACTION_ENABLED=false`、`QUOTA_ENFORCEMENT_ENABLED=false`和
+  `QUOTA_POLICY_MODE=shadow`已在生产运行时实测。
+- 真实提取模型usage和真实额度拦截仍未验收；shadow只观察自然流量，不能写成enforce
+  已经启用。
 
-阶段19已经完成本地开发和无费用验收：默认额度计划提高到100万Token/月，保持500次
+阶段19已经完成开发、无费用验收和生产发布：默认额度计划提高到100万Token/月，保持500次
 请求；增加off/shadow/enforce、RAG动态预留、可选费用闸门和三角色额度管理。系统角色
 仍只有`user/admin/super_admin`，额度策略不创造新身份。完整设计见
-`docs/quota-policy-v2-design.md`；生产尚未发布或启用。
+`docs/quota-policy-v2-design.md`；生产当前为shadow观察，enforce未启用。
 
 阶段19开发进度：
 
@@ -184,7 +189,7 @@ Vite production build passed
   user，以及管理员/超级管理员页面按钮与表单边界。
 - 19.7已完成：完整后端446项、完整前端16文件59项、SSE和正式构建通过；Alembic单一
   head、真实本地MySQL迁移往返/并发/恢复、敏感扫描、相对链接、差异、auth哈希及三角色
-  三宽浏览器验收均通过。没有真实模型、SMTP、SSH、部署、commit或push。
+  三宽本地浏览器验收均通过。生产备份、迁移、容器、HTTPS、权限和静态哈希也已通过。
 
 ## 5. 本任务阅读范围
 
@@ -192,24 +197,23 @@ Vite production build passed
 
 - `docs/quota-policy-v2-design.md`
 - `docs/technical-design.md`第20、21节
-- `docs/deployment.md`
-- 当前Git差异、生产发布审计、0025迁移和环境开关配置
+- `docs/release-audit-quota-v2.1.md`
+- usage模块的shadow指标、reservation恢复和当前生产只读计数
 
-不要读取历史RAG评估JSON。发布必须先保持off，不自动启用enforce。
+不要读取历史RAG评估JSON，不主动制造付费模型流量，不自动启用enforce。
 
 ## 6. 唯一下一任务
 
-**阶段19生产off发布。**
+**阶段19 shadow自然流量观察。**
 
-本小步按顺序执行：
+本小步只读观察：
 
-1. 显式排除受保护的auth Service，提交并推送阶段19代码、迁移、页面、测试和文档。
-2. SSH只读核对生产提交、0024、off开关、Compose配置和核心数据计数，随后创建并校验备份。
-3. 显式写入`QUOTA_POLICY_MODE=off`，快进目标提交、上传已校验前端产物、重建backend/web。
-4. 验证0025、四容器、HTTPS/HTTP、静态哈希、核心数据、受保护API和运行时off；不调用模型或SMTP。
-5. off稳定后再根据自然流量提出shadow观察，不直接启用enforce。
+1. 观察自然发生的RAG/Agent请求，不为了样本主动调用模型。
+2. 核对would-block原因、预留低估、unknown、过期reservation、重复扣减和数据库错误。
+3. 发现shadow阻断、账本不一致、敏感内容、锁等待或P0/P1错误时立即恢复off并记录证据。
+4. 样本不足时继续shadow，不把0事件解释为策略已经正确；enforce必须另行预检和确认。
 
-继续禁止：
+禁止：
 
 - 读取或输出真实密钥、调用真实Qwen/Embedding/Reranker/SMTP。
-- 跳过off观察直接启用enforce。
+- 主动制造付费样本或直接启用enforce。

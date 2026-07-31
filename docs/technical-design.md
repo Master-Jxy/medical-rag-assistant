@@ -1773,7 +1773,7 @@ not_applicable扣0；过期reservation按回答账本settle或release。Agent客
 [`docs/memory-and-quota-design.md`](memory-and-quota-design.md)为准。代码和迁移已经
 发布，自动记忆提取和额度执行生产开关仍关闭。
 
-## 21. 阶段十九：额度策略 v2 `[本地完成，待发布预检]`
+## 21. 阶段十九：额度策略 v2 `[已完成并发布，shadow观察中]`
 
 阶段19不新增账号角色，也不建立第二套额度系统。它在阶段18的Quota Port、MySQL周期、
 reservation和usage账本上演进：
@@ -1816,5 +1816,5 @@ would-block、预留低估和预警用户；只有超级管理员能调整Token�
 
 完整配置、迁移、模式、预留、结算、页面、任务和验收设计见
 [`docs/quota-policy-v2-design.md`](quota-policy-v2-design.md)。阶段19代码、0025和
-本地三宽验收已完成；尚未部署，生产仍为0024且执行开关关闭。生产发布与shadow启用
-必须作为独立预检任务，enforce仍需另行观察和确认。
+本地三宽验收已完成并发布，生产先以off完成迁移与无费用黑盒验收后切到shadow观察；
+enforce仍未启用，必须在自然流量观察达标后另行评估。
