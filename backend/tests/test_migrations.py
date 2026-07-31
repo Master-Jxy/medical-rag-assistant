@@ -344,6 +344,57 @@ def test_model_usage_migration_upgrades_and_downgrades_without_touching_users(
         ) == 1
 
 
+def test_usage_group_migration_recovers_partial_mysql_style_ddl_and_long_call_ids(
+    tmp_path,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'usage-group-recovery.db'}"
+    config = build_alembic_config(database_url)
+    command.upgrade(config, "0022_memory_v2")
+    engine = build_engine(database_url)
+    now = datetime.now(timezone.utc)
+    long_call_id = "phase16-existing-call-" + ("x" * 90)
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO model_usage_records "
+                "(id, call_id, request_id, user_id, surface, operation, model_name, "
+                "input_tokens, output_tokens, total_tokens, token_measurement, "
+                "input_price_snapshot, output_price_snapshot, estimated_cost_cny, "
+                "created_at) VALUES "
+                "('legacy-usage', :call_id, NULL, NULL, 'rag', 'answer', 'fake', "
+                "1, 2, 3, 'actual', NULL, NULL, NULL, :now)"
+            ),
+            {"call_id": long_call_id, "now": now},
+        )
+        for ddl in (
+            "ALTER TABLE model_usage_records ADD COLUMN usage_group_id VARCHAR(36)",
+            "ALTER TABLE model_usage_records ADD COLUMN provider VARCHAR(32) "
+            "NOT NULL DEFAULT 'dashscope'",
+            "ALTER TABLE model_usage_records ADD COLUMN status VARCHAR(20) "
+            "NOT NULL DEFAULT 'completed'",
+            "ALTER TABLE model_usage_records ADD COLUMN latency_ms INTEGER",
+            "ALTER TABLE model_usage_records ADD COLUMN time_to_first_token_ms INTEGER",
+            "ALTER TABLE model_usage_records ADD COLUMN cached_input_tokens INTEGER",
+            "ALTER TABLE model_usage_records ADD COLUMN cache_creation_tokens INTEGER",
+            "ALTER TABLE model_usage_records ADD COLUMN quota_billable BOOLEAN "
+            "NOT NULL DEFAULT 1",
+        ):
+            connection.execute(text(ddl))
+
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        usage_group_id = connection.scalar(
+            text(
+                "SELECT usage_group_id FROM model_usage_records "
+                "WHERE id = 'legacy-usage'"
+            )
+        )
+        assert usage_group_id is not None
+        assert len(usage_group_id) == 36
+        assert usage_group_id != long_call_id[:36]
+
+
 def test_stage9_upgrade_registers_legacy_documents_without_duplicate_publication(
     tmp_path,
 ) -> None:
