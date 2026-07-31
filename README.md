@@ -128,6 +128,7 @@ medical-rag-assistant/
 |   |-- technical-design.md
 |   |-- development-roadmap.md
 |   |-- product-and-ui-design.md
+|   |-- memory-and-quota-design.md
 |   |-- release-audit-agent-chat-v3.0.md
 |   `-- handoff.md
 |-- AGENTS.md
@@ -241,18 +242,18 @@ npm --prefix frontend run build
 4. 页面、角色或交互任务再读 `docs/product-and-ui-design.md` 的对应章节。
 5. `docs/project-vision.md` 只在产品范围变化时读取。
 6. `docs/deployment.md` 与发布审计只在部署、验收或回滚任务中读取。
-7. 阶段13～14对话Agent任务定向读取 `docs/conversational-agent-design.md`，当前开发
-   只读第16节和handoff指定的小任务。
+7. 对话Agent任务定向读取 `docs/conversational-agent-design.md`；阶段17～18定向读取
+   `docs/memory-and-quota-design.md`和handoff指定的小任务。
 
 ## 下一步
 
 当前唯一下一任务始终以 `docs/handoff.md` 为准。当前总体顺序为：
 
 ```text
-阶段1～12稳定性观察
--> 阶段13 Agent Chat v3.0（已完成）
--> 阶段14 Agent Chat v3.1产品修复（已完成并上线）
--> 可选：人工确认、后台任务、CI/CD和更丰富的受控工具
+阶段1～16（已完成并发布）
+-> 阶段17 自动长期记忆v2（本地完成，未发布）
+-> 阶段18 用户额度与用量中心（本地完成，未发布）
+-> 可选：CI/CD、对象存储和更丰富的受控工具
 ```
 
 每次只做一个可验证的小任务，详细范围以 `docs/handoff.md` 和 `docs/development-roadmap.md` 为准。

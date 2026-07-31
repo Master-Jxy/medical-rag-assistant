@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
 from typing import Protocol, TypeAlias
 
-from app.core.enums import StrEnum
+from app.modules.usage.contracts import ModelUsage, TokenMeasurement
 
 ChatHistory = list[tuple[str, str]]
 MetadataValue: TypeAlias = str | int | float | bool
@@ -90,47 +90,6 @@ class RerankResult:
 
     chunks: list[RetrievedChunk]
     usage: RerankUsage
-
-
-class TokenMeasurement(StrEnum):
-    ACTUAL = "actual"
-    UNKNOWN = "unknown"
-    NOT_APPLICABLE = "not_applicable"
-
-
-@dataclass(frozen=True, slots=True)
-class ModelUsage:
-    input_tokens: int | None
-    output_tokens: int | None
-    total_tokens: int | None
-    measurement: TokenMeasurement
-
-    @classmethod
-    def actual(cls, input_tokens: int, output_tokens: int) -> "ModelUsage":
-        if input_tokens < 0 or output_tokens < 0:
-            raise ValueError("Token计量不能为负数")
-        return cls(
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            total_tokens=input_tokens + output_tokens,
-            measurement=TokenMeasurement.ACTUAL,
-        )
-
-    @classmethod
-    def unknown(cls) -> "ModelUsage":
-        return cls(None, None, None, TokenMeasurement.UNKNOWN)
-
-    @classmethod
-    def not_applicable(cls) -> "ModelUsage":
-        return cls(0, 0, 0, TokenMeasurement.NOT_APPLICABLE)
-
-    def as_dict(self) -> dict[str, int | str | None]:
-        return {
-            "input_tokens": self.input_tokens,
-            "output_tokens": self.output_tokens,
-            "total_tokens": self.total_tokens,
-            "measurement": self.measurement.value,
-        }
 
 
 @dataclass(frozen=True, slots=True)

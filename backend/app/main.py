@@ -21,6 +21,7 @@ from app.api.profile import router as profile_router
 from app.api.agent import router as agent_router
 from app.api.quality import router as quality_router
 from app.api.memory import router as memory_router
+from app.api.usage import router as usage_router
 from app.api.knowledge_trace import router as knowledge_trace_router
 from app.core.config import Settings, get_settings
 from app.core.exceptions import register_exception_handlers
@@ -213,6 +214,7 @@ def create_app(
     application.include_router(agent_router, prefix="/api/v1")
     application.include_router(quality_router, prefix="/api/v1")
     application.include_router(memory_router, prefix="/api/v1")
+    application.include_router(usage_router, prefix="/api/v1")
     application.include_router(knowledge_trace_router, prefix="/api/v1")
     register_exception_handlers(application)
     return application

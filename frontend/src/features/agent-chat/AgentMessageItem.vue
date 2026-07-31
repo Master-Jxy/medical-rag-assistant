@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import MarkdownContent from '../../components/MarkdownContent.vue'
 import AgentRunProgress from './AgentRunProgress.vue'
+import UsageMeta from '../../components/UsageMeta.vue'
 
 const props = defineProps({
   message: { type: Object, required: true },
@@ -41,6 +42,7 @@ const artifacts = computed(() => {
   if (props.message.parts?.artifacts?.length) return props.message.parts.artifacts
   return (props.message.metadata?.artifact_ids || []).map((id) => ({ id }))
 })
+const usage = computed(() => props.message.usage || props.live?.usage || null)
 </script>
 
 <template>
@@ -123,6 +125,7 @@ const artifacts = computed(() => {
           </div>
         </div>
       </div>
+      <UsageMeta v-if="isAssistant && !isActive" :usage="usage" />
 
       <div class="message-actions">
         <button

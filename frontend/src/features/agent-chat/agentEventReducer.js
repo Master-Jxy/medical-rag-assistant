@@ -9,6 +9,8 @@ export const initialAgentStreamState = () => ({
   sources: [],
   artifacts: [],
   error: '',
+  usage: null,
+  quota: null,
 })
 
 export function reduceAgentEvent(state, event, data = {}) {
@@ -78,9 +80,10 @@ export function reduceAgentEvent(state, event, data = {}) {
     }
   }
   if (event === 'message_completed') {
-    return { ...state, phase: data.status || 'completed' }
+    return { ...state, phase: data.status || 'completed', usage: data.usage || state.usage, quota: data.quota || state.quota }
   }
-  if (event === 'stopped') return { ...state, phase: 'stopped' }
+  if (event === 'run_completed') return { ...state, usage: data.usage || null, quota: data.quota || null }
+  if (event === 'stopped') return { ...state, phase: 'stopped', usage: data.usage || state.usage, quota: data.quota || state.quota }
   if (event === 'error') {
     return { ...state, phase: 'failed', error: data.message || 'Agent运行失败。' }
   }

@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.exceptions import (
     AgentDisabledError,
     AgentMessageConflictError,
@@ -32,6 +33,9 @@ from app.modules.agent.thread_service import AgentThreadService
 from app.ports.telemetry import TelemetryPort
 from app.services.generation_lock_service import GenerationLockService
 from app.services.idempotency_service import IdempotencyService
+from app.services.memory_extraction_runtime import build_memory_scheduler
+from app.modules.usage.quota_service import DisabledQuotaGate, QuotaApplicationService
+from app.modules.usage.query_service import UsageQueryService
 
 
 class AgentConversationApplication:
@@ -47,6 +51,8 @@ class AgentConversationApplication:
         context_builder: AgentContextBuilder,
         model_name: str | None = None,
         telemetry: TelemetryPort | None = None,
+        memory_extraction=None,
+        quota_gate=None,
     ) -> None:
         self.session = session
         self.policy = policy
@@ -56,6 +62,15 @@ class AgentConversationApplication:
         self.threads = AgentThreadRepository(session)
         self.runs = AgentRepository(session)
         self.thread_service = AgentThreadService(session)
+        self.memory_extraction = memory_extraction or build_memory_scheduler(session)
+        settings = get_settings()
+        self.quota_gate = quota_gate or (
+            QuotaApplicationService(session)
+            if settings.quota_enforcement_enabled
+            else DisabledQuotaGate()
+        )
+        self.quota_reserve_tokens = settings.quota_agent_reserve_tokens
+        self.usage_query = UsageQueryService(session)
         self.agent = AgentApplicationService(
             session,
             policy=policy,
@@ -110,6 +125,8 @@ class AgentConversationApplication:
         source_ids: list[str] = []
         artifact_ids: list[str] = []
         source_items: list[dict[str, object]] = []
+        reservation = None
+        quota_finalized = False
         try:
             lease = self.generation_lock.acquire_agent(user_id, thread_id)
             user_sequence, assistant_sequence, turn_id = (
@@ -150,6 +167,13 @@ class AgentConversationApplication:
                 user_id, run.id, assistant_message.id
             )
             self.session.commit()
+            reservation = self.quota_gate.reserve(
+                user_id,
+                "agent",
+                f"agent:{client_request_id}",
+                self.quota_reserve_tokens,
+                assistant_message.id,
+            )
             yield {
                 "event": "message_created",
                 "data": {
@@ -210,6 +234,12 @@ class AgentConversationApplication:
                         source_items=source_items,
                         artifact_ids=artifact_ids,
                     )
+                    usage = self.usage_query.group_usage(assistant_message.id, user_id)
+                    if reservation is not None:
+                        self.quota_gate.settle(reservation.id, usage)
+                        quota_finalized = True
+                    data["usage"] = self.usage_query.group_summary(assistant_message.id, user_id)
+                    data["quota"] = self.quota_gate.current(user_id)
                 elif event == "stopped":
                     terminal = True
                     self._complete_message(
@@ -223,6 +253,12 @@ class AgentConversationApplication:
                         artifact_ids=artifact_ids,
                         stop_reason=str(data.get("reason") or "user_requested"),
                     )
+                    usage = self.usage_query.group_usage(assistant_message.id, user_id)
+                    if reservation is not None:
+                        self.quota_gate.settle(reservation.id, usage)
+                        quota_finalized = True
+                    data["usage"] = self.usage_query.group_summary(assistant_message.id, user_id)
+                    data["quota"] = self.quota_gate.current(user_id)
                 elif event == "error":
                     terminal = True
                     self._complete_message(
@@ -238,6 +274,12 @@ class AgentConversationApplication:
                             data.get("code") or "AGENT_EXECUTION_FAILED"
                         ),
                     )
+                    usage = self.usage_query.group_usage(assistant_message.id, user_id)
+                    if reservation is not None:
+                        self.quota_gate.settle(reservation.id, usage)
+                        quota_finalized = True
+                    data["usage"] = self.usage_query.group_summary(assistant_message.id, user_id)
+                    data["quota"] = self.quota_gate.current(user_id)
                 yield item
             if not terminal:
                 self._complete_message(
@@ -251,6 +293,12 @@ class AgentConversationApplication:
                     artifact_ids=artifact_ids,
                     error_code="AGENT_STREAM_INTERRUPTED",
                 )
+                usage = self.usage_query.group_usage(
+                    assistant_message.id, user_id
+                )
+                if reservation is not None:
+                    self.quota_gate.settle(reservation.id, usage)
+                    quota_finalized = True
             self.idempotency.complete_agent(
                 claim,
                 request_id=request_id,
@@ -266,6 +314,8 @@ class AgentConversationApplication:
                     "run_id": run.id,
                     "sequence_no": assistant_message.sequence_no,
                     "turn_id": assistant_message.turn_id,
+                    "usage": self.usage_query.group_summary(assistant_message.id, user_id),
+                    "quota": self.quota_gate.current(user_id),
                 },
             }
             try:
@@ -275,6 +325,12 @@ class AgentConversationApplication:
         except GeneratorExit:
             if agent_stream is not None:
                 agent_stream.close()
+            if reservation is not None and assistant_message is not None:
+                usage = self.usage_query.group_usage(
+                    assistant_message.id, user_id
+                )
+                self.quota_gate.settle(reservation.id, usage)
+                quota_finalized = True
             if assistant_message is not None:
                 self._complete_message(
                     user_id,
@@ -335,6 +391,8 @@ class AgentConversationApplication:
                     self.session.rollback()
             raise
         finally:
+            if reservation is not None and not quota_finalized:
+                self.quota_gate.release(reservation.id)
             if agent_stream is not None:
                 agent_stream.close()
             if lease is not None:
@@ -424,6 +482,34 @@ class AgentConversationApplication:
             metadata=metadata,
         )
         self.session.commit()
+        if status in ("completed", "stopped"):
+            message = self.threads.get_message(user_id, thread_id, message_id)
+            interval = get_settings().memory_extraction_interval_turns * 2
+            previous_user = (
+                self.threads.get_message(
+                    user_id,
+                    thread_id,
+                    message.reply_to_message_id,
+                )
+                if message.reply_to_message_id
+                else None
+            )
+            explicit = bool(previous_user and "记住" in previous_user.content)
+            if explicit or message.sequence_no % interval == 0:
+                try:
+                    self.memory_extraction.schedule(
+                        user_id,
+                        "agent",
+                        thread_id,
+                        message.sequence_no,
+                        trigger="explicit" if explicit else "periodic",
+                    )
+                except Exception as exc:
+                    self.session.rollback()
+                    logger.warning(
+                        "memory_extraction_schedule_failed surface=agent error_type=%s",
+                        type(exc).__name__,
+                    )
 
     def _replay_completed(self, user_id, thread_id, record):
         try:

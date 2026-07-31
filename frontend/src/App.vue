@@ -30,6 +30,7 @@ const adminItems = [
   { to: '/admin/knowledge', label: '系统资料' },
   { to: '/admin/telemetry', label: '运行统计' },
   { to: '/admin/quality', label: '回答质量' },
+  { to: '/admin/usage', label: '用量管理' },
 ]
 
 watch(() => route.fullPath, () => {

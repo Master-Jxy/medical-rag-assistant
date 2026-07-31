@@ -5,7 +5,10 @@ from app.modules.audit.models import AuditEvent
 from app.modules.agent.models import AgentArtifact, AgentRun, AgentStep
 from app.modules.agent.thread_models import AgentMessage, AgentThread
 from app.modules.quality.models import AnswerFeedback
-from app.modules.memory.models import ConversationSummaryMemory, UserMemory, UserMemorySetting
+from app.modules.memory.models import (
+    ConversationSummaryMemory, MemoryExtractionRun, UserMemory,
+    UserMemoryRevision, UserMemorySetting, UserMemorySource,
+)
 from app.modules.auth.models import User
 from app.modules.knowledge.models import (
     DocumentVersion,
@@ -13,7 +16,9 @@ from app.modules.knowledge.models import (
     KnowledgeSubmission,
 )
 from app.modules.jobs.models import ProcessingJob
-from app.modules.usage.models import ModelUsageRecord
+from app.modules.usage.models import (
+    ModelUsageRecord, QuotaPeriod, QuotaPlan, QuotaReservation, UserQuotaAssignment,
+)
 
 __all__ = [
     "AuditEvent",
@@ -24,6 +29,9 @@ __all__ = [
     "ConversationSummaryMemory",
     "UserMemory",
     "UserMemorySetting",
+    "UserMemorySource",
+    "UserMemoryRevision",
+    "MemoryExtractionRun",
     "AgentRun",
     "AgentStep",
     "Conversation",
@@ -35,4 +43,8 @@ __all__ = [
     "DocumentVersion",
     "ProcessingJob",
     "ModelUsageRecord",
+    "QuotaPlan",
+    "UserQuotaAssignment",
+    "QuotaPeriod",
+    "QuotaReservation",
 ]

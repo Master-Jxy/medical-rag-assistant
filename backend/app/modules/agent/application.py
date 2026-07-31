@@ -359,11 +359,20 @@ class AgentApplicationService:
             }
         finally:
             if run_id not in self._usage_finalized:
+                final_run = self.repository.get_run(user_id, run_id)
+                usage_status = (
+                    "cancelled"
+                    if final_run.status == AgentRunStatus.STOPPED
+                    else "failed"
+                    if final_run.status == AgentRunStatus.FAILED
+                    else "completed"
+                )
                 self._persist_model_usage(
                     user_id,
                     run_id,
                     graph,
                     int(final_state.get("used_tokens", 0)),
+                    status=usage_status,
                 )
             self.cancellation.clear(user_id, run_id)
 
@@ -463,6 +472,9 @@ class AgentApplicationService:
                 },
             }
         elif status == AgentRunStatus.STOPPED:
+            self._persist_model_usage(
+                user_id, run_id, graph, used_tokens, status="cancelled"
+            )
             self._safe_stop(user_id, run_id)
             self._emit(
                 "agent_stop",
@@ -480,6 +492,9 @@ class AgentApplicationService:
             }
         else:
             error_type = state.get("error_type") or "AGENT_EXECUTION_FAILED"
+            self._persist_model_usage(
+                user_id, run_id, graph, used_tokens, status="failed"
+            )
             self._safe_fail(user_id, run_id, error_type)
             self._emit(
                 "agent_run",
@@ -502,9 +517,12 @@ class AgentApplicationService:
         run_id: str,
         graph,
         used_tokens: int,
+        *,
+        status: str = "completed",
     ) -> str:
+        run = self.repository.get_run(user_id, run_id)
+        usage_group_id = run.response_message_id or run.id
         if run_id in self._usage_finalized:
-            run = self.repository.get_run(user_id, run_id)
             return run.token_measurement
         drain = getattr(graph, "drain_model_usage", None)
         observations = list(drain()) if callable(drain) else []
@@ -529,6 +547,8 @@ class AgentApplicationService:
                 usage=fallback,
                 input_price_per_million_tokens_cny=self.input_price,
                 output_price_per_million_tokens_cny=self.output_price,
+                usage_group_id=usage_group_id,
+                status=status,
             )
             measurement = (
                 fallback.measurement.value
@@ -551,6 +571,8 @@ class AgentApplicationService:
                     usage=observation.usage,
                     input_price_per_million_tokens_cny=self.input_price,
                     output_price_per_million_tokens_cny=self.output_price,
+                    usage_group_id=usage_group_id,
+                    status=status,
                 )
                 measurements.append(
                     observation.usage.measurement

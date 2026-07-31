@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
-from app.modules.rag.ports import ModelUsage, TokenMeasurement
+from app.modules.usage.contracts import ModelUsage, TokenMeasurement
 from app.modules.usage.models import ModelUsageRecord
 from app.modules.usage.repository import ModelUsageRepository, UsageAggregate
 
@@ -31,6 +31,12 @@ class ModelUsageRecorder:
         usage: ModelUsage,
         input_price_per_million_tokens_cny: float | None = None,
         output_price_per_million_tokens_cny: float | None = None,
+        usage_group_id: str | None = None,
+        provider: str = "dashscope",
+        status: str = "completed",
+        latency_ms: int | None = None,
+        time_to_first_token_ms: int | None = None,
+        quota_billable: bool = True,
     ) -> ModelUsageRecord:
         existing = self.repository.find_by_call_id(call_id)
         if existing is not None:
@@ -65,6 +71,14 @@ class ModelUsageRecorder:
             input_price_snapshot=input_price,
             output_price_snapshot=output_price,
             estimated_cost_cny=estimated_cost,
+            usage_group_id=usage_group_id,
+            provider=provider,
+            status=status,
+            latency_ms=latency_ms,
+            time_to_first_token_ms=time_to_first_token_ms,
+            cached_input_tokens=usage.cached_input_tokens,
+            cache_creation_tokens=usage.cache_creation_tokens,
+            quota_billable=quota_billable,
         )
         self.repository.add(record)
         try:

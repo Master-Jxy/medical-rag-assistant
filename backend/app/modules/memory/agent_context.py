@@ -1,23 +1,24 @@
 """把用户主动启用的长期记忆适配为Agent上下文Port。"""
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
-from app.modules.memory.models import UserMemory, UserMemorySetting
+from app.modules.memory.context_provider import SqlAlchemyMemoryContextProvider
+from app.modules.memory.models import UserMemory
 
 
 class SqlAlchemyAgentMemoryContext:
     def __init__(self, session: Session) -> None:
         self.session = session
+        self.provider = SqlAlchemyMemoryContextProvider(session)
 
     def load_enabled_memories(self, user_id: str, *, limit: int) -> list[str]:
-        setting = self.session.get(UserMemorySetting, user_id)
-        if setting is None or not setting.enabled:
+        context = self.provider.search(user_id, "", surface="agent")
+        ids = [item.id for item in context.items[:limit]]
+        if not ids:
             return []
-        memories = self.session.scalars(
-            select(UserMemory)
-            .where(UserMemory.user_id == user_id)
-            .order_by(UserMemory.updated_at.desc(), UserMemory.id.desc())
-            .limit(limit)
-        ).all()
-        return [f"{item.label}：{item.content}" for item in memories]
+        rows = {row.id: row for row in self.session.scalars(select(UserMemory).where(UserMemory.id.in_(ids))).all()}
+        return [f"{rows[item.id].label}：{item.content}" for item in context.items[:limit] if item.id in rows]
+
+    def search(self, user_id: str, question: str):
+        return self.provider.search(user_id, question, surface="agent")

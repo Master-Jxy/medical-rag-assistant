@@ -23,7 +23,7 @@ def get_setting(current_user: UserResponse = Depends(get_current_user), service:
 
 @router.put("/memory-settings", response_model=MemorySettingResponse)
 def update_setting(payload: MemorySettingUpdate, current_user: UserResponse = Depends(get_current_user), service: UserMemoryService = Depends(get_user_memory_service)):
-    return service.update_setting(current_user.id, payload.enabled)
+    return service.update_setting(current_user.id, payload.enabled, payload.auto_extract_enabled)
 
 
 @router.get("/memories", response_model=UserMemoryListResponse)
@@ -44,4 +44,23 @@ def update_memory(memory_id: str, payload: UserMemoryWrite, current_user: UserRe
 @router.delete("/memories/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_memory(memory_id: str, current_user: UserResponse = Depends(get_current_user), service: UserMemoryService = Depends(get_user_memory_service)):
     service.delete(current_user.id, memory_id)
+    return Response(status_code=204)
+
+
+@router.post("/memories/{memory_id}/approve", response_model=UserMemoryResponse)
+def approve_memory(memory_id: str, current_user: UserResponse = Depends(get_current_user), service: UserMemoryService = Depends(get_user_memory_service)):
+    return service.transition(current_user.id, memory_id, "active")
+
+
+@router.post("/memories/{memory_id}/reject", response_model=UserMemoryResponse)
+def reject_memory(memory_id: str, current_user: UserResponse = Depends(get_current_user), service: UserMemoryService = Depends(get_user_memory_service)):
+    return service.transition(current_user.id, memory_id, "rejected")
+
+
+@router.delete("/memories", status_code=status.HTTP_204_NO_CONTENT)
+def clear_memories(confirm: bool = False, current_user: UserResponse = Depends(get_current_user), service: UserMemoryService = Depends(get_user_memory_service)):
+    if not confirm:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="需要明确确认清空")
+    service.clear(current_user.id)
     return Response(status_code=204)

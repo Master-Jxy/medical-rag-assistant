@@ -32,6 +32,11 @@ KNOWN_USER_FOREIGN_KEYS = {
     ("documents", "uploader_id"),
     ("knowledge_submissions", "submitter_id"),
     ("model_usage_records", "user_id"),
+    ("memory_extraction_runs", "user_id"),
+    ("quota_periods", "user_id"),
+    ("quota_reservations", "user_id"),
+    ("user_quota_assignments", "user_id"),
+    ("user_quota_assignments", "updated_by"),
     ("user_memories", "user_id"),
     ("user_memory_settings", "user_id"),
 }

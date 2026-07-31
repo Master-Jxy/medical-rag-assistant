@@ -3,6 +3,7 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends, Header, Query, status
 from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
@@ -41,6 +42,7 @@ from app.services.stream_cancellation_service import (
     StreamCancellationService,
     get_stream_cancellation_service,
 )
+from app.services.memory_extraction_runtime import run_memory_extraction_recovery
 
 router = APIRouter(prefix="/conversations", tags=["历史会话"])
 
@@ -207,4 +209,5 @@ async def stream_chat_in_conversation(
         event_generator(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        background=BackgroundTask(run_memory_extraction_recovery, 1),
     )

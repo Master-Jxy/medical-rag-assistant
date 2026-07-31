@@ -17,6 +17,7 @@ import AdminTelemetryView from '../views/AdminTelemetryView.vue'
 import SuperAdminUsersView from '../views/SuperAdminUsersView.vue'
 import AgentView from '../views/AgentView.vue'
 import AdminQualityView from '../views/AdminQualityView.vue'
+import AdminUsageView from '../views/AdminUsageView.vue'
 import { initializeAuth, useAuthSession } from '../auth/session.js'
 
 const authenticated = { requiresAuth: true }
@@ -43,6 +44,7 @@ const router = createRouter({
     { path: '/admin/knowledge', name: 'admin-knowledge', component: AdminKnowledgeView, meta: { ...adminOnly, title: '系统资料' } },
     { path: '/admin/telemetry', name: 'admin-telemetry', component: AdminTelemetryView, meta: { ...adminOnly, title: '运行统计' } },
     { path: '/admin/quality', name: 'admin-quality', component: AdminQualityView, meta: { ...adminOnly, title: '回答质量' } },
+    { path: '/admin/usage', name: 'admin-usage', component: AdminUsageView, meta: { ...adminOnly, title: '用量管理' } },
     { path: '/super-admin/users', name: 'super-admin-users', component: SuperAdminUsersView, meta: { ...superAdminOnly, title: '用户与角色' } },
   ],
 })

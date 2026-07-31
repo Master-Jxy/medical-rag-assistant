@@ -58,6 +58,14 @@ class Settings(BaseSettings):
     chat_output_price_per_million_tokens_cny: float | None = Field(
         default=None, ge=0, le=1000
     )
+    memory_auto_extraction_enabled: bool = False
+    memory_extraction_interval_turns: int = Field(default=3, ge=1, le=20)
+    memory_rag_max_items: int = Field(default=4, ge=1, le=20)
+    memory_agent_max_items: int = Field(default=6, ge=1, le=20)
+    quota_enforcement_enabled: bool = False
+    default_quota_plan_code: str = "free"
+    quota_rag_reserve_tokens: int = Field(default=4000, ge=1, le=200000)
+    quota_agent_reserve_tokens: int = Field(default=12000, ge=1, le=200000)
     embedding_model_name: str = "text-embedding-v4"
     dashscope_max_retries: int = Field(default=2, ge=0, le=10)
     chroma_persist_dir: Path = BACKEND_DIR / "chroma_db"

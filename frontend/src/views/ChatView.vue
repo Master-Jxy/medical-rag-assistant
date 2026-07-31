@@ -14,6 +14,7 @@ import { getApiErrorMessage } from '../api/http.js'
 import { submitAnswerFeedback } from '../api/quality.js'
 import { getDocumentTrace, openDocumentPreview } from '../api/citations.js'
 import MarkdownContent from '../components/MarkdownContent.vue'
+import UsageMeta from '../components/UsageMeta.vue'
 import { createUuid } from '../utils/uuid.js'
 
 const WELCOME_MESSAGE = {
@@ -54,6 +55,7 @@ function mapStoredMessage(message) {
     sourcesExpanded: false,
     requestId: message.request_id,
     status: message.status,
+    usage: message.usage || null,
     feedbackRating: null,
   }
 }
@@ -257,6 +259,7 @@ async function sendQuestion() {
         assistantMessage.requestId = data.request_id
         assistantMessage.disclaimer = data.disclaimer
         assistantMessage.status = 'completed'
+        assistantMessage.usage = data.usage || null
       },
       onStopped(data) {
         userMessage.id = data.user_message_id || userMessage.id
@@ -430,6 +433,7 @@ onMounted(async () => {
                 </div>
               </div>
               <div v-if="message.requestId" class="response-meta">请求标识：{{ message.requestId }}</div>
+              <UsageMeta v-if="message.role === 'assistant' && !message.streaming" :usage="message.usage" />
               <div v-if="message.role === 'assistant' && message.id !== 'welcome' && !message.streaming && message.status === 'completed'" class="answer-feedback" aria-label="回答反馈">
                 <span>这条回答有帮助吗？</span>
                 <button :class="{ active: message.feedbackRating === 'up' }" @click="rateAnswer(message, 'up')">👍</button>

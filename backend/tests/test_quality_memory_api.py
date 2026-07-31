@@ -50,7 +50,7 @@ def test_quality_and_memory_apis_enforce_user_and_admin_boundaries(tmp_path) -> 
             assert client.get("/api/v1/profile/memory-settings").status_code == 401
             assert client.get(
                 "/api/v1/profile/memory-settings", headers=auth_headers(owner.id)
-            ).json() == {"enabled": False}
+            ).json() == {"enabled": False, "auto_extract_enabled": False}
             created_memory = client.post(
                 "/api/v1/profile/memories",
                 json={"label": "表达偏好", "content": "使用简洁中文"},
@@ -64,7 +64,7 @@ def test_quality_and_memory_apis_enforce_user_and_admin_boundaries(tmp_path) -> 
                 "/api/v1/profile/memory-settings",
                 json={"enabled": True},
                 headers=auth_headers(owner.id),
-            ).json() == {"enabled": True}
+            ).json() == {"enabled": True, "auto_extract_enabled": False}
 
             feedback = client.put(
                 "/api/v1/quality/messages/quality-answer/feedback",

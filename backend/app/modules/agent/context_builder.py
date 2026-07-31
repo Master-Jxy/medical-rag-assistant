@@ -111,7 +111,12 @@ class AgentContextBuilder:
             included_ids.append(message.id)
         if thread.summary:
             sections.append(("更早会话摘要", thread.summary, False))
-        memories = self.memory.load_enabled_memories(user_id, limit=20)
+        search = getattr(self.memory, "search", None)
+        if callable(search):
+            memory_context = search(user_id, current_message.content)
+            memories = [item.content for item in memory_context.items]
+        else:
+            memories = self.memory.load_enabled_memories(user_id, limit=20)
         for memory in memories:
             sections.append(("用户显式记忆", memory, False))
 

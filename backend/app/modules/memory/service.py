@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
 from app.models import Conversation, Message
-from app.modules.memory.models import ConversationSummaryMemory, UserMemory, UserMemorySetting
+from app.modules.memory.models import ConversationSummaryMemory, UserMemory, UserMemoryRevision, UserMemorySetting
 from app.modules.memory.schemas import (
     MemorySettingResponse,
     UserMemoryListResponse,
@@ -26,7 +26,6 @@ class ConversationMemoryService:
         self.max_summary_chars = max_summary_chars
 
     def context_prefixes(self, user_id: str, conversation_id: str) -> list[tuple[str, str]]:
-        self._refresh_summary(user_id, conversation_id)
         prefixes = []
         summary = self.session.get(ConversationSummaryMemory, conversation_id)
         if summary:
@@ -34,12 +33,18 @@ class ConversationMemoryService:
         setting = self.session.get(UserMemorySetting, user_id)
         if setting and setting.enabled:
             memories = self.session.scalars(
-                select(UserMemory).where(UserMemory.user_id == user_id).order_by(UserMemory.updated_at).limit(20)
+                select(UserMemory).where(
+                    UserMemory.user_id == user_id,
+                    UserMemory.status == "active",
+                ).order_by(UserMemory.updated_at).limit(20)
             ).all()
             if memories:
                 text = "；".join(f"{item.label}：{item.content}" for item in memories)
                 prefixes.append(("user", f"用户主动保存的背景信息：{text[:2000]}"))
         return prefixes
+
+    def refresh_after_message(self, user_id: str, conversation_id: str) -> None:
+        self._refresh_summary(user_id, conversation_id)
 
     def _refresh_summary(self, user_id: str, conversation_id: str) -> None:
         owned = self.session.scalar(
@@ -91,17 +96,30 @@ class UserMemoryService:
 
     def get_setting(self, user_id: str):
         setting = self.session.get(UserMemorySetting, user_id)
-        return MemorySettingResponse(enabled=bool(setting and setting.enabled))
+        return MemorySettingResponse(
+            enabled=bool(setting and setting.enabled),
+            auto_extract_enabled=bool(setting and setting.auto_extract_enabled),
+        )
 
-    def update_setting(self, user_id: str, enabled: bool):
+    def update_setting(self, user_id: str, enabled: bool, auto_extract_enabled: bool | None = None):
         setting = self.session.get(UserMemorySetting, user_id)
         if setting is None:
-            setting = UserMemorySetting(user_id=user_id, enabled=enabled)
+            setting = UserMemorySetting(
+                user_id=user_id, enabled=enabled,
+                auto_extract_enabled=bool(auto_extract_enabled and enabled),
+            )
             self.session.add(setting)
         else:
             setting.enabled = enabled
+            if auto_extract_enabled is not None:
+                setting.auto_extract_enabled = bool(auto_extract_enabled and enabled)
+            if not enabled:
+                setting.auto_extract_enabled = False
         self.session.commit()
-        return MemorySettingResponse(enabled=enabled)
+        return MemorySettingResponse(
+            enabled=enabled,
+            auto_extract_enabled=bool(setting.auto_extract_enabled),
+        )
 
     def list(self, user_id: str):
         items = self.session.scalars(
@@ -110,15 +128,48 @@ class UserMemoryService:
         return UserMemoryListResponse(items=[UserMemoryResponse.model_validate(item) for item in items])
 
     def create(self, user_id: str, payload: UserMemoryWrite):
-        memory = UserMemory(user_id=user_id, label=payload.label, content=payload.content)
+        memory = UserMemory(
+            user_id=user_id, label=payload.label, content=payload.content,
+            category=getattr(payload, "category", "explicit_note"),
+            status="active", source_type="manual", created_by="user",
+        )
         self.session.add(memory); self.session.commit(); self.session.refresh(memory)
         return UserMemoryResponse.model_validate(memory)
 
     def update(self, user_id: str, memory_id: str, payload: UserMemoryWrite):
         memory = self._owned(user_id, memory_id)
-        memory.label = payload.label; memory.content = payload.content
+        version = self.session.scalar(
+            select(func.max(UserMemoryRevision.version_no)).where(UserMemoryRevision.memory_id == memory.id)
+        ) or 0
+        memory.label = payload.label; memory.content = payload.content; memory.category = payload.category
+        self.session.add(UserMemoryRevision(
+            memory_id=memory.id, version_no=version + 1, label=memory.label,
+            content=memory.content, category=memory.category, status=memory.status,
+            changed_by=user_id, change_reason="edited",
+        ))
         self.session.commit(); self.session.refresh(memory)
         return UserMemoryResponse.model_validate(memory)
+
+    def transition(self, user_id: str, memory_id: str, status: str):
+        memory = self._owned(user_id, memory_id)
+        if status not in ("active", "rejected"):
+            raise ValueError("invalid memory status")
+        memory.status = status
+        version = self.session.scalar(select(func.max(UserMemoryRevision.version_no)).where(
+            UserMemoryRevision.memory_id == memory.id)) or 0
+        self.session.add(UserMemoryRevision(
+            memory_id=memory.id, version_no=version + 1, label=memory.label,
+            content=memory.content, category=memory.category, status=status,
+            changed_by=user_id, change_reason="approved" if status == "active" else "rejected",
+        ))
+        self.session.commit(); self.session.refresh(memory)
+        return UserMemoryResponse.model_validate(memory)
+
+    def clear(self, user_id: str):
+        memories = self.session.scalars(select(UserMemory).where(UserMemory.user_id == user_id)).all()
+        for memory in memories:
+            self.session.delete(memory)
+        self.session.commit()
 
     def delete(self, user_id: str, memory_id: str):
         memory = self._owned(user_id, memory_id)

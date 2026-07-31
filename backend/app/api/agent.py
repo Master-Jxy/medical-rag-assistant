@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Query, Request, status
 from fastapi.responses import Response, StreamingResponse
+from starlette.background import BackgroundTask
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
@@ -38,6 +39,7 @@ from app.modules.agent.thread_schemas import (
 from app.modules.agent.thread_service import AgentThreadService
 from app.modules.memory.agent_context import SqlAlchemyAgentMemoryContext
 from app.modules.auth.dependencies import get_current_user
+from app.services.memory_extraction_runtime import run_memory_extraction_recovery
 from app.modules.auth.schemas import UserResponse
 from app.core.config import get_settings
 from app.services.chat_rate_limit_service import (
@@ -260,6 +262,7 @@ def _conversation_stream_response(
         events(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        background=BackgroundTask(run_memory_extraction_recovery, 1),
     )
 
 

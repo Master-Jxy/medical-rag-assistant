@@ -12,12 +12,22 @@ from app.modules.agent.thread_repository import (
     AgentThreadRepository,
 )
 from app.modules.agent.thread_schemas import AgentMessageResponse
+from app.modules.usage.query_service import UsageQueryService
 
 
 class AgentMessageService:
     def __init__(self, session: Session) -> None:
         self.session = session
         self.repository = AgentThreadRepository(session)
+        self.usage = UsageQueryService(session)
+
+    def _response(self, message) -> AgentMessageResponse:
+        response = AgentMessageResponse.model_validate(message)
+        if message.role == "assistant":
+            return response.model_copy(update={
+                "usage": self.usage.group_summary(message.id, message.user_id)
+            })
+        return response
 
     def list(
         self,
@@ -34,7 +44,7 @@ class AgentMessageService:
         except AgentThreadNotFoundError as exc:
             raise AgentThreadNotFoundAppError() from exc
         return [
-            AgentMessageResponse.model_validate(message) for message in messages
+            self._response(message) for message in messages
         ]
 
     def get(
@@ -49,4 +59,4 @@ class AgentMessageService:
             )
         except AgentMessageNotFoundError as exc:
             raise AgentMessageNotFoundAppError() from exc
-        return AgentMessageResponse.model_validate(message)
+        return self._response(message)

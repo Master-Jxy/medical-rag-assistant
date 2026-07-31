@@ -21,6 +21,7 @@ def test_rolling_summary_keeps_older_messages_outside_recent_three_rounds() -> N
         ]
         session.add(conversation); session.commit()
         service = ConversationMemoryService(session)
+        service.refresh_after_message("owner", "conversation-1")
         prefixes = service.context_prefixes("owner", "conversation-1")
         assert prefixes[0][0] == "assistant"
         assert "消息1" in prefixes[0][1]

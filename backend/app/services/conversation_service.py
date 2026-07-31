@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.exceptions import ConversationNotFoundError, ConversationStoreError
 from app.models import Conversation, Message
+from app.modules.usage.models import ModelUsageRecord
 from app.models.conversation import utc_now
 from app.schemas.conversation import (
     ConversationDeleteResponse,
@@ -78,7 +79,27 @@ class ConversationService:
         if conversation is None:
             raise ConversationNotFoundError()
 
-        messages = [MessageResponse.model_validate(message) for message in conversation.messages]
+        usage_rows = self.session.scalars(select(ModelUsageRecord).where(
+            ModelUsageRecord.usage_group_id.in_([m.id for m in conversation.messages])
+        )).all()
+        usage_by_message = {}
+        for row in usage_rows:
+            usage_by_message.setdefault(row.usage_group_id, []).append(row)
+        messages = []
+        for message in conversation.messages:
+            payload = MessageResponse.model_validate(message).model_dump()
+            rows = usage_by_message.get(message.id, [])
+            if rows:
+                if any(row.token_measurement == "unknown" for row in rows):
+                    payload["usage"] = {"measurement": "unknown"}
+                elif any(row.token_measurement == "actual" for row in rows):
+                    actual = [row for row in rows if row.token_measurement == "actual"]
+                    payload["usage"] = {"measurement": "actual", "input_tokens": sum(row.input_tokens or 0 for row in actual),
+                        "output_tokens": sum(row.output_tokens or 0 for row in actual), "total_tokens": sum(row.total_tokens or 0 for row in actual),
+                        "estimated_cost_cny": float(sum(row.estimated_cost_cny for row in actual)) if all(row.estimated_cost_cny is not None for row in actual) else None}
+                else:
+                    payload["usage"] = {"measurement": "not_applicable", "input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "estimated_cost_cny": 0}
+            messages.append(MessageResponse.model_validate(payload))
         return ConversationDetail(
             **self._to_summary(conversation, len(messages)).model_dump(),
             messages=messages,

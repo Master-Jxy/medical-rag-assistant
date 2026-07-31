@@ -45,6 +45,14 @@ class MessageSourceResponse(BaseModel):
     chunk_id: str | None = None
 
 
+class UsageSummaryResponse(BaseModel):
+    measurement: str
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+    estimated_cost_cny: float | None = None
+
+
 class MessageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -56,6 +64,7 @@ class MessageResponse(BaseModel):
     request_id: str | None
     created_at: datetime
     sources: list[MessageSourceResponse]
+    usage: UsageSummaryResponse | None = None
 
 
 class ConversationSummary(BaseModel):
@@ -93,3 +102,4 @@ class ConversationChatResponse(ChatResponse):
     conversation_id: str
     user_message_id: str
     assistant_message_id: str
+    usage: UsageSummaryResponse | None = None

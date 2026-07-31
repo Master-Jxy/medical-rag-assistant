@@ -102,3 +102,4 @@ class AgentMessageResponse(BaseModel):
     metadata: dict[str, object] = Field(validation_alias="message_metadata")
     created_at: datetime
     updated_at: datetime
+    usage: dict[str, object] | None = None
