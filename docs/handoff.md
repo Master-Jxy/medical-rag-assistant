@@ -26,6 +26,24 @@ off完成迁移和无费用验收后已切到shadow观察，**enforce和自动�
 - 设计与实现边界见`docs/frontend-redesign-v1.md`；发布提交未包含任务开始前已有的
   `backend/app/modules/auth/service.py`未提交修改。
 
+阶段20长会话布局热修复已完成并发布，功能提交为`5c40ca29`：
+
+- 根因是流式工作区仍使用可被长消息撑开的最小高度，页面滚动接管了消息区滚动。
+- 顶栏以下的RAG/Agent工作区现在固定为当前可视高度；历史栏和消息区独立滚动，输入器
+  始终留在聊天面板底部。移动端继续使用会话抽屉，不再重复计算整页视口高度。
+- 对标新星数科控制台和AI聊天页后，只吸收稳定导航、独立滚动区、居中正文与固定输入器
+  等布局思想；记录见`docs/ui-benchmark-xinxingshuke.md`，参考截图保存在Git忽略的
+  `reference/ui-research/`目录。
+- 本地使用无模型、无数据库写入的接口桩构造14条长消息，RAG和Agent在
+  `1440x900`、`900x900`、`390x844`下均保持页面`scrollY=0`，消息区独立滚动，输入器
+  与会话栏位置稳定；浏览器控制台应用错误为0。
+- 完整验证为后端446项、前端16文件59项、SSE解析和Vite正式构建通过；受保护auth
+  Service哈希仍为`9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。
+- 发布前完整备份为`/home/deploy/medical-rag-backups/backup-20260801T052010Z`，旧静态目录
+  保存在`/home/deploy/release-assets/20260801T0521Z-pre-layout-fix`。生产只重建`web`，
+  backend、MySQL、Redis和持久卷未变；四容器healthy，HTTP为308，六个HTTPS代表路由
+  为200，未登录`/api/v1/auth/me`为401，线上静态SHA-256与本地正式构建逐项一致。
+
 阶段17：
 
 - 17.1：`0022_memory_v2`、记忆Port/Repository/兼容迁移和无副作用上下文读取完成。
