@@ -12,6 +12,7 @@ vi.mock('../src/api/documents.js', () => documentsApi)
 vi.mock('../src/api/adminDocuments.js', () => adminApi)
 
 import AdminKnowledgeView from '../src/views/AdminKnowledgeView.vue'
+import ConfirmDialog from '../src/components/ConfirmDialog.vue'
 
 const systemDocument = {
   document_id: 'system-1',
@@ -33,8 +34,6 @@ beforeEach(() => {
 
 describe('管理员知识库页面', () => {
   it('只展示系统资料，并可新增、整体替换和删除', async () => {
-    const originalConfirm = window.confirm
-    window.confirm = vi.fn(() => true)
     const wrapper = mount(AdminKnowledgeView)
     await flushPromises()
 
@@ -57,8 +56,8 @@ describe('管理员知识库页面', () => {
     expect(adminApi.replaceSystemDocument).toHaveBeenCalledWith('system-1', replaceFile)
 
     await wrapper.get('.delete-button').trigger('click')
+    wrapper.findComponent(ConfirmDialog).vm.$emit('confirm')
     await flushPromises()
     expect(adminApi.deleteSystemDocument).toHaveBeenCalledWith('system-1')
-    window.confirm = originalConfirm
   })
 })

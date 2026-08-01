@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { Activity, Clock3, Gauge, RefreshCw } from '@lucide/vue'
 
 import { getTelemetryStats } from '../api/adminTelemetry.js'
 import { getApiErrorMessage } from '../api/http.js'
@@ -51,18 +52,18 @@ onMounted(loadStats)
 </script>
 
 <template>
-  <section class="telemetry-page">
-    <header>
-      <div><span>OBSERVABILITY</span><h1>运行统计</h1></div>
-      <button :disabled="loading" @click="loadStats">{{ loading ? '读取中…' : '刷新统计' }}</button>
+  <section class="platform-page telemetry-page">
+    <header class="page-toolbar">
+      <div><span>OBSERVABILITY</span><h1>运行统计</h1><p>查看服务请求、阶段耗时、模型计量与失败分布。</p></div>
+      <button class="secondary-action" :disabled="loading" @click="loadStats"><RefreshCw :size="15" />{{ loading ? '读取中…' : '刷新统计' }}</button>
     </header>
 
     <div v-if="errorMessage" class="notice error" role="alert">{{ errorMessage }}</div>
     <template v-if="stats">
       <section class="metric-grid">
-        <article><small>请求总量</small><strong>{{ stats.request_total }}</strong></article>
-        <article><small>成功率</small><strong>{{ successRate }}</strong></article>
-        <article><small>平均耗时</small><strong>{{ duration(stats.average_duration_ms) }}</strong></article>
+        <article><small>请求总量</small><strong>{{ stats.request_total }}</strong><Activity :size="18" /></article>
+        <article><small>成功率</small><strong>{{ successRate }}</strong><Gauge :size="18" /></article>
+        <article><small>平均耗时</small><strong>{{ duration(stats.average_duration_ms) }}</strong><Clock3 :size="18" /></article>
         <article><small>主动停止</small><strong>{{ stats.user_stop_count }}</strong></article>
         <article><small>Token 输入 / 输出</small><strong>{{ tokenLabel }}</strong></article>
         <article><small>估算费用</small><strong>{{ costLabel }}</strong></article>
@@ -89,7 +90,7 @@ onMounted(loadStats)
           <div><dt>向量检索</dt><dd>{{ duration(stats.stage_average_duration_ms.knowledge_retrieval) }}</dd></div>
           <div><dt>可选重排</dt><dd>{{ duration(stats.stage_average_duration_ms.rerank) }}</dd></div>
           <div><dt>模型生成</dt><dd>{{ duration(stats.stage_average_duration_ms.model_generation) }}</dd></div>
-          <div><dt>工具（阶段9预留）</dt><dd>{{ duration(stats.stage_average_duration_ms.tool) }}</dd></div>
+          <div><dt>工具调用</dt><dd>{{ duration(stats.stage_average_duration_ms.tool) }}</dd></div>
         </dl>
       </section>
 
@@ -113,26 +114,23 @@ onMounted(loadStats)
 </template>
 
 <style scoped>
-.telemetry-page { padding: 48px 0 64px; }
-header { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
-header span { color: var(--primary); font-size: 11px; font-weight: 800; letter-spacing: .16em; }
-header h1 { margin: 8px 0 0; font-size: 34px; }
-button { padding: 9px 15px; border: 1px solid var(--line); border-radius: 8px; background: white; cursor: pointer; }
+.secondary-action { min-height: 34px; display: inline-flex; align-items: center; gap: 7px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; color: var(--text-default); background: white; cursor: pointer; }
 button:disabled { opacity: .55; }
-.notice { margin-bottom: 14px; padding: 12px 15px; border-radius: 8px; }
-.notice.error { color: #a33f2f; background: #fff0ed; }
+.notice { margin-bottom: 14px; padding: 10px 12px; border: 1px solid #efc3bf; border-radius: 6px; }
+.notice.error { color: #982e2a; background: #fff8f7; }
 .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .metric-grid article, .telemetry-card { border: 1px solid var(--line); background: rgba(255,255,255,.9); }
-.metric-grid article { padding: 20px; border-radius: 8px; }
+.metric-grid article { position: relative; padding: 16px; border-radius: 8px; }
+.metric-grid article > svg { position: absolute; top: 16px; right: 16px; color: var(--text-muted); }
 .metric-grid small, dt { color: var(--muted); font-size: 12px; }
-.metric-grid strong { display: block; margin-top: 9px; font-size: 21px; }
-.telemetry-card { margin-top: 18px; padding: 22px; border-radius: 8px; }
-.telemetry-card h2 { margin: 0 0 16px; font-size: 17px; }
+.metric-grid strong { display: block; margin-top: 9px; font-size: 19px; }
+.telemetry-card { margin-top: 16px; padding: 16px; border-radius: 8px; }
+.telemetry-card h2 { margin: 0 0 14px; font-size: 14px; }
 dl { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 0; }
 dl div { padding: 12px; border-radius: 8px; background: #f4f8f6; }
 dd { margin: 5px 0 0; font-weight: 700; }
 .counter-row { display: flex; flex-wrap: wrap; gap: 9px; }
-.counter-row span { padding: 7px 10px; border-radius: 999px; background: #eef5f2; font-size: 12px; }
+.counter-row span { padding: 6px 9px; border: 1px solid #dce5e3; border-radius: 5px; background: #eef5f2; font-size: 11px; }
 table { width: 100%; margin-top: 16px; border-collapse: collapse; }
 th, td { padding: 10px; border-top: 1px solid var(--line); text-align: left; }
 .empty { color: var(--muted); }

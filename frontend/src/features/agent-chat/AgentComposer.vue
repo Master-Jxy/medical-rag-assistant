@@ -69,14 +69,14 @@ function handleKeydown(event) {
 .composer {
   position: absolute;
   z-index: 4;
-  right: 24px;
-  bottom: 16px;
-  left: 24px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: #fbfdfc;
-  box-shadow: 0 12px 30px rgba(24, 55, 42, .08);
+  right: max(18px, calc((100% - 920px) / 2));
+  bottom: 10px;
+  left: max(18px, calc((100% - 920px) / 2));
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(23, 32, 30, .08);
 }
 .composer label {
   position: absolute;
@@ -124,6 +124,6 @@ function handleKeydown(event) {
 }
 .composer small { color: var(--muted); }
 @media (max-width: 760px) {
-  .composer { right: 12px; bottom: 10px; left: 12px; }
+  .composer { right: 10px; bottom: 8px; left: 10px; }
 }
 </style>

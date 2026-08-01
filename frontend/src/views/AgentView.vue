@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, ref } from 'vue'
+import { Bot, PanelLeft, X } from '@lucide/vue'
 import { downloadAgentArtifact } from '../api/agent.js'
 import { getApiErrorMessage } from '../api/http.js'
 import { getDocumentTrace, openDocumentPreview } from '../api/citations.js'
@@ -22,6 +23,10 @@ const contextDrawerOpen = ref(false)
 const downloadingId = ref('')
 const composer = ref(null)
 const references = ref({ messageIds: [], sourceIds: [], artifactIds: [] })
+const renameTarget = ref(null)
+const renameTitle = ref('')
+const deleteTarget = ref(null)
+const threadActionPending = ref(false)
 
 async function focusComposer() {
   await nextTick()
@@ -113,12 +118,21 @@ async function createThread() {
 }
 
 async function renameThread(thread) {
-  const title = window.prompt('输入新的会话名称', thread.title)?.trim()
-  if (!title) return
+  renameTarget.value = thread
+  renameTitle.value = thread.title
+}
+
+async function confirmRename() {
+  const title = renameTitle.value.trim()
+  if (!renameTarget.value || !title || threadActionPending.value) return
+  threadActionPending.value = true
   try {
-    await threadState.renameThread(thread, title)
+    await threadState.renameThread(renameTarget.value, title)
+    renameTarget.value = null
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
+  } finally {
+    threadActionPending.value = false
   }
 }
 
@@ -151,17 +165,25 @@ async function showThreadStatus(status) {
 }
 
 async function removeThread(thread) {
-  if (!window.confirm(`删除“${thread.title}”及其消息、运行和产物？`)) return
+  deleteTarget.value = thread
+}
+
+async function confirmRemoveThread() {
+  if (!deleteTarget.value || threadActionPending.value) return
+  threadActionPending.value = true
   try {
-    await threadState.removeThread(thread)
+    await threadState.removeThread(deleteTarget.value)
     timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
     references.value = { messageIds: [], sourceIds: [], artifactIds: [] }
     selectedSource.value = null
     selectedArtifact.value = null
     contextDrawerOpen.value = false
+    deleteTarget.value = null
     notice.value = '会话已删除。'
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
+  } finally {
+    threadActionPending.value = false
   }
 }
 
@@ -272,11 +294,11 @@ onMounted(async () => {
     <header class="page-toolbar">
       <div>
         <span>AGENT CHAT V3.2</span>
-        <h1>Agent</h1>
-        <p>像聊天一样交付任务；运行时展示公开决策与工具调用，完成后自动折叠过程。</p>
+        <h1>Agent 工作台</h1>
+        <p>通过受控工具完成资料检索、比较、摘要和学习报告任务。</p>
       </div>
       <div class="mobile-tools">
-        <button aria-label="打开Agent会话列表" @click="threadDrawerOpen = true">会话</button>
+        <button aria-label="打开Agent会话列表" @click="threadDrawerOpen = true"><PanelLeft :size="17" />会话</button>
       </div>
     </header>
 
@@ -286,8 +308,9 @@ onMounted(async () => {
     <div v-if="notice" class="state-panel success">{{ notice }}</div>
 
     <div class="agent-workspace">
+      <button v-if="threadDrawerOpen" class="thread-backdrop" aria-label="关闭Agent会话列表" @click="threadDrawerOpen = false" />
       <div class="drawer-shell threads" :class="{ open: threadDrawerOpen }">
-        <button class="drawer-close" aria-label="关闭Agent会话列表" @click="threadDrawerOpen = false">×</button>
+        <button class="drawer-close" aria-label="关闭Agent会话列表" @click="threadDrawerOpen = false"><X :size="18" /></button>
         <AgentThreadSidebar
           :threads="threadState.threads.value"
           :selected-id="threadState.currentThread.value?.id || ''"
@@ -306,7 +329,7 @@ onMounted(async () => {
 
       <main class="conversation-shell">
         <div class="conversation-title">
-          <strong>{{ threadState.currentThread.value?.title || '新Agent会话' }}</strong>
+          <strong><Bot :size="16" />{{ threadState.currentThread.value?.title || '新Agent会话' }}</strong>
           <span v-if="stream.running.value"><i></i> Agent 正在工作</span>
         </div>
         <AgentConversation
@@ -333,7 +356,7 @@ onMounted(async () => {
 
       <div v-if="contextDrawerOpen" class="detail-overlay" @click.self="contextDrawerOpen = false">
         <div class="drawer-shell context open">
-        <button class="drawer-close" aria-label="关闭来源与产物" @click="contextDrawerOpen = false">×</button>
+        <button class="drawer-close" aria-label="关闭来源与产物" @click="contextDrawerOpen = false"><X :size="18" /></button>
         <AgentContextDrawer
           :sources="selectedSource ? [selectedSource] : []"
           :artifacts="selectedArtifact ? [selectedArtifact] : []"
@@ -348,32 +371,48 @@ onMounted(async () => {
         </div>
       </div>
     </div>
+
+    <div v-if="renameTarget" class="thread-dialog-backdrop" @click.self="!threadActionPending && (renameTarget = null)">
+      <form class="thread-dialog" role="dialog" aria-modal="true" aria-labelledby="rename-thread-title" @submit.prevent="confirmRename">
+        <header><div><span>会话设置</span><h2 id="rename-thread-title">重命名会话</h2></div><button type="button" aria-label="关闭" @click="renameTarget = null"><X :size="18" /></button></header>
+        <label>会话名称<input v-model="renameTitle" maxlength="80" autofocus /></label>
+        <footer><el-button :disabled="threadActionPending" @click="renameTarget = null">取消</el-button><el-button type="primary" native-type="submit" :loading="threadActionPending" :disabled="!renameTitle.trim()">保存</el-button></footer>
+      </form>
+    </div>
+
+    <div v-if="deleteTarget" class="thread-dialog-backdrop" @click.self="!threadActionPending && (deleteTarget = null)">
+      <div class="thread-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-thread-title">
+        <header><div><span>危险操作</span><h2 id="delete-thread-title">删除会话</h2></div><button type="button" aria-label="关闭" @click="deleteTarget = null"><X :size="18" /></button></header>
+        <p>“{{ deleteTarget.title }}”中的消息、运行记录与产物索引都会删除，此操作无法撤销。</p>
+        <footer><el-button :disabled="threadActionPending" @click="deleteTarget = null">取消</el-button><el-button type="danger" :loading="threadActionPending" @click="confirmRemoveThread">确认删除</el-button></footer>
+      </div>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.agent-page { min-width: 0; padding: 42px 0 56px; }
+.agent-page { min-width: 0; min-height: calc(100vh - 92px); display: flex; flex-direction: column; }
 .page-toolbar {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
   gap: 24px;
-  margin-bottom: 24px;
+  margin-bottom: 14px;
 }
 .page-toolbar span {
   color: var(--primary);
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: .16em;
+  letter-spacing: 0;
 }
-.page-toolbar h1 { margin: 8px 0 6px; font-size: 34px; }
-.page-toolbar p { margin: 0; color: var(--muted); font-size: 14px; }
+.page-toolbar h1 { margin: 3px 0 4px; font-size: 22px; line-height: 30px; }
+.page-toolbar p { margin: 0; color: var(--muted); font-size: 13px; }
 .agent-workspace {
-  height: min(720px, calc(100vh - 210px));
   min-height: 560px;
+  flex: 1;
   display: grid;
-  grid-template-columns: minmax(220px, 250px) minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 12px;
 }
 .drawer-shell { min-width: 0; min-height: 0; }
 .drawer-close, .mobile-tools { display: none; }
@@ -383,19 +422,19 @@ onMounted(async () => {
   min-height: 0;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, .9);
-  box-shadow: 0 24px 60px rgba(35, 87, 77, .08);
+  border-radius: 8px;
+  background: #fff;
 }
 .conversation-title {
-  height: 52px;
-  padding: 0 24px;
+  height: 48px;
+  padding: 0 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--line);
   background: rgba(255, 255, 255, .96);
 }
+.conversation-title strong { min-width: 0; display: flex; align-items: center; gap: 7px; overflow: hidden; color: var(--ink); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .conversation-title span {
   display: flex;
   align-items: center;
@@ -410,25 +449,38 @@ onMounted(async () => {
   background: #18a875;
   box-shadow: 0 0 0 5px rgba(24, 168, 117, .1);
 }
-.conversation-shell :deep(.conversation) { height: calc(100% - 52px); box-sizing: border-box; }
+.conversation-shell :deep(.conversation) { height: calc(100% - 48px); box-sizing: border-box; }
 .detail-overlay { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; padding: 24px; background: rgb(15 30 24 / 36%); }
 .detail-overlay .context { display: block; position: relative; width: min(560px, 100%); max-height: min(680px, calc(100vh - 48px)); }
 .detail-overlay .context :deep(aside) { max-height: inherit; box-shadow: 0 18px 50px rgb(20 40 31 / 24%); }
+.thread-dialog-backdrop { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 20px; background: rgba(18,39,34,.5); }
+.thread-dialog { width: min(460px, 100%); display: grid; gap: 16px; padding: 22px; border-radius: 8px; background: #fff; box-shadow: 0 24px 70px rgba(0,0,0,.22); }
+.thread-dialog header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.thread-dialog header span { color: var(--brand); font-size: 10px; font-weight: 700; }
+.thread-dialog h2 { margin: 3px 0 0; color: var(--ink); font-size: 18px; }
+.thread-dialog header button { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 5px; color: var(--muted); background: transparent; cursor: pointer; }
+.thread-dialog label { display: grid; gap: 6px; color: var(--ink); font-size: 12px; font-weight: 600; }
+.thread-dialog input { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 6px; outline: 0; }
+.thread-dialog input:focus { border-color: var(--action); box-shadow: 0 0 0 3px #e7efff; }
+.thread-dialog p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.thread-dialog footer { display: flex; justify-content: flex-end; gap: 8px; }
+.thread-backdrop { display: none; }
 @media (max-width: 1000px) {
   .mobile-tools { display: flex; gap: 8px; }
-  .mobile-tools button { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+  .mobile-tools button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
   .agent-workspace { grid-template-columns: minmax(0, 1fr); }
-  .drawer-shell { display: none; position: fixed; z-index: 30; top: 72px; bottom: 12px; width: min(330px, calc(100vw - 24px)); }
+  .drawer-shell { display: none; position: fixed; z-index: 72; top: 0; bottom: 0; width: min(310px, calc(100vw - 44px)); }
   .drawer-shell.open { display: block; }
-  .drawer-shell.threads { left: 12px; }
+  .drawer-shell.threads { left: 0; }
   .detail-overlay .drawer-shell.context { inset: auto; width: min(560px, 100%); }
-  .drawer-close { display: block; position: absolute; z-index: 2; top: 8px; right: 10px; border: 0; background: transparent; font-size: 22px; cursor: pointer; }
+  .drawer-close { width: 32px; height: 32px; display: grid; place-items: center; position: absolute; z-index: 2; top: 8px; right: 10px; border: 0; border-radius: 5px; color: var(--muted); background: transparent; cursor: pointer; }
   .drawer-shell :deep(aside) { box-shadow: 0 16px 40px rgb(20 40 31 / 22%); }
+  .thread-backdrop { position: fixed; inset: 0; z-index: 70; display: block; border: 0; background: rgba(15,24,22,.5); }
 }
 @media (max-width: 480px) {
-  .agent-page { padding-top: 24px; }
-  .agent-workspace { height: calc(100vh - 150px); min-height: 520px; }
-  .page-toolbar p { display: none; }
-  .page-toolbar h1 { font-size: 27px; }
+  .agent-page { min-height: 100vh; padding: 12px; }
+  .agent-workspace { min-height: 520px; }
+  .page-toolbar > div:first-child p, .page-toolbar > div:first-child > span { display: none; }
+  .page-toolbar h1 { margin: 2px 0; font-size: 18px; }
 }
 </style>

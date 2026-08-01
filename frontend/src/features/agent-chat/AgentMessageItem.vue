@@ -146,21 +146,21 @@ const usage = computed(() => props.message.usage || props.live?.usage || null)
 </template>
 
 <style scoped>
-.message-row { display: flex; gap: 13px; margin-bottom: 28px; }
+.message-row { max-width: 920px; display: flex; gap: 11px; margin: 0 auto 24px; }
 .message-row.user { flex-direction: row-reverse; }
 .avatar {
-  flex: 0 0 34px;
-  height: 34px;
+  flex: 0 0 32px;
+  height: 32px;
   display: grid;
   place-items: center;
-  border-radius: 11px;
+  border-radius: 6px;
   color: #fff;
   background: var(--primary);
   font-size: 13px;
   font-weight: 800;
 }
-.user .avatar { color: var(--ink); background: #e6eeeb; }
-.message-body { width: min(78%, 760px); min-width: 0; }
+.user .avatar { color: #fff; background: #355d7a; }
+.message-body { width: min(82%, 820px); min-width: 0; }
 .user .message-body { text-align: right; }
 .role-name {
   display: block;
@@ -169,8 +169,9 @@ const usage = computed(() => props.message.usage || props.live?.usage || null)
   font-size: 11px;
 }
 .bubble {
-  padding: 15px 17px;
-  border-radius: 6px 17px 17px 17px;
+  padding: 13px 15px;
+  border: 1px solid #e1e8e6;
+  border-radius: 8px;
   color: #29433e;
   background: #f1f6f4;
   line-height: 1.75;
@@ -178,11 +179,12 @@ const usage = computed(() => props.message.usage || props.live?.usage || null)
   overflow-wrap: anywhere;
   text-align: left;
 }
-.bubble.failed { color: #8c3e31; background: #fff3f0; }
+.bubble.failed { color: #8c3e31; border-color: #f0cac5; background: #fff3f0; }
 .user .bubble {
   color: #fff;
-  background: var(--primary);
-  border-radius: 17px 6px 17px 17px;
+  border-color: #355d7a;
+  background: #355d7a;
+  border-radius: 8px;
 }
 .sources, .artifacts { margin-top: 12px; text-align: left; }
 .parts-toggle {
@@ -205,7 +207,7 @@ const usage = computed(() => props.message.usage || props.live?.usage || null)
   margin-top: 7px;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: 6px;
   background: #fff;
 }
 .parts-list summary {
@@ -236,7 +238,7 @@ const usage = computed(() => props.message.usage || props.live?.usage || null)
   margin-top: 7px;
   padding: 11px 13px;
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: 6px;
   background: #fff;
 }
 .part-actions button, .artifact-row button, .message-actions button {

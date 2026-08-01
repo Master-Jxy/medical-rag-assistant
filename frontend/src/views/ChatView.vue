@@ -1,5 +1,17 @@
 <script setup>
 import { nextTick, onMounted, reactive, ref } from 'vue'
+import {
+  ChevronDown,
+  History,
+  PanelLeft,
+  Plus,
+  Send,
+  Square,
+  ThumbsDown,
+  ThumbsUp,
+  Trash2,
+  X,
+} from '@lucide/vue'
 
 import {
   createConversation,
@@ -39,6 +51,15 @@ const activeController = ref(null)
 const activeIdempotencyKey = ref('')
 const deleteTarget = ref(null)
 const deleting = ref(false)
+const mobileHistoryOpen = ref(false)
+const feedbackTarget = ref(null)
+const feedbackSubmitting = ref(false)
+const feedbackForm = reactive({
+  rating: 'up',
+  questionCategory: 'general',
+  issueCategory: 'other',
+  comment: '',
+})
 
 function mapStoredMessage(message) {
   let content = message.content
@@ -60,41 +81,31 @@ function mapStoredMessage(message) {
   }
 }
 
-async function rateAnswer(message, rating) {
+function openFeedback(message, rating) {
   if (!message.id || message.id === 'welcome' || message.streaming) return
-  const questionCategory = window.prompt(
-    '问题分类：symptom 症状 / medication 用药 / test 检查 / emergency 急症 / prevention 预防 / general 其他',
-    'general',
-  )
-  const allowedQuestions = ['symptom', 'medication', 'test', 'emergency', 'prevention', 'general']
-  if (questionCategory === null || !allowedQuestions.includes(questionCategory.trim())) {
-    if (questionCategory !== null) errorMessage.value = '问题分类不在允许范围内。'
-    return
-  }
-  let issueCategory = null
-  let comment = null
-  if (rating === 'down') {
-    issueCategory = window.prompt(
-      '问题类型：inaccurate 不准确 / irrelevant 不相关 / incomplete 不完整 / unsafe 不安全 / citation 引用 / other 其他',
-      'other',
-    )
-    const allowedIssues = ['inaccurate', 'irrelevant', 'incomplete', 'unsafe', 'citation', 'other']
-    if (issueCategory === null || !allowedIssues.includes(issueCategory.trim())) {
-      if (issueCategory !== null) errorMessage.value = '问题类型不在允许范围内。'
-      return
-    }
-    comment = window.prompt('可选：补充说明', '')?.trim() || null
-  }
+  feedbackTarget.value = message
+  feedbackForm.rating = rating
+  feedbackForm.questionCategory = 'general'
+  feedbackForm.issueCategory = 'other'
+  feedbackForm.comment = ''
+}
+
+async function submitFeedback() {
+  if (!feedbackTarget.value || feedbackSubmitting.value) return
+  feedbackSubmitting.value = true
   try {
-    const feedback = await submitAnswerFeedback(message.id, {
-      rating,
-      question_category: questionCategory.trim(),
-      issue_category: issueCategory?.trim() || null,
-      comment,
+    const feedback = await submitAnswerFeedback(feedbackTarget.value.id, {
+      rating: feedbackForm.rating,
+      question_category: feedbackForm.questionCategory,
+      issue_category: feedbackForm.rating === 'down' ? feedbackForm.issueCategory : null,
+      comment: feedbackForm.comment.trim() || null,
     })
-    message.feedbackRating = feedback.rating
+    feedbackTarget.value.feedbackRating = feedback.rating
+    feedbackTarget.value = null
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
+  } finally {
+    feedbackSubmitting.value = false
   }
 }
 
@@ -144,6 +155,7 @@ async function selectConversation(conversationId) {
     errorMessage.value = getApiErrorMessage(error)
   } finally {
     loadingMessages.value = false
+    mobileHistoryOpen.value = false
     await scrollToBottom()
     await focusQuestionInput()
   }
@@ -157,6 +169,7 @@ async function startNewConversation() {
     conversations.value.unshift(conversation)
     activeConversationId.value = conversation.id
     messages.value = [{ ...WELCOME_MESSAGE }]
+    mobileHistoryOpen.value = false
     await focusQuestionInput()
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
@@ -332,15 +345,34 @@ onMounted(async () => {
       <div>
         <span>KNOWLEDGE CHAT</span>
         <h1>知识库问答</h1>
-        <p>为您提供专业医疗知识问答服务。</p>
+        <p>基于已发布医学资料检索回答，并保留可追溯来源。</p>
       </div>
-      <div class="knowledge-status"><i></i> 本地知识库已连接</div>
+      <div class="chat-heading-actions">
+        <button
+          type="button"
+          class="mobile-history-button"
+          aria-label="打开历史会话"
+          @click="mobileHistoryOpen = true"
+        ><PanelLeft :size="17" />历史会话</button>
+        <div class="knowledge-status"><i></i> 知识库在线</div>
+      </div>
     </header>
 
     <div class="chat-workspace">
-      <aside class="conversation-sidebar">
+      <button
+        v-if="mobileHistoryOpen"
+        type="button"
+        class="history-backdrop"
+        aria-label="关闭历史会话"
+        @click="mobileHistoryOpen = false"
+      />
+      <aside class="conversation-sidebar" :class="{ 'mobile-open': mobileHistoryOpen }">
+        <div class="conversation-sidebar-head">
+          <strong><History :size="16" />会话</strong>
+          <button type="button" class="mobile-close-button" aria-label="关闭历史会话" @click="mobileHistoryOpen = false"><X :size="17" /></button>
+        </div>
         <el-button type="primary" round class="new-chat-button" :disabled="sending" @click="startNewConversation">
-          ＋ 新建会话
+          <Plus :size="16" />新建会话
         </el-button>
         <div class="sidebar-title">历史会话</div>
         <div v-if="loadingConversations" class="sidebar-state">正在加载…</div>
@@ -365,7 +397,7 @@ onMounted(async () => {
             :disabled="sending"
             @click.stop="requestDelete(conversation)"
           >
-            删除
+            <Trash2 :size="14" />
           </button>
         </div>
       </aside>
@@ -411,7 +443,7 @@ onMounted(async () => {
                   @click="message.sourcesExpanded = !message.sourcesExpanded"
                 >
                   <span>引用来源 · {{ message.sources.length }}</span>
-                  <i :class="{ expanded: message.sourcesExpanded }">⌄</i>
+                    <ChevronDown :size="15" :class="{ expanded: message.sourcesExpanded }" />
                 </button>
                 <div v-if="message.sourcesExpanded" :id="`sources-${message.id}`" class="sources-list">
                   <details v-for="(source, index) in message.sources" :key="`${message.id}-${index}`">
@@ -436,8 +468,8 @@ onMounted(async () => {
               <UsageMeta v-if="message.role === 'assistant' && !message.streaming" :usage="message.usage" />
               <div v-if="message.role === 'assistant' && message.id !== 'welcome' && !message.streaming && message.status === 'completed'" class="answer-feedback" aria-label="回答反馈">
                 <span>这条回答有帮助吗？</span>
-                <button :class="{ active: message.feedbackRating === 'up' }" @click="rateAnswer(message, 'up')">👍</button>
-                <button :class="{ active: message.feedbackRating === 'down' }" @click="rateAnswer(message, 'down')">👎</button>
+                <button type="button" aria-label="回答有帮助" :class="{ active: message.feedbackRating === 'up' }" @click="openFeedback(message, 'up')"><ThumbsUp :size="14" /></button>
+                <button type="button" aria-label="回答需改进" :class="{ active: message.feedbackRating === 'down' }" @click="openFeedback(message, 'down')"><ThumbsDown :size="14" /></button>
               </div>
             </div>
           </article>
@@ -461,13 +493,38 @@ onMounted(async () => {
           <div class="composer-footer">
             <span>{{ question.length }} / 2000</span>
             <el-button v-if="sending" type="danger" plain round :loading="stopping" :disabled="stopping" @click="stopGeneration">
-              {{ stopping ? '正在停止' : '停止生成' }}
+              <Square v-if="!stopping" :size="14" />{{ stopping ? '正在停止' : '停止生成' }}
             </el-button>
-            <el-button v-else type="primary" round native-type="submit" :disabled="!question.trim() || loadingMessages">发送问题</el-button>
+            <el-button v-else type="primary" round native-type="submit" :disabled="!question.trim() || loadingMessages"><Send :size="15" />发送</el-button>
           </div>
         </form>
         <p class="medical-note">回答仅用于学习和信息检索，不构成医疗建议。</p>
       </div>
+    </div>
+
+    <div v-if="feedbackTarget" class="dialog-backdrop" @click.self="!feedbackSubmitting && (feedbackTarget = null)">
+      <form class="feedback-dialog" role="dialog" aria-modal="true" aria-labelledby="feedback-title" @submit.prevent="submitFeedback">
+        <header>
+          <div><span>回答反馈</span><h2 id="feedback-title">{{ feedbackForm.rating === 'up' ? '这条回答有帮助' : '帮助我们改进回答' }}</h2></div>
+          <button type="button" aria-label="关闭反馈" :disabled="feedbackSubmitting" @click="feedbackTarget = null"><X :size="18" /></button>
+        </header>
+        <label>问题分类
+          <select v-model="feedbackForm.questionCategory">
+            <option value="general">其他</option><option value="symptom">症状</option><option value="medication">用药</option>
+            <option value="test">检查</option><option value="emergency">急症</option><option value="prevention">预防</option>
+          </select>
+        </label>
+        <label v-if="feedbackForm.rating === 'down'">需要改进的方面
+          <select v-model="feedbackForm.issueCategory">
+            <option value="inaccurate">不准确</option><option value="irrelevant">不相关</option><option value="incomplete">不完整</option>
+            <option value="unsafe">不安全</option><option value="citation">引用问题</option><option value="other">其他</option>
+          </select>
+        </label>
+        <label>补充说明（可选）
+          <textarea v-model="feedbackForm.comment" rows="3" maxlength="500" placeholder="说明哪些内容对你有帮助，或哪里需要改进"></textarea>
+        </label>
+        <footer><el-button :disabled="feedbackSubmitting" @click="feedbackTarget = null">取消</el-button><el-button type="primary" native-type="submit" :loading="feedbackSubmitting">提交反馈</el-button></footer>
+      </form>
     </div>
 
     <div v-if="deleteTarget" class="dialog-backdrop" @click.self="!deleting && (deleteTarget = null)">
@@ -485,51 +542,52 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.chat-page { padding: 48px 0 56px; }
-.chat-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
-.chat-heading span { color: var(--primary); font-size: 11px; font-weight: 800; letter-spacing: .16em; }
-.chat-heading h1 { margin: 8px 0 6px; font-size: 34px; letter-spacing: -.04em; }
-.chat-heading p { margin: 0; color: var(--muted); font-size: 14px; }
-.knowledge-status { color: var(--muted); font-size: 13px; white-space: nowrap; }
-.knowledge-status i { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: #18a875; box-shadow: 0 0 0 5px rgba(24,168,117,.1); }
-.chat-workspace { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; }
-.conversation-sidebar, .chat-panel { border: 1px solid var(--line); border-radius: 20px; background: rgba(255,255,255,.9); box-shadow: 0 24px 60px rgba(35,87,77,.08); }
-.conversation-sidebar { height: min(68vh, 680px); min-height: 520px; padding: 16px; overflow-y: auto; }
+.chat-page { min-height: calc(100vh - 92px); display: flex; flex-direction: column; }
+.chat-heading { align-items: center; flex: 0 0 auto; margin-bottom: 14px; }
+.chat-heading-actions { display: flex; align-items: center; gap: 10px; }
+.knowledge-status { display: inline-flex; align-items: center; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); background: #fff; font-size: 11px; white-space: nowrap; }
+.knowledge-status i { width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--success); }
+.mobile-history-button, .mobile-close-button { display: none; }
+.chat-workspace { min-height: 0; flex: 1; display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 12px; }
+.conversation-sidebar, .chat-panel { border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.conversation-sidebar { min-height: 0; padding: 12px; overflow-y: auto; }
+.conversation-sidebar-head { min-height: 32px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 0 5px; }
+.conversation-sidebar-head strong { display: flex; align-items: center; gap: 7px; color: var(--ink); font-size: 12px; }
 .new-chat-button { width: 100%; }
-.sidebar-title { margin: 22px 8px 10px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+.sidebar-title { margin: 18px 8px 7px; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: 0; }
 .sidebar-state { padding: 22px 8px; color: #91a09d; font-size: 12px; text-align: center; }
-.conversation-item { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; margin-bottom: 6px; padding: 5px; border-radius: 12px; color: var(--ink); background: transparent; cursor: pointer; }
-.conversation-item:hover { background: #f1f6f4; }
-.conversation-item.active { color: var(--primary-dark); background: #e8f3ef; }
+.conversation-item { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px; margin-bottom: 3px; padding: 3px; border-radius: 6px; color: var(--ink); background: transparent; cursor: pointer; }
+.conversation-item:hover { background: var(--bg-subtle); }
+.conversation-item.active { color: var(--primary-dark); background: #e8f3ef; box-shadow: inset 2px 0 var(--brand); }
 .conversation-main { min-width: 0; display: grid; gap: 5px; padding: 7px; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
 .conversation-main:disabled, .conversation-delete:disabled { cursor: not-allowed; opacity: .65; }
 .conversation-main strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .conversation-main small { color: var(--muted); font-size: 10px; }
-.conversation-delete { padding: 6px 7px; border: 0; border-radius: 7px; color: #ad5547; background: transparent; font-size: 10px; cursor: pointer; opacity: 0; }
+.conversation-delete { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 5px; color: var(--danger); background: transparent; cursor: pointer; opacity: 0; }
 .conversation-item:hover .conversation-delete, .conversation-item:focus-within .conversation-delete { opacity: 1; }
-.chat-panel { min-width: 0; overflow: hidden; }
-.message-area { height: min(52vh, 530px); min-height: 380px; overflow-y: auto; padding: 32px; }
+.chat-panel { min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; overflow: hidden; }
+.message-area { min-height: 360px; overflow-y: auto; padding: 24px clamp(18px, 4vw, 52px); scroll-behavior: smooth; }
 .message-loading { display: grid; height: 100%; place-items: center; color: var(--muted); font-size: 13px; }
-.message-row { display: flex; gap: 13px; margin-bottom: 28px; }
+.message-row { display: flex; gap: 11px; max-width: 920px; margin: 0 auto 24px; }
 .message-row.user { flex-direction: row-reverse; }
-.avatar { flex: 0 0 34px; height: 34px; display: grid; place-items: center; border-radius: 11px; color: white; background: var(--primary); font-size: 13px; font-weight: 800; }
-.user .avatar { color: var(--ink); background: #e6eeeb; }
-.message-body { max-width: min(78%, 760px); }
+.avatar { flex: 0 0 32px; height: 32px; display: grid; place-items: center; border-radius: 6px; color: white; background: var(--primary); font-size: 12px; font-weight: 700; }
+.user .avatar { color: #fff; background: #355d7a; }
+.message-body { max-width: min(82%, 820px); min-width: 0; }
 .user .message-body { text-align: right; }
-.role-name { display: block; margin: 0 4px 7px; color: var(--muted); font-size: 11px; }
-.bubble { padding: 15px 17px; border-radius: 6px 17px 17px 17px; color: #29433e; background: #f1f6f4; line-height: 1.75; white-space: pre-wrap; text-align: left; }
-.user .bubble { color: white; background: var(--primary); border-radius: 17px 6px 17px 17px; }
+.role-name { display: block; margin: 0 2px 6px; color: var(--muted); font-size: 10px; }
+.bubble { padding: 13px 15px; border: 1px solid #e1e8e6; border-radius: 8px; color: #29433e; background: var(--bg-subtle); line-height: 1.72; white-space: pre-wrap; text-align: left; }
+.user .bubble { color: #fff; border-color: #355d7a; background: #355d7a; }
 .sources { margin-top: 12px; text-align: left; }
 .sources-toggle { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 3px 0 8px; border: 0; color: var(--muted); background: transparent; font: inherit; font-size: 12px; font-weight: 700; text-align: left; cursor: pointer; }
-.sources-toggle i { font-style: normal; font-size: 16px; transition: transform .2s ease; }
-.sources-toggle i.expanded { transform: rotate(180deg); }
+.sources-toggle svg { transition: transform .2s ease; }
+.sources-toggle svg.expanded { transform: rotate(180deg); }
 .answer-feedback { display: flex; align-items: center; gap: 6px; margin-top: 9px; color: var(--muted); font-size: 12px; }
-.answer-feedback button { border: 1px solid var(--border); border-radius: 5px; background: #fff; cursor: pointer; }
+.answer-feedback button { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 1px solid var(--border); border-radius: 5px; color: var(--muted); background: #fff; cursor: pointer; }
 .answer-feedback button.active { border-color: var(--primary); background: #eff8f4; }
 .source-actions { display: flex; gap: 8px; margin-top: 8px; }
 .source-actions button { border: 0; padding: 0; background: none; color: var(--primary); cursor: pointer; }
 .source-trace { color: var(--muted); font-size: 12px; }
-details { margin-top: 7px; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: #fff; }
+details { margin-top: 7px; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
 summary { display: flex; justify-content: space-between; gap: 12px; padding: 11px 13px; cursor: pointer; color: var(--ink); font-size: 13px; }
 summary small { color: var(--muted); white-space: nowrap; }
 details p { margin: 0; padding: 0 13px 13px; color: var(--muted); font-size: 13px; line-height: 1.7; }
@@ -540,30 +598,55 @@ details p { margin: 0; padding: 0 13px 13px; color: var(--muted); font-size: 13p
 .thinking i:nth-child(3) { animation-delay: .4s; }
 .thinking span { margin-left: 5px; font-size: 13px; }
 @keyframes pulse { to { opacity: .25; transform: translateY(-2px); } }
-.error-banner { display: flex; justify-content: space-between; gap: 16px; margin: 0 24px 12px; padding: 11px 14px; border-radius: 10px; color: #a33f2f; background: #fff0ed; font-size: 13px; }
+.error-banner { display: flex; justify-content: space-between; gap: 16px; margin: 0 24px 10px; padding: 10px 13px; border: 1px solid #f0c4c0; border-radius: 6px; color: #a33f2f; background: #fff7f6; font-size: 12px; }
 .error-banner button { border: 0; color: inherit; background: transparent; cursor: pointer; }
-.composer { margin: 0 24px 10px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: #fbfdfc; }
+.composer { width: min(calc(100% - 48px), 920px); margin: 0 auto 8px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: #fff; box-shadow: 0 8px 24px rgba(23,32,30,.08); }
 textarea { width: 100%; resize: none; border: 0; outline: 0; color: var(--ink); background: transparent; font: inherit; line-height: 1.6; }
 textarea::placeholder { color: #9aaba7; }
 .composer-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
 .composer-footer span { color: #9aaba7; font-size: 11px; }
-.medical-note { margin: 0 0 16px; color: #91a09d; text-align: center; font-size: 11px; }
-.dialog-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgba(18,39,34,.45); backdrop-filter: blur(4px); }
-.delete-dialog { width: min(420px, 100%); padding: 28px; border-radius: 20px; background: white; box-shadow: 0 24px 80px rgba(0,0,0,.2); text-align: center; }
+.medical-note { margin: 0 0 10px; color: #91a09d; text-align: center; font-size: 10px; }
+.dialog-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 20px; background: rgba(18,39,34,.5); }
+.delete-dialog { width: min(420px, 100%); padding: 24px; border-radius: 8px; background: white; box-shadow: 0 24px 70px rgba(0,0,0,.22); text-align: center; }
 .warning-mark { width: 44px; height: 44px; display: grid; place-items: center; margin: 0 auto 14px; border-radius: 50%; color: #bd4b39; background: #fff0ed; font-size: 22px; font-weight: 800; }
 .delete-dialog h2 { margin: 0; font-size: 20px; }
 .delete-dialog p { margin: 12px 0 22px; color: var(--muted); font-size: 13px; line-height: 1.7; }
 .delete-dialog > div:last-child { display: flex; justify-content: center; gap: 10px; }
+.feedback-dialog { width: min(520px, 100%); display: grid; gap: 15px; padding: 22px; border-radius: 8px; background: #fff; box-shadow: 0 24px 70px rgba(0,0,0,.22); }
+.feedback-dialog header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.feedback-dialog header span { color: var(--brand); font-size: 10px; font-weight: 700; }
+.feedback-dialog h2 { margin: 3px 0 0; color: var(--ink); font-size: 18px; }
+.feedback-dialog header button { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 5px; color: var(--muted); background: transparent; cursor: pointer; }
+.feedback-dialog header button:hover { background: var(--bg-subtle); }
+.feedback-dialog label { display: grid; gap: 6px; color: var(--ink); font-size: 12px; font-weight: 600; }
+.feedback-dialog select, .feedback-dialog textarea { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; outline: 0; background: #fff; font-weight: 400; }
+.feedback-dialog textarea { min-height: 84px; resize: vertical; }
+.feedback-dialog select:focus, .feedback-dialog textarea:focus { border-color: var(--action); box-shadow: 0 0 0 3px #e7efff; }
+.feedback-dialog footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
+.history-backdrop { display: none; }
 @media (max-width: 800px) {
-  .chat-workspace { grid-template-columns: 1fr; }
-  .conversation-sidebar { height: auto; min-height: 0; max-height: 220px; }
+  .chat-page { min-height: calc(100vh - 70px); padding: 12px; }
+  .mobile-history-button { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: #fff; font-size: 12px; cursor: pointer; }
+  .chat-workspace { display: block; min-height: 0; flex: 1; }
+  .conversation-sidebar { position: fixed; top: 0; bottom: 0; left: 0; z-index: 72; width: min(300px, calc(100vw - 44px)); border-radius: 0; transform: translateX(-100%); transition: transform .18s ease; }
+  .conversation-sidebar.mobile-open { transform: translateX(0); }
+  .mobile-close-button { width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 5px; color: var(--muted); background: transparent; }
+  .history-backdrop { position: fixed; inset: 0; z-index: 70; display: block; border: 0; background: rgba(15,24,22,.5); }
+  .chat-panel { height: calc(100vh - 142px); }
   .conversation-delete { opacity: 1; }
 }
 @media (max-width: 700px) {
-  .chat-page { padding-top: 28px; }
-  .chat-heading { align-items: start; flex-direction: column; }
-  .message-area { min-height: 360px; padding: 20px 14px; }
+  .chat-heading { align-items: flex-start; flex-direction: row; gap: 8px; margin-bottom: 10px; }
+  .chat-heading > div:first-child p, .chat-heading > div:first-child > span, .knowledge-status { display: none; }
+  .chat-heading h1 { margin: 2px 0; font-size: 18px; line-height: 30px; }
+  .chat-heading-actions { margin-left: auto; }
+  .message-area { min-height: 0; padding: 18px 12px; }
+  .message-row { gap: 8px; margin-bottom: 20px; }
+  .avatar { flex-basis: 28px; height: 28px; }
   .message-body { max-width: calc(100% - 47px); }
-  .composer { margin-inline: 12px; }
+  .bubble { padding: 11px 12px; }
+  .composer { width: calc(100% - 20px); }
+  .composer textarea { min-height: 48px; }
+  .medical-note { margin-bottom: 7px; }
 }
 </style>

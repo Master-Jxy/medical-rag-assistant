@@ -71,10 +71,9 @@ defineEmits([
   padding: 16px;
   overflow: auto;
   box-sizing: border-box;
-  background: rgba(255, 255, 255, .92);
+  background: #fff;
   border: 1px solid var(--line);
-  border-radius: 20px;
-  box-shadow: 0 24px 60px rgba(35, 87, 77, .08);
+  border-radius: 8px;
 }
 .new-thread { width: 100%; }
 .status-tabs {
@@ -83,13 +82,13 @@ defineEmits([
   gap: 4px;
   margin-top: 13px;
   padding: 3px;
-  border-radius: 9px;
+  border-radius: 6px;
   background: #f0f3f1;
 }
 .status-tabs button {
   padding: 7px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 5px;
   color: var(--muted);
   background: transparent;
   cursor: pointer;
@@ -105,16 +104,16 @@ defineEmits([
   color: var(--muted);
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: .08em;
+  letter-spacing: 0;
 }
 .thread-row {
   margin-bottom: 6px;
   padding: 5px;
-  border-radius: 12px;
+  border-radius: 6px;
   background: transparent;
 }
 .thread-row:hover { background: #f1f6f4; }
-.thread-row.active { background: #e8f3ef; }
+.thread-row.active { background: #e8f3ef; box-shadow: inset 2px 0 var(--brand); }
 .thread-main {
   width: 100%;
   min-width: 0;

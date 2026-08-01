@@ -67,7 +67,7 @@ describe('AdminUsageView额度权限', () => {
     authState.user = { role: 'super_admin' }
     const wrapper = mount(AdminUsageView)
     await flushPromises()
-    await wrapper.get('button').trigger('click')
+    await wrapper.get('.text-action').trigger('click')
 
     const dialog = wrapper.get('.quota-dialog')
     expect(dialog.text()).not.toContain('计划')

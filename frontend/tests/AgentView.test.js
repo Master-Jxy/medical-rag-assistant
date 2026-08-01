@@ -379,20 +379,19 @@ describe('Codex式资料Agent工作台', () => {
 
   it('删除最后一个会话后同步清空右侧消息和运行详情', async () => {
     agentApi.deleteAgentThread.mockResolvedValue()
-    const previousConfirm = window.confirm
-    window.confirm = vi.fn(() => true)
     const wrapper = mountView()
     await flushPromises()
 
     expect(wrapper.text()).toContain('学习报告已完成')
     await wrapper.get('.thread-actions .danger').trigger('click')
+    expect(wrapper.get('.thread-dialog').text()).toContain('删除会话')
+    await wrapper.findAll('.thread-dialog footer button')[1].trigger('click')
     await flushPromises()
 
     expect(agentApi.deleteAgentThread).toHaveBeenCalledWith('thread-1')
     expect(wrapper.text()).not.toContain('学习报告已完成')
     expect(wrapper.text()).toContain('开始一段 Agent 对话')
     expect(wrapper.text()).toContain('新Agent会话')
-    window.confirm = previousConfirm
   })
 
   it('时间线按sequence排序并对重复SSE实体做幂等更新', () => {
