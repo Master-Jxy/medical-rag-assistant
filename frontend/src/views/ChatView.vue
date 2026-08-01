@@ -542,15 +542,15 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.chat-page { min-height: calc(100vh - 92px); display: flex; flex-direction: column; }
+.chat-page { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .chat-heading { align-items: center; flex: 0 0 auto; margin-bottom: 14px; }
 .chat-heading-actions { display: flex; align-items: center; gap: 10px; }
 .knowledge-status { display: inline-flex; align-items: center; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); background: #fff; font-size: 11px; white-space: nowrap; }
 .knowledge-status i { width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--success); }
 .mobile-history-button, .mobile-close-button { display: none; }
-.chat-workspace { min-height: 0; flex: 1; display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 12px; }
+.chat-workspace { min-height: 0; flex: 1; display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 12px; overflow: hidden; }
 .conversation-sidebar, .chat-panel { border: 1px solid var(--line); border-radius: 8px; background: #fff; }
-.conversation-sidebar { min-height: 0; padding: 12px; overflow-y: auto; }
+.conversation-sidebar { min-height: 0; max-height: 100%; padding: 12px; overflow-y: auto; }
 .conversation-sidebar-head { min-height: 32px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 0 5px; }
 .conversation-sidebar-head strong { display: flex; align-items: center; gap: 7px; color: var(--ink); font-size: 12px; }
 .new-chat-button { width: 100%; }
@@ -565,8 +565,8 @@ onMounted(async () => {
 .conversation-main small { color: var(--muted); font-size: 10px; }
 .conversation-delete { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 5px; color: var(--danger); background: transparent; cursor: pointer; opacity: 0; }
 .conversation-item:hover .conversation-delete, .conversation-item:focus-within .conversation-delete { opacity: 1; }
-.chat-panel { min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; overflow: hidden; }
-.message-area { min-height: 360px; overflow-y: auto; padding: 24px clamp(18px, 4vw, 52px); scroll-behavior: smooth; }
+.chat-panel { min-width: 0; min-height: 0; height: 100%; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; overflow: hidden; }
+.message-area { min-height: 0; overflow-y: auto; padding: 24px clamp(18px, 4vw, 52px); scroll-behavior: smooth; }
 .message-loading { display: grid; height: 100%; place-items: center; color: var(--muted); font-size: 13px; }
 .message-row { display: flex; gap: 11px; max-width: 920px; margin: 0 auto 24px; }
 .message-row.user { flex-direction: row-reverse; }
@@ -625,14 +625,14 @@ textarea::placeholder { color: #9aaba7; }
 .feedback-dialog footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
 .history-backdrop { display: none; }
 @media (max-width: 800px) {
-  .chat-page { min-height: calc(100vh - 70px); padding: 12px; }
+  .chat-page { padding: 12px; }
   .mobile-history-button { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: #fff; font-size: 12px; cursor: pointer; }
   .chat-workspace { display: block; min-height: 0; flex: 1; }
   .conversation-sidebar { position: fixed; top: 0; bottom: 0; left: 0; z-index: 72; width: min(300px, calc(100vw - 44px)); border-radius: 0; transform: translateX(-100%); transition: transform .18s ease; }
   .conversation-sidebar.mobile-open { transform: translateX(0); }
   .mobile-close-button { width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 5px; color: var(--muted); background: transparent; }
   .history-backdrop { position: fixed; inset: 0; z-index: 70; display: block; border: 0; background: rgba(15,24,22,.5); }
-  .chat-panel { height: calc(100vh - 142px); }
+  .chat-panel { height: 100%; }
   .conversation-delete { opacity: 1; }
 }
 @media (max-width: 700px) {

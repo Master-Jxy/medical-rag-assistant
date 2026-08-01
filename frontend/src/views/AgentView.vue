@@ -391,7 +391,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.agent-page { min-width: 0; min-height: calc(100vh - 92px); display: flex; flex-direction: column; }
+.agent-page { min-width: 0; height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .page-toolbar {
   display: flex;
   align-items: center;
@@ -408,13 +408,14 @@ onMounted(async () => {
 .page-toolbar h1 { margin: 3px 0 4px; font-size: 22px; line-height: 30px; }
 .page-toolbar p { margin: 0; color: var(--muted); font-size: 13px; }
 .agent-workspace {
-  min-height: 560px;
+  min-height: 0;
   flex: 1;
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
   gap: 12px;
+  overflow: hidden;
 }
-.drawer-shell { min-width: 0; min-height: 0; }
+.drawer-shell { min-width: 0; min-height: 0; overflow: hidden; }
 .drawer-close, .mobile-tools { display: none; }
 .conversation-shell {
   position: relative;
@@ -478,8 +479,7 @@ onMounted(async () => {
   .thread-backdrop { position: fixed; inset: 0; z-index: 70; display: block; border: 0; background: rgba(15,24,22,.5); }
 }
 @media (max-width: 480px) {
-  .agent-page { min-height: 100vh; padding: 12px; }
-  .agent-workspace { min-height: 520px; }
+  .agent-page { padding: 12px; }
   .page-toolbar > div:first-child p, .page-toolbar > div:first-child > span { display: none; }
   .page-toolbar h1 { margin: 2px 0; font-size: 18px; }
 }

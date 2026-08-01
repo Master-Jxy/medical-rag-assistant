@@ -226,7 +226,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 .account-popover a:hover, .account-popover button:hover { background: var(--bg-subtle); color: var(--text-strong); }
 .app-content { width: min(calc(100% - 48px), 1280px); margin: 0 auto; padding: 24px 0 48px; }
-.app-content--fluid { width: calc(100% - 32px); max-width: 1480px; padding-top: 18px; }
+.app-content--fluid {
+  width: calc(100% - 32px);
+  height: calc(100dvh - 56px);
+  min-height: 0;
+  max-width: 1480px;
+  padding: 18px 0 16px;
+  overflow: hidden;
+}
 .drawer-backdrop { display: none; }
 
 .public-shell { min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; background: var(--bg-canvas); }
@@ -384,7 +391,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .drawer-backdrop { position: fixed; inset: 0; z-index: 25; display: block; border: 0; background: rgba(15, 24, 22, .5); }
   .menu-button { display: inline-grid; }
   .app-content { width: min(calc(100% - 32px), 1280px); padding-top: 20px; }
-  .app-content--fluid { width: calc(100% - 24px); padding-top: 12px; }
+  .app-content--fluid { width: calc(100% - 24px); padding: 12px 0; }
 }
 
 @media (max-width: 640px) {
@@ -393,7 +400,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .topbar-actions { gap: 8px; }
   .account-menu > summary { padding-right: 2px; }
   .app-content { width: calc(100% - 24px); padding: 16px 0 32px; }
-  .app-content--fluid { width: 100%; padding: 0; }
+  .app-content--fluid { width: 100%; height: calc(100dvh - 54px); padding: 0; }
   .page-toolbar, .page-heading, .chat-heading { align-items: stretch; flex-direction: column; gap: 11px; margin-bottom: 16px; }
   .page-toolbar h1, .page-heading h1, .chat-heading h1 { font-size: 20px; line-height: 28px; }
   .page-toolbar > .el-button, .page-toolbar > .primary-link { align-self: flex-start; }
