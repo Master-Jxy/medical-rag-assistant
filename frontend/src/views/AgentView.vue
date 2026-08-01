@@ -393,26 +393,23 @@ onMounted(async () => {
 <style scoped>
 .agent-page { min-width: 0; height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .page-toolbar {
-  display: flex;
+  min-height: 56px;
+  display: none;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 14px;
+  gap: 16px;
+  margin-bottom: 10px;
+  padding: 8px 14px;
+  border-radius: 18px;
 }
-.page-toolbar span {
-  color: var(--primary);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0;
-}
-.page-toolbar h1 { margin: 3px 0 4px; font-size: 30px; line-height: 38px; }
-.page-toolbar p { margin: 0; color: var(--muted); font-size: 13px; }
+.page-toolbar > div:first-child > span, .page-toolbar p { display: none; }
+.page-toolbar h1 { margin: 0; font-size: 18px; line-height: 28px; }
 .agent-workspace {
   min-height: 0;
   flex: 1;
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 10px;
   overflow: hidden;
 }
 .drawer-shell { min-width: 0; min-height: 0; overflow: hidden; }
@@ -427,7 +424,7 @@ onMounted(async () => {
   background: #fff;
 }
 .conversation-title {
-  height: 48px;
+  height: 42px;
   padding: 0 18px;
   display: flex;
   align-items: center;
@@ -450,7 +447,7 @@ onMounted(async () => {
   background: var(--ui-success);
   box-shadow: 0 0 0 5px rgba(58, 155, 114, .1);
 }
-.conversation-shell :deep(.conversation) { height: calc(100% - 48px); box-sizing: border-box; }
+.conversation-shell :deep(.conversation) { height: calc(100% - 42px); box-sizing: border-box; }
 .detail-overlay { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; padding: 24px; background: rgb(15 30 24 / 36%); }
 .detail-overlay .context { display: block; position: relative; width: min(560px, 100%); max-height: min(680px, calc(100vh - 48px)); }
 .detail-overlay .context :deep(aside) { max-height: inherit; box-shadow: 0 18px 50px rgb(20 40 31 / 24%); }
@@ -467,6 +464,7 @@ onMounted(async () => {
 .thread-dialog footer { display: flex; justify-content: flex-end; gap: 8px; }
 .thread-backdrop { display: none; }
 @media (max-width: 1000px) {
+  .page-toolbar { display: flex; }
   .mobile-tools { display: flex; gap: 8px; }
   .mobile-tools button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
   .agent-workspace { grid-template-columns: minmax(0, 1fr); }

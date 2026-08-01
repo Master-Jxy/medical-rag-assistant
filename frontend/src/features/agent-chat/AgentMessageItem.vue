@@ -146,7 +146,7 @@ const usage = computed(() => props.message.usage || props.live?.usage || null)
 </template>
 
 <style scoped>
-.message-row { max-width: 920px; display: flex; gap: 11px; margin: 0 auto 24px; }
+.message-row { max-width: 960px; display: flex; gap: 10px; margin: 0 auto 18px; }
 .message-row.user { flex-direction: row-reverse; }
 .avatar {
   flex: 0 0 32px;
@@ -169,12 +169,13 @@ const usage = computed(() => props.message.usage || props.live?.usage || null)
   font-size: 11px;
 }
 .bubble {
-  padding: 13px 15px;
+  padding: 11px 13px;
   border: 1px solid #e1e8e6;
   border-radius: 8px;
   color: #29433e;
   background: #f1f6f4;
-  line-height: 1.75;
+  font-size: 13px;
+  line-height: 1.62;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   text-align: left;

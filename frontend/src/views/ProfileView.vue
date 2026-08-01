@@ -10,15 +10,15 @@ import UsageCenter from '../features/profile/UsageCenter.vue'
 const profile = ref(null)
 const loading = ref(true)
 const errorMessage = ref('')
-const activeTab = ref('account')
+const activeTab = ref('usage')
 
 const initials = computed(() => (profile.value?.display_name || profile.value?.email || 'U').slice(0, 1).toUpperCase())
 const roleLabel = computed(() => ({ user: '普通用户', admin: '管理员', super_admin: '超级管理员' }[profile.value?.role] || profile.value?.role))
 
 const tabs = [
+  { id: 'usage', label: '用量与额度', icon: WalletCards },
   { id: 'account', label: '账号信息', icon: CircleUserRound },
   { id: 'memory', label: '长期记忆', icon: BrainCircuit },
-  { id: 'usage', label: '用量与额度', icon: WalletCards },
 ]
 
 async function load() {

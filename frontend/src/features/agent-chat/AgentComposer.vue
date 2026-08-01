@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 
 const props = defineProps({
   disabled: Boolean,
@@ -12,6 +12,7 @@ const textarea = ref(null)
 const canSend = computed(() => value.value.trim() && !props.disabled)
 
 function focus() {
+  resizeTextarea()
   if (!props.disabled) textarea.value?.focus()
 }
 
@@ -22,6 +23,18 @@ function submit() {
   if (!content || props.disabled) return
   emit('send', content)
   value.value = ''
+  nextTick(resizeTextarea)
+}
+
+function resizeTextarea() {
+  const input = textarea.value
+  if (!input) return
+  input.style.height = 'auto'
+  const lineHeight = Number.parseFloat(window.getComputedStyle(input).lineHeight) || 22
+  const maxHeight = lineHeight * 4
+  const nextHeight = Math.min(input.scrollHeight, maxHeight)
+  input.style.height = `${Math.max(lineHeight, nextHeight)}px`
+  input.style.overflowY = input.scrollHeight > maxHeight ? 'auto' : 'hidden'
 }
 
 function handleKeydown(event) {
@@ -50,13 +63,14 @@ function handleKeydown(event) {
       id="agent-message"
       v-model="value"
       maxlength="4000"
-      rows="3"
+      rows="1"
       placeholder="输入任务，Enter 发送，Shift + Enter 换行"
       :disabled="disabled"
+      @input="resizeTextarea"
       @keydown="handleKeydown"
     />
     <div class="composer-footer">
-      <small>{{ value.length }} / 4000</small>
+      <small v-if="value.length">{{ value.length }} / 4000</small>
       <el-button v-if="running" type="danger" plain round @click="$emit('stop')">停止生成</el-button>
       <el-button v-else type="primary" round native-type="submit" :disabled="!canSend">
         发送任务
@@ -69,10 +83,14 @@ function handleKeydown(event) {
 .composer {
   position: absolute;
   z-index: 4;
-  right: max(18px, calc((100% - 920px) / 2));
-  bottom: 10px;
-  left: max(18px, calc((100% - 920px) / 2));
-  padding: 10px 12px;
+  right: max(18px, calc((100% - 960px) / 2));
+  bottom: 8px;
+  left: max(18px, calc((100% - 960px) / 2));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 8px 10px;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   background: #fff;
@@ -105,22 +123,27 @@ function handleKeydown(event) {
 }
 .composer textarea {
   width: 100%;
+  min-height: 22px;
+  max-height: 88px;
+  align-self: center;
   resize: none;
+  overflow-y: hidden;
   border: 0;
   outline: 0;
   box-sizing: border-box;
   color: var(--ink);
   background: transparent;
   font: inherit;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 22px;
 }
 .composer textarea::placeholder { color: #9aaba7; }
 .composer-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
-  margin-top: 6px;
+  margin: 0;
 }
 .composer small { color: var(--muted); }
 @media (max-width: 760px) {

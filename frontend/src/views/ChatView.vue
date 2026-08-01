@@ -129,7 +129,19 @@ function scrollToBottom() {
 
 async function focusQuestionInput() {
   await nextTick()
+  resizeQuestionInput()
   if (!sending.value && !loadingMessages.value) questionInput.value?.focus()
+}
+
+function resizeQuestionInput() {
+  const input = questionInput.value
+  if (!input) return
+  input.style.height = 'auto'
+  const lineHeight = Number.parseFloat(window.getComputedStyle(input).lineHeight) || 22
+  const maxHeight = lineHeight * 4
+  const nextHeight = Math.min(input.scrollHeight, maxHeight)
+  input.style.height = `${Math.max(lineHeight, nextHeight)}px`
+  input.style.overflowY = input.scrollHeight > maxHeight ? 'auto' : 'hidden'
 }
 
 async function refreshConversationList() {
@@ -250,6 +262,7 @@ async function sendQuestion() {
   messages.value.push(userMessage, assistantMessage)
   question.value = ''
   sending.value = true
+  nextTick(resizeQuestionInput)
   activeController.value = new AbortController()
   const idempotencyKey = createUuid()
   activeIdempotencyKey.value = idempotencyKey
@@ -484,14 +497,15 @@ onMounted(async () => {
             ref="questionInput"
             v-model="question"
             maxlength="2000"
-            rows="3"
+            rows="1"
             aria-label="输入知识库问题"
             placeholder="输入问题，Enter 发送，Shift + Enter 换行"
             :disabled="sending || loadingMessages"
+            @input="resizeQuestionInput"
             @keydown="handleKeydown"
           ></textarea>
           <div class="composer-footer">
-            <span>{{ question.length }} / 2000</span>
+            <span v-if="question.length">{{ question.length }} / 2000</span>
             <el-button v-if="sending" type="danger" plain round :loading="stopping" :disabled="stopping" @click="stopGeneration">
               <Square v-if="!stopping" :size="14" />{{ stopping ? '正在停止' : '停止生成' }}
             </el-button>
@@ -543,12 +557,14 @@ onMounted(async () => {
 
 <style scoped>
 .chat-page { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-.chat-heading { align-items: center; flex: 0 0 auto; margin-bottom: 14px; }
+.chat-heading { display: none; min-height: 56px; align-items: center; flex: 0 0 auto; margin-bottom: 10px; padding: 8px 14px; border-radius: 18px; }
+.chat-heading > div:first-child > span, .chat-heading p { display: none; }
+.chat-heading h1 { margin: 0; font-size: 18px; line-height: 28px; }
 .chat-heading-actions { display: flex; align-items: center; gap: 10px; }
 .knowledge-status { display: inline-flex; align-items: center; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); background: #fff; font-size: 11px; white-space: nowrap; }
 .knowledge-status i { width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--success); }
 .mobile-history-button, .mobile-close-button { display: none; }
-.chat-workspace { min-height: 0; flex: 1; display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 12px; overflow: hidden; }
+.chat-workspace { min-height: 0; flex: 1; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 10px; overflow: hidden; }
 .conversation-sidebar, .chat-panel { border: 1px solid var(--line); border-radius: 8px; background: #fff; }
 .conversation-sidebar { min-height: 0; max-height: 100%; padding: 12px; overflow-y: auto; }
 .conversation-sidebar-head { min-height: 32px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 0 5px; }
@@ -566,16 +582,16 @@ onMounted(async () => {
 .conversation-delete { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 5px; color: var(--danger); background: transparent; cursor: pointer; opacity: 0; }
 .conversation-item:hover .conversation-delete, .conversation-item:focus-within .conversation-delete { opacity: 1; }
 .chat-panel { min-width: 0; min-height: 0; height: 100%; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; overflow: hidden; }
-.message-area { min-height: 0; overflow-y: auto; padding: 24px clamp(18px, 4vw, 52px); scroll-behavior: smooth; }
+.message-area { min-height: 0; overflow-y: auto; padding: 16px clamp(16px, 3vw, 40px); scroll-behavior: smooth; }
 .message-loading { display: grid; height: 100%; place-items: center; color: var(--muted); font-size: 13px; }
-.message-row { display: flex; gap: 11px; max-width: 920px; margin: 0 auto 24px; }
+.message-row { display: flex; gap: 10px; max-width: 960px; margin: 0 auto 18px; }
 .message-row.user { flex-direction: row-reverse; }
 .avatar { flex: 0 0 32px; height: 32px; display: grid; place-items: center; border-radius: 6px; color: white; background: var(--primary); font-size: 12px; font-weight: 700; }
 .user .avatar { color: #fff; background: #355d7a; }
 .message-body { max-width: min(82%, 820px); min-width: 0; }
 .user .message-body { text-align: right; }
 .role-name { display: block; margin: 0 2px 6px; color: var(--muted); font-size: 10px; }
-.bubble { padding: 13px 15px; border: 1px solid #e1e8e6; border-radius: 8px; color: #29433e; background: var(--bg-subtle); line-height: 1.72; white-space: pre-wrap; text-align: left; }
+.bubble { padding: 11px 13px; border: 1px solid #e1e8e6; border-radius: 8px; color: #29433e; background: var(--bg-subtle); font-size: 13px; line-height: 1.62; white-space: pre-wrap; text-align: left; }
 .user .bubble { color: #fff; border-color: #355d7a; background: #355d7a; }
 .sources { margin-top: 12px; text-align: left; }
 .sources-toggle { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 3px 0 8px; border: 0; color: var(--muted); background: transparent; font: inherit; font-size: 12px; font-weight: 700; text-align: left; cursor: pointer; }
@@ -600,10 +616,10 @@ details p { margin: 0; padding: 0 13px 13px; color: var(--muted); font-size: 13p
 @keyframes pulse { to { opacity: .25; transform: translateY(-2px); } }
 .error-banner { display: flex; justify-content: space-between; gap: 16px; margin: 0 24px 10px; padding: 10px 13px; border: 1px solid #f0c4c0; border-radius: 6px; color: #a33f2f; background: #fff7f6; font-size: 12px; }
 .error-banner button { border: 0; color: inherit; background: transparent; cursor: pointer; }
-.composer { width: min(calc(100% - 48px), 920px); margin: 0 auto 8px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: #fff; box-shadow: 0 8px 24px rgba(23,32,30,.08); }
-textarea { width: 100%; resize: none; border: 0; outline: 0; color: var(--ink); background: transparent; font: inherit; line-height: 1.6; }
+.composer { width: min(calc(100% - 36px), 960px); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; margin: 0 auto 7px; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: #fff; box-shadow: 0 8px 24px rgba(23,32,30,.08); }
+textarea { width: 100%; min-height: 22px; max-height: 88px; align-self: center; resize: none; overflow-y: hidden; border: 0; outline: 0; color: var(--ink); background: transparent; font: inherit; font-size: 13px; line-height: 22px; }
 textarea::placeholder { color: #9aaba7; }
-.composer-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+.composer-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 0; }
 .composer-footer span { color: #9aaba7; font-size: 11px; }
 .medical-note { margin: 0 0 10px; color: #91a09d; text-align: center; font-size: 10px; }
 .dialog-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 20px; background: rgba(18,39,34,.5); }
@@ -625,6 +641,7 @@ textarea::placeholder { color: #9aaba7; }
 .feedback-dialog footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
 .history-backdrop { display: none; }
 @media (max-width: 800px) {
+  .chat-heading { display: flex; }
   .chat-page { padding: 12px; }
   .mobile-history-button { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: #fff; font-size: 12px; cursor: pointer; }
   .chat-workspace { display: block; min-height: 0; flex: 1; }
@@ -640,13 +657,13 @@ textarea::placeholder { color: #9aaba7; }
   .chat-heading > div:first-child p, .chat-heading > div:first-child > span, .knowledge-status { display: none; }
   .chat-heading h1 { margin: 2px 0; font-size: 18px; line-height: 30px; }
   .chat-heading-actions { margin-left: auto; }
-  .message-area { min-height: 0; padding: 18px 12px; }
+  .message-area { min-height: 0; padding: 12px; }
   .message-row { gap: 8px; margin-bottom: 20px; }
   .avatar { flex-basis: 28px; height: 28px; }
   .message-body { max-width: calc(100% - 47px); }
   .bubble { padding: 11px 12px; }
   .composer { width: calc(100% - 20px); }
-  .composer textarea { min-height: 48px; }
+  .composer textarea { min-height: 22px; }
   .medical-note { margin-bottom: 7px; }
 }
 </style>

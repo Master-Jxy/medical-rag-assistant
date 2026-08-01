@@ -233,6 +233,6 @@ label small { color: var(--muted); font-weight: 400; }
 .auth-switch button { padding: 0; border: 0; color: var(--primary); background: transparent; font: inherit; font-weight: 700; cursor: pointer; }
 .auth-forgot { margin-top: 8px; }
 .auth-forgot a { color: var(--action); font-weight: 700; }
-.auth-safety { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-default); color: var(--text-muted); font-size: 10px; }
+.auth-safety { width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 20px; padding: 15px 0 0; border-top: 1px solid var(--border-default); color: var(--text-muted); font-size: 10px; line-height: 17px; white-space: normal; writing-mode: horizontal-tb; }
 @media (max-width: 480px) { .auth-page { padding: 20px 0; } .auth-card { padding: 20px 16px; } .verification-row { grid-template-columns: minmax(0, 1fr) 104px; } .verification-button { width: 104px; } }
 </style>
