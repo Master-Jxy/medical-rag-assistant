@@ -10,7 +10,8 @@
 `0025_quota_policy_v2 (head)`，四容器healthy。默认额度为100万Token/500请求；生产先以
 off完成迁移和无费用验收后已切到shadow观察，**enforce和自动记忆提取仍未启用**。
 
-阶段20企业级前端重构已在本地完成，**尚未部署生产**。本轮只调整前端信息架构、视觉、
+阶段20企业级前端重构已完成并发布生产，功能提交为
+`84cf121f6d82b88fa53d6e3fa2eb00c958e8af60`。本轮只调整前端信息架构、视觉、
 响应式交互和组件测试，没有修改FastAPI接口、权限、RAG、Agent、记忆、额度或数据库行为：
 
 - AppShell完成分组侧栏、桌面折叠、移动抽屉、面包屑、服务状态与账号菜单统一。
@@ -20,7 +21,9 @@ off完成迁移和无费用验收后已切到shadow观察，**enforce和自动�
 - 新增通用确认框与模态框，业务页面不再使用`window.prompt`或`window.confirm`。
 - 浏览器已验收1440/1280/900/390四种宽度，页面级横向溢出为0，控制台error/warn为0。
 - 完整验证为前端16文件59项、SSE解析、Vite正式构建及后端446项通过。
-- 设计与实现边界见`docs/frontend-redesign-v1.md`；本轮提交不得包含任务开始前已有的
+- 生产只重建`web`，backend、MySQL、Redis、四个持久卷和`0025`数据库结构保持不变；
+  发布证据见`docs/release-audit-frontend-v3.0.md`。
+- 设计与实现边界见`docs/frontend-redesign-v1.md`；发布提交未包含任务开始前已有的
   `backend/app/modules/auth/service.py`未提交修改。
 
 阶段17：
@@ -128,6 +131,14 @@ Vite production build passed
   立即检查时usage仍为18、策略事件和reservation仍为0。
 - 线上自动可视浏览器控制在加载公网IP时超时；本机HTTPS与服务器静态/DOM资源正常，
   因此没有把线上1440/1280/390自动点击验收写成通过。
+- 阶段20发布前完整备份
+  `/home/deploy/medical-rag-backups/backup-20260801T041805Z`全部SHA-256通过；旧静态目录保存在
+  `/home/deploy/release-assets/20260801T042725Z-pre-frontend20`，旧web镜像已增加回滚标签。
+- 阶段20生产仓库快进到`84cf121`且工作树干净；四容器healthy，HTTP为308，HTTPS健康
+  接口和10个前端路由为200，3个受保护API未登录为401。线上index/JS/CSS与本地正式构建
+  SHA-256一致，web近15分钟无error/crit/emerg/alert日志。
+- 阶段20没有重建backend或执行迁移；运行时继续为`QUOTA_POLICY_MODE=shadow`、
+  `QUOTA_ENFORCEMENT_ENABLED=false`、`MEMORY_AUTO_EXTRACTION_ENABLED=false`。
 
 ## 4. 工作区与安全边界
 
