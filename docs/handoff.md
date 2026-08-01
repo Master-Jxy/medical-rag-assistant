@@ -69,7 +69,7 @@ off完成迁移和无费用验收后已切到shadow观察，**enforce和自动�
   管理用量路由为200，未登录`/api/v1/auth/me`为401，线上index/JS/CSS SHA-256与本地
   正式构建逐项一致，线上登录页新Token生效且浏览器控制台无应用error/warn。
 
-阶段21.1前端密度与公共概览优化已完成本地开发和验收，等待本轮生产发布：
+阶段21.1前端密度与公共概览优化已完成开发、验收并发布生产，功能提交为`d5bf4d6`：
 
 - 修复`.public-shell footer`误作用于登录卡片内部页脚造成的竖排文字，公共页脚改为只匹配
   直属子元素；登录页在`1440x900`恢复正常横排。
@@ -85,6 +85,17 @@ off完成迁移和无费用验收后已切到shadow观察，**enforce和自动�
 - 前端16文件59项、SSE解析、Vite正式构建和`git diff --check`通过；Impeccable只提示
   用户参考明确要求的首屏网格与Inter字体。临时本地验收账号、额度周期及相关记录均已
   精确清理为0；没有调用模型或修改生产数据。
+- 发布前完整备份为`/home/deploy/medical-rag-backups/backup-20260801T191730Z`；旧静态目录、
+  新构建上传目录和回滚镜像保存在`/home/deploy/release-assets/20260801T1918Z-frontend211`
+  及`medical-rag-web:rollback-20260801t1918z`。生产只重建`web`，backend、MySQL、Redis、
+  Chroma、持久卷、环境变量和`0025`数据库结构未变。
+- 发布时首次仅使用基础Compose重建Web，预检立即发现443映射缺失；随后按部署文档带
+  `deploy/compose.https.yaml`覆盖层重新创建Web，恢复80到HTTPS的308跳转和443证书挂载。
+  最终四容器healthy，HTTPS首页、登录、RAG和Agent路由为200，未登录`/api/v1/auth/me`
+  为401，线上index/JS/CSS SHA-256与本地正式构建逐项一致，Web日志无应用错误。
+- 应用内浏览器已成功请求线上首页、新CSS/JS和健康接口，但自动页面脚本读取受公网IP
+  浏览器连接超时影响，未把线上可视DOM验收写成通过；本地同构构建的桌面/移动端可视
+  验收与线上静态哈希一致性共同作为本轮视觉发布证据。
 
 阶段17：
 
