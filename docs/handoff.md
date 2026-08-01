@@ -44,7 +44,7 @@ off完成迁移和无费用验收后已切到shadow观察，**enforce和自动�
   backend、MySQL、Redis和持久卷未变；四容器healthy，HTTP为308，六个HTTPS代表路由
   为200，未登录`/api/v1/auth/me`为401，线上静态SHA-256与本地正式构建逐项一致。
 
-阶段21视觉系统升级已完成本地开发与发布前验证，生产发布待本次任务后续记录：
+阶段21视觉系统升级已完成开发、验证并发布生产，功能提交为`cf90eab`：
 
 - 直接复用用户提供的SDWAN-GEO设计Token与玻璃材质规范，并借鉴新星数科控制台的
   侧栏占比、一主多辅指标层级、聊天独立滚动区和固定输入器；不复制品牌、Logo、文案、
@@ -61,6 +61,13 @@ off完成迁移和无费用验收后已切到shadow观察，**enforce和自动�
   扫描仅提示用户规范明确要求的Inter字体较常见，没有功能或可访问性阻断。
 - 任务开始前已有的`backend/app/modules/auth/service.py`未提交修改保持原SHA-256
   `9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。
+- 发布前完整备份为`/home/deploy/medical-rag-backups/backup-20260801T181237Z`，旧静态目录、
+  发布压缩包和回滚镜像保存在`/home/deploy/release-assets/20260802T021309-frontend21`及
+  `medical-rag-web:rollback-20260802T021309`。
+- 生产仓库快进到`cf90eab`，只重建并重启`web`；backend、MySQL、Redis、Chroma、持久卷、
+  环境变量和`0025`数据库结构未变。四容器healthy，HTTP为308，HTTPS首页、Agent和
+  管理用量路由为200，未登录`/api/v1/auth/me`为401，线上index/JS/CSS SHA-256与本地
+  正式构建逐项一致，线上登录页新Token生效且浏览器控制台无应用error/warn。
 
 阶段17：
 
