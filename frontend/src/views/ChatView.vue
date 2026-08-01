@@ -636,7 +636,7 @@ textarea::placeholder { color: #9aaba7; }
   .conversation-delete { opacity: 1; }
 }
 @media (max-width: 700px) {
-  .chat-heading { align-items: flex-start; flex-direction: row; gap: 8px; margin-bottom: 10px; }
+  .chat-heading { min-height: 72px; align-items: center; flex-direction: row; gap: 8px; margin-bottom: 10px; padding: 12px 14px; border-radius: 18px; }
   .chat-heading > div:first-child p, .chat-heading > div:first-child > span, .knowledge-status { display: none; }
   .chat-heading h1 { margin: 2px 0; font-size: 18px; line-height: 30px; }
   .chat-heading-actions { margin-left: auto; }

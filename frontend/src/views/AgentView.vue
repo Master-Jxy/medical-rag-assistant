@@ -405,7 +405,7 @@ onMounted(async () => {
   font-weight: 800;
   letter-spacing: 0;
 }
-.page-toolbar h1 { margin: 3px 0 4px; font-size: 22px; line-height: 30px; }
+.page-toolbar h1 { margin: 3px 0 4px; font-size: 30px; line-height: 38px; }
 .page-toolbar p { margin: 0; color: var(--muted); font-size: 13px; }
 .agent-workspace {
   min-height: 0;
@@ -432,8 +432,8 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, .96);
+  border-bottom: 1px solid var(--ui-divider);
+  background: rgba(255, 255, 255, .5);
 }
 .conversation-title strong { min-width: 0; display: flex; align-items: center; gap: 7px; overflow: hidden; color: var(--ink); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .conversation-title span {
@@ -447,8 +447,8 @@ onMounted(async () => {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #18a875;
-  box-shadow: 0 0 0 5px rgba(24, 168, 117, .1);
+  background: var(--ui-success);
+  box-shadow: 0 0 0 5px rgba(58, 155, 114, .1);
 }
 .conversation-shell :deep(.conversation) { height: calc(100% - 48px); box-sizing: border-box; }
 .detail-overlay { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; padding: 24px; background: rgb(15 30 24 / 36%); }
@@ -480,7 +480,10 @@ onMounted(async () => {
 }
 @media (max-width: 480px) {
   .agent-page { padding: 12px; }
+  .page-toolbar { min-height: 72px; flex-direction: row; align-items: center; gap: 10px; margin-bottom: 10px; padding: 12px 14px; border-radius: 18px; }
   .page-toolbar > div:first-child p, .page-toolbar > div:first-child > span { display: none; }
   .page-toolbar h1 { margin: 2px 0; font-size: 18px; }
+  .mobile-tools { margin-left: auto; }
+  .mobile-tools button { min-height: 40px; border-color: rgba(92,108,158,.16); border-radius: 12px; background: rgba(255,255,255,.58); }
 }
 </style>

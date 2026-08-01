@@ -165,7 +165,7 @@ async function logout() {
           <ShieldCheck :size="16" />
           <span>资料检索系统<br />不构成医疗建议</span>
         </div>
-        <small class="sidebar-version">Console v1</small>
+        <small class="sidebar-version">Workspace v2</small>
       </div>
     </aside>
 
