@@ -117,6 +117,9 @@ def test_asset_metadata_archive_republish_and_replace(tmp_path) -> None:
                     "tags": ["心血管", "指南"],
                     "category": "诊疗规范",
                     "department": "心内科",
+                    "expires_at": (
+                        datetime.now(timezone.utc) - timedelta(days=1)
+                    ).isoformat(),
                     "review_due_at": (
                         datetime.now(timezone.utc) - timedelta(days=1)
                     ).isoformat(),
@@ -135,6 +138,17 @@ def test_asset_metadata_archive_republish_and_replace(tmp_path) -> None:
             )
             assert scan.status_code == 200
             assert scan.json()["count"] == 1
+            in_review = client.get(
+                "/api/v1/admin/knowledge-assets?review_status=in_review",
+                headers=auth_headers(admin.id),
+            )
+            assert in_review.json()["total"] == 1
+            expired = client.get(
+                "/api/v1/admin/knowledge-assets?expired=true",
+                headers=auth_headers(admin.id),
+            )
+            assert expired.json()["total"] == 1
+            assert expired.json()["items"][0]["is_system"] is True
             assert client.post(
                 "/api/v1/admin/knowledge-assets/governance/scan",
                 headers=auth_headers(admin.id),

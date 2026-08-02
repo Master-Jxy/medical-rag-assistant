@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ClipboardCheck,
   Database,
+  ExternalLink,
   FileClock,
   FileText,
   Gauge,
@@ -21,7 +22,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ScrollText,
-  ServerCog,
   ShieldCheck,
   UserRound,
   Users,
@@ -77,7 +77,6 @@ const navigationGroups = computed(() => {
         { to: '/admin/telemetry', label: '运行监控', icon: Activity },
         { to: '/admin/usage', label: '用量管理', icon: BarChart3 },
         { to: '/admin/audit', label: '审计记录', icon: ScrollText },
-        { to: '/admin/knowledge', label: '系统资料', icon: ServerCog },
       ],
     })
   }
@@ -231,6 +230,7 @@ async function logout() {
       </router-link>
       <nav aria-label="公共导航">
         <router-link to="/">系统概览</router-link>
+        <a class="relay-link" href="http://38.60.165.43/" target="_blank" rel="noopener noreferrer"><span>API 中转站</span><ExternalLink :size="14" /></a>
         <router-link class="login-link" to="/login">登录系统</router-link>
       </nav>
     </header>

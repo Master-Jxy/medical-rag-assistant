@@ -226,9 +226,11 @@ label small { color: var(--muted); font-weight: 400; }
 .verification-row { display: grid; grid-template-columns: minmax(0, 1fr) 118px; gap: 8px; }
 .verification-button { width: 118px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 6px; color: var(--action); background: white; cursor: pointer; font-size: 12px; }
 .verification-button:disabled { cursor: wait; opacity: .65; }
-.auth-submit { min-height: 40px; display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 4px; padding: 0 13px; border: 0; border-radius: 6px; color: white; background: var(--action); font: inherit; font-weight: 600; cursor: pointer; }
-.auth-submit:hover { background: var(--action-hover); }
+.auth-submit { min-height: 40px; display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 4px; padding: 0 13px; border: 0; border-radius: 6px; color: white; background: linear-gradient(100deg, #4f6ff3 0%, #7b5cf4 38%, #08aeca 70%, #4f6ff3 100%); background-size: 220% 100%; animation: auth-gradient-flow 4.2s linear infinite; box-shadow: 0 9px 24px rgba(76,98,210,.22); font: inherit; font-weight: 600; cursor: pointer; }
+.auth-submit:hover { filter: brightness(1.04) saturate(1.08); }
 .auth-submit:disabled { cursor: wait; opacity: .65; }
+@keyframes auth-gradient-flow { from { background-position: 0% center; } to { background-position: 220% center; } }
+@media (prefers-reduced-motion: reduce) { .auth-submit { animation: none; } }
 .auth-switch { margin: 17px 0 0; color: var(--muted); text-align: center; font-size: 12px; }
 .auth-switch button { padding: 0; border: 0; color: var(--primary); background: transparent; font: inherit; font-weight: 700; cursor: pointer; }
 .auth-forgot { margin-top: 8px; }

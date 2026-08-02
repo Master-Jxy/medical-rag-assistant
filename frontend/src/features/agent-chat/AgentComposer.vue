@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
+import ModelSelector from '../../components/ModelSelector.vue'
 
 const props = defineProps({
   disabled: Boolean,
@@ -70,11 +71,14 @@ function handleKeydown(event) {
       @keydown="handleKeydown"
     />
     <div class="composer-footer">
-      <small v-if="value.length">{{ value.length }} / 4000</small>
-      <el-button v-if="running" type="danger" plain round @click="$emit('stop')">停止生成</el-button>
-      <el-button v-else type="primary" round native-type="submit" :disabled="!canSend">
-        发送任务
-      </el-button>
+      <ModelSelector surface="agent" />
+      <div class="composer-actions">
+        <small v-if="value.length">{{ value.length }} / 4000</small>
+        <el-button v-if="running" type="danger" plain round @click="$emit('stop')">停止生成</el-button>
+        <el-button v-else type="primary" round native-type="submit" :disabled="!canSend">
+          发送任务
+        </el-button>
+      </div>
     </div>
   </form>
 </template>
@@ -141,10 +145,11 @@ function handleKeydown(event) {
 .composer-footer {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 8px;
   margin: 0;
 }
+.composer-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .composer small { color: var(--muted); }
 @media (max-width: 760px) {
   .composer { right: 10px; bottom: 8px; left: 10px; }

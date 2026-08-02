@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 class KnowledgeAssetItem(BaseModel):
     document_id: str
     file_name: str
+    is_system: bool
     status: str
     source: str | None
     tags: list[str]

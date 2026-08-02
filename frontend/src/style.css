@@ -371,8 +371,11 @@ select:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
 .public-header nav { display: flex; align-items: center; gap: 8px; color: var(--ui-text-secondary); font-size: 13px; }
 .public-header nav a { min-height: 42px; display: inline-flex; align-items: center; padding: 0 15px; border-radius: var(--ui-radius-pill); }
 .public-header nav a:hover { background: rgba(255, 255, 255, .58); }
-.public-header .login-link { color: #fff; background: linear-gradient(135deg, var(--ui-brand-blue), var(--ui-brand-purple)); box-shadow: var(--ui-shadow-button); }
-.public-header .login-link:hover { background: linear-gradient(135deg, #526ff3, #704ef1); }
+.public-header .relay-link { gap: 6px; color: #40506b; border: 1px solid rgba(94,123,255,.16); background: rgba(255,255,255,.42); }
+.public-header .relay-link:hover { color: #274fba; border-color: rgba(94,123,255,.3); }
+.public-header .login-link { color: #fff; background: linear-gradient(100deg, #4f6ff3 0%, #7b5cf4 38%, #08aeca 70%, #4f6ff3 100%); background-size: 220% 100%; animation: public-login-flow 4.2s linear infinite; box-shadow: var(--ui-shadow-button); }
+.public-header .login-link:hover { filter: brightness(1.04) saturate(1.08); }
+@keyframes public-login-flow { from { background-position: 0% center; } to { background-position: 220% center; } }
 .public-content { width: min(1280px, calc(100% - 40px)); margin: 0 auto; }
 .public-shell > footer { display: flex; justify-content: space-between; gap: 24px; margin-top: 32px; padding: 20px max(20px, calc((100vw - 1280px) / 2)); border-top: 1px solid var(--ui-divider); color: var(--ui-text-tertiary); font-size: 12px; }
 
@@ -781,4 +784,8 @@ select:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
   .conversation-sidebar, .thread-sidebar { border-radius: 0 22px 22px 0 !important; }
   .chat-panel, .conversation-shell { border-radius: 0 !important; border-inline: 0 !important; }
   .composer { border-radius: 18px !important; }
+  .public-header .relay-link { width: 40px; justify-content: center; overflow: hidden; padding: 0; }
+  .public-header .relay-link span { display: none; }
+  .public-header .relay-link svg { flex: 0 0 auto; color: #40506b; }
 }
+@media (prefers-reduced-motion: reduce) { .public-header .login-link { animation: none; } }

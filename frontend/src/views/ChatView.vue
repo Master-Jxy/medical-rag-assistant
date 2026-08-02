@@ -26,6 +26,7 @@ import { getApiErrorMessage } from '../api/http.js'
 import { submitAnswerFeedback } from '../api/quality.js'
 import { getDocumentTrace, openDocumentPreview } from '../api/citations.js'
 import MarkdownContent from '../components/MarkdownContent.vue'
+import ModelSelector from '../components/ModelSelector.vue'
 import UsageMeta from '../components/UsageMeta.vue'
 import { createUuid } from '../utils/uuid.js'
 
@@ -505,11 +506,14 @@ onMounted(async () => {
             @keydown="handleKeydown"
           ></textarea>
           <div class="composer-footer">
-            <span v-if="question.length">{{ question.length }} / 2000</span>
-            <el-button v-if="sending" type="danger" plain round :loading="stopping" :disabled="stopping" @click="stopGeneration">
-              <Square v-if="!stopping" :size="14" />{{ stopping ? '正在停止' : '停止生成' }}
-            </el-button>
-            <el-button v-else type="primary" round native-type="submit" :disabled="!question.trim() || loadingMessages"><Send :size="15" />发送</el-button>
+            <ModelSelector surface="rag" />
+            <div class="composer-actions">
+              <span v-if="question.length">{{ question.length }} / 2000</span>
+              <el-button v-if="sending" data-testid="stop-generation" type="danger" plain round :loading="stopping" :disabled="stopping" @click="stopGeneration">
+                <Square v-if="!stopping" :size="14" />{{ stopping ? '正在停止' : '停止生成' }}
+              </el-button>
+              <el-button v-else type="primary" round native-type="submit" :disabled="!question.trim() || loadingMessages"><Send :size="15" />发送</el-button>
+            </div>
           </div>
         </form>
         <p class="medical-note">回答仅用于学习和信息检索，不构成医疗建议。</p>
@@ -619,7 +623,8 @@ details p { margin: 0; padding: 0 13px 13px; color: var(--muted); font-size: 13p
 .composer { width: min(calc(100% - 36px), 960px); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; margin: 0 auto 7px; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: #fff; box-shadow: 0 8px 24px rgba(23,32,30,.08); }
 textarea { width: 100%; min-height: 22px; max-height: 88px; align-self: center; resize: none; overflow-y: hidden; border: 0; outline: 0; color: var(--ink); background: transparent; font: inherit; font-size: 13px; line-height: 22px; }
 textarea::placeholder { color: #9aaba7; }
-.composer-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 0; }
+.composer-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; }
+.composer-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .composer-footer span { color: #9aaba7; font-size: 11px; }
 .medical-note { margin: 0 0 10px; color: #91a09d; text-align: center; font-size: 10px; }
 .dialog-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 20px; background: rgba(18,39,34,.5); }

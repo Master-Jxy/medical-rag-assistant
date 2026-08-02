@@ -12,7 +12,6 @@ import AdminReviewsView from '../views/AdminReviewsView.vue'
 import AdminAssetsView from '../views/AdminAssetsView.vue'
 import AdminJobsView from '../views/AdminJobsView.vue'
 import AdminAuditView from '../views/AdminAuditView.vue'
-import AdminKnowledgeView from '../views/AdminKnowledgeView.vue'
 import AdminTelemetryView from '../views/AdminTelemetryView.vue'
 import SuperAdminUsersView from '../views/SuperAdminUsersView.vue'
 import AgentView from '../views/AgentView.vue'
@@ -41,7 +40,7 @@ const router = createRouter({
     { path: '/admin/knowledge-assets', name: 'admin-assets', component: AdminAssetsView, meta: { ...adminOnly, title: '知识资产' } },
     { path: '/admin/jobs', name: 'admin-jobs', component: AdminJobsView, meta: { ...adminOnly, title: '任务中心' } },
     { path: '/admin/audit', name: 'admin-audit', component: AdminAuditView, meta: { ...adminOnly, title: '审计记录' } },
-    { path: '/admin/knowledge', name: 'admin-knowledge', component: AdminKnowledgeView, meta: { ...adminOnly, title: '系统资料' } },
+    { path: '/admin/knowledge', redirect: '/admin/knowledge-assets', meta: { ...adminOnly, title: '知识资产' } },
     { path: '/admin/telemetry', name: 'admin-telemetry', component: AdminTelemetryView, meta: { ...adminOnly, title: '运行统计' } },
     { path: '/admin/quality', name: 'admin-quality', component: AdminQualityView, meta: { ...adminOnly, title: '回答质量' } },
     { path: '/admin/usage', name: 'admin-usage', component: AdminUsageView, meta: { ...adminOnly, title: '用量管理' } },

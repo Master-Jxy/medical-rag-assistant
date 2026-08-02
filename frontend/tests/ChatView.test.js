@@ -12,8 +12,10 @@ const api = vi.hoisted(() => ({
   stopConversationStream: vi.fn(),
   streamConversation: vi.fn(),
 }))
+const modelApi = vi.hoisted(() => ({ getModelCatalog: vi.fn() }))
 
 vi.mock('../src/api/conversations.js', () => api)
+vi.mock('../src/api/models.js', () => modelApi)
 
 const summaries = [
   { id: 'conversation-1', title: '第一段会话', message_count: 2 },
@@ -63,6 +65,10 @@ function mountChatView(options = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  modelApi.getModelCatalog.mockResolvedValue({
+    active_model_id: 'qwen',
+    options: [],
+  })
   api.listConversations.mockResolvedValue({ conversations: summaries.map((item) => ({ ...item })) })
   api.getConversation.mockImplementation(async (id) => structuredClone(details[id]))
   api.deleteConversation.mockResolvedValue({ message: '会话已删除' })
@@ -207,7 +213,7 @@ describe('ChatView 会话交互', () => {
 
     streamHandlers.onToken('部分回答')
     await nextTick()
-    const stopButton = wrapper.get('.composer-footer button')
+    const stopButton = wrapper.get('[data-testid="stop-generation"]')
     await stopButton.trigger('click')
     await flushPromises()
 

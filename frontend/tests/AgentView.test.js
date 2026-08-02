@@ -17,8 +17,10 @@ const citationApi = vi.hoisted(() => ({
   getDocumentTrace: vi.fn(),
   openDocumentPreview: vi.fn(),
 }))
+const modelApi = vi.hoisted(() => ({ getModelCatalog: vi.fn() }))
 vi.mock('../src/api/agent.js', () => agentApi)
 vi.mock('../src/api/citations.js', () => citationApi)
+vi.mock('../src/api/models.js', () => modelApi)
 
 import AgentView from '../src/views/AgentView.vue'
 import AgentRunProgress from '../src/features/agent-chat/AgentRunProgress.vue'
@@ -108,6 +110,10 @@ function mountView(options = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  modelApi.getModelCatalog.mockResolvedValue({
+    active_model_id: 'qwen',
+    options: [],
+  })
   agentApi.listAgentThreads.mockImplementation(async (status) => ({
     items: status === 'archived' ? [archivedThread] : [thread],
   }))

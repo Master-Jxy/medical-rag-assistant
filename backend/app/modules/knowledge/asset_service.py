@@ -52,6 +52,8 @@ class KnowledgeAssetService:
         tag: str | None,
         offset: int,
         limit: int,
+        review_status: str | None = None,
+        expired: bool | None = None,
     ) -> KnowledgeAssetListResponse:
         statement = select(KnowledgeDocument, DocumentVersion).outerjoin(
             DocumentVersion, DocumentVersion.document_id == KnowledgeDocument.id
@@ -64,6 +66,15 @@ class KnowledgeAssetService:
             conditions.append(KnowledgeDocument.status == status)
         if source:
             conditions.append(DocumentVersion.source == source)
+        if review_status:
+            conditions.append(DocumentVersion.review_status == review_status)
+        if expired:
+            conditions.extend(
+                [
+                    DocumentVersion.expires_at.is_not(None),
+                    DocumentVersion.expires_at <= datetime.now(timezone.utc),
+                ]
+            )
         if tag:
             # JSON跨SQLite/MySQL的精确过滤差异较大，先在受控结果内过滤标签。
             pass
@@ -304,6 +315,7 @@ class KnowledgeAssetService:
         return KnowledgeAssetItem(
             document_id=document.id,
             file_name=document.original_name,
+            is_system=document.is_system,
             status="published" if document.status == "ready" else document.status,
             source=version.source if version else None,
             tags=list(version.tags or []) if version else [],
@@ -317,10 +329,16 @@ class KnowledgeAssetService:
             review_due_at=version.review_due_at if version else None,
             last_reviewed_at=version.last_reviewed_at if version else None,
             review_status=(version.review_status or "current") if version else "current",
-            is_expired=bool(
-                version
-                and version.expires_at
-                and version.expires_at
-                <= datetime.now(version.expires_at.tzinfo or timezone.utc)
+            is_expired=KnowledgeAssetService._is_expired(
+                version.expires_at if version else None
             ),
         )
+
+    @staticmethod
+    def _is_expired(expires_at: datetime | None) -> bool:
+        if expires_at is None:
+            return False
+        now = datetime.now(timezone.utc)
+        if expires_at.tzinfo is None:
+            now = now.replace(tzinfo=None)
+        return expires_at <= now

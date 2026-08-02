@@ -247,7 +247,8 @@ onBeforeUnmount(() => {
 .hero-copy, .hero-console { position: relative; z-index: 1; }
 .hero-brand { width: fit-content; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid rgba(37,99,235,.2); border-radius: 999px; color: #1d55bd; background: rgba(255,255,255,.64); font-size: 12px; font-weight: 650; }
 .hero-copy h1 { max-width: 720px; margin: 24px 0 18px; color: #182130; font-size: clamp(42px, 4.4vw, 66px); line-height: 1.08; font-weight: 760; letter-spacing: 0; }
-.hero-copy h1 strong { color: var(--home-blue); font-weight: inherit; }
+.hero-copy h1 strong { color: var(--home-blue); font-weight: inherit; background: linear-gradient(90deg, #2563eb 0%, #08aeca 42%, #7158f5 72%, #2563eb 100%); background-size: 200% auto; background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; animation: title-gradient-flow 4.8s linear infinite; }
+@keyframes title-gradient-flow { from { background-position: 0% center; } to { background-position: 200% center; } }
 .hero-copy > p { max-width: 650px; margin: 0; color: #536078; font-size: 16px; line-height: 1.9; }
 .hero-points { display: flex; flex-wrap: wrap; gap: 9px 18px; margin-top: 24px; color: #40506b; font-size: 13px; }
 .hero-points span { display: inline-flex; align-items: center; gap: 6px; }
@@ -279,8 +280,11 @@ onBeforeUnmount(() => {
 .technology-rail > p { margin: 0; color: #718099; font-size: 12px; white-space: nowrap; }
 .rail-window { min-width: 0; overflow: hidden; mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent); }
 .rail-track { width: max-content; display: flex; align-items: center; gap: 44px; animation: rail-forward 28s linear infinite; }
-.rail-track span { display: inline-flex; align-items: center; gap: 9px; color: #526179; font-size: 14px; font-weight: 650; white-space: nowrap; }
-.rail-track i { width: 9px; height: 9px; border-radius: 3px; background: linear-gradient(135deg, var(--home-blue), var(--home-cyan)); transform: rotate(12deg); }
+.rail-track:hover { animation-play-state: paused; }
+.rail-track span { display: inline-flex; align-items: center; gap: 9px; color: #526179; font-size: 14px; font-weight: 650; white-space: nowrap; opacity: .72; transition: color .2s ease, opacity .2s ease, transform .2s cubic-bezier(.16,1,.3,1); }
+.rail-track span:hover { color: #213a69; opacity: 1; transform: scale(1.06); }
+.rail-track i { width: 9px; height: 9px; border-radius: 3px; background: linear-gradient(135deg, var(--home-blue), var(--home-cyan)); transform: rotate(12deg); transition: filter .2s ease, box-shadow .2s ease; }
+.rail-track span:hover i { filter: saturate(1.35) brightness(.88); box-shadow: 0 3px 10px rgba(37,99,235,.22); }
 @keyframes rail-forward { from { transform: translateX(-50%); } to { transform: translateX(0); } }
 
 .overview-section { scroll-margin-top: 24px; }
@@ -387,5 +391,6 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) {
   [data-reveal] { opacity: 1; transform: none; }
   .rail-track { animation-play-state: paused; }
+  .hero-copy h1 strong { animation: none; background-position: 45% center; }
 }
 </style>

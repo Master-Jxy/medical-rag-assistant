@@ -214,6 +214,7 @@ ChatView 发送问题
 | POST | `/auth/register` | 邮箱密码注册普通用户 |
 | POST | `/auth/login` | 登录并签发短期 Bearer JWT |
 | GET | `/auth/me` | 恢复当前用户及数据库角色 |
+| GET | `/models?surface=rag|agent` | 返回认证用户可见的模型目录、启用状态与当前入口单价；不返回密钥 |
 | POST | `/chat` | 无历史普通问答 |
 | POST | `/chat/stream` | 无历史流式问答 |
 | POST | `/documents` | 上传并向量化文档 |
@@ -441,7 +442,7 @@ Router / CLI
 | POST | `/api/v1/auth/password-reset/request` | 请求密码重置验证码，统一公开响应 |
 | POST | `/api/v1/auth/password-reset/confirm` | 消费验证码并重置密码、递增Token版本；旧账号同时完成邮箱验证 |
 
-密码使用 Argon2 哈希，JWT 使用短期 HS256 Bearer Token，默认 30 分钟过期，密钥只来自环境变量。登录失败统一提示“邮箱或密码错误”，不能泄漏邮箱是否存在；缺失、伪造、过期 Token 和已不存在的用户统一返回 401。
+密码使用 Argon2 哈希，JWT 使用短期 HS256 Bearer Token，默认 30 分钟过期，密钥只来自环境变量。当前没有Refresh Token或服务端单设备会话表，因此同一账号可以在多台电脑同时登录，退出只清除当前浏览器Token；重置密码递增`token_version`后会使所有旧Token失效。本轮只核对该行为，没有修改登录时长或多设备策略。登录失败统一提示“邮箱或密码错误”，不能泄漏邮箱是否存在；缺失、伪造、过期 Token 和已不存在的用户统一返回 401。
 
 当前已完成 `users` 模型、Schema、Repository、注册/登录 Service、三个 HTTP 接口、JWT 签发校验和当前用户依赖。全部会话接口已按 `user_id` 隔离；文档上传、列表、删除也已接入认证，所有文档公共可见，删除由后端校验上传者且保护系统文档。Vue 已完成注册登录、Token 持久化、刷新时通过 `/auth/me` 恢复用户、退出、受保护路由、401 统一清理和返回原目标页；普通 Axios 与 SSE 请求都集中附带 Bearer Token。
 
@@ -543,7 +544,7 @@ MySQL、文件系统和 Chroma 之间不存在一个真正的跨存储原子事�
 
 替换操作必须防止同一系统文档并发修改。第一版使用数据库行锁或明确的单操作保护；Redis 上线后再把跨进程锁接入统一锁适配器，不能在知识库业务代码中写死 Redis。
 
-管理员前端使用独立 `/admin/knowledge` 路由和独立 API 模块。路由守卫可依据 `/auth/me` 的角色隐藏入口，但所有管理员接口仍必须执行 `require_admin`。普通 `KnowledgeView`、`documents.js` 和普通上传接口不得加入散落的管理员分支。
+管理员前端使用统一`/admin/knowledge-assets`页面组合治理接口和`/admin/documents`系统资料生命周期接口；旧`/admin/knowledge`只做兼容重定向。路由守卫可依据 `/auth/me` 的角色隐藏入口，但所有管理员接口仍必须执行 `require_admin`。普通 `KnowledgeView`、`documents.js` 和普通上传接口不得加入散落的管理员分支。
 
 `backend/scripts/import_documents.py` 已改为通过受控的 `AdminDocumentService` 导入系统资料，要求显式 `--confirm`，并按内容哈希幂等跳过重复文件；不会直接写 MySQL 或 Chroma。
 

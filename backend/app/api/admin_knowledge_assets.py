@@ -53,6 +53,11 @@ def list_assets(
     status: str | None = Query(default=None, max_length=20),
     source: str | None = Query(default=None, max_length=255),
     tag: str | None = Query(default=None, max_length=50),
+    review_status: str | None = Query(
+        default=None,
+        pattern="^(current|due|in_review)$",
+    ),
+    expired: bool | None = Query(default=None),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
     _admin: UserResponse = Depends(require_admin),
@@ -64,6 +69,8 @@ def list_assets(
         tag=tag,
         offset=offset,
         limit=limit,
+        review_status=review_status,
+        expired=expired,
     )
 
 
