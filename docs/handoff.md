@@ -97,6 +97,36 @@ off完成迁移和无费用验收后已切到shadow观察，**enforce和自动�
   浏览器连接超时影响，未把线上可视DOM验收写成通过；本地同构构建的桌面/移动端可视
   验收与线上静态哈希一致性共同作为本轮视觉发布证据。
 
+阶段21.2导航、知识资产和模型透明度改版已完成本地开发与提交，功能提交为`612c3c0`，
+**尚未部署生产**：
+
+- 公共顶栏新增`http://38.60.165.43/`中转站外链；桌面显示文字和图标，390px收敛为
+  居中的外链图标。首页关键标题与公共登录按钮使用流动渐变；技术生态轨道悬停暂停，
+  当前条目加深并轻微放大。
+- 管理端删除独立“系统资料”菜单和页面，`/admin/knowledge`兼容重定向到统一
+  `/admin/knowledge-assets`。统一页支持来源、状态、标签、治理状态筛选，并保留系统资料
+  新增、整份替换、永久删除及知识资产编辑、下线、复核能力。
+- 知识资产接口增加数据库真相字段`is_system`以及`review_status/expired`筛选，没有数据库
+  迁移；顺带修复了朴素时间与带时区时间比较的兼容问题。
+- 新增认证后的`GET /api/v1/models?surface=rag|agent`目录。当前只有通义千问启用，
+  DeepSeek/Kimi为不可点击的测试中状态；菜单从后端读取当前模型及输入/输出单价，
+  不传输密钥。RAG与Agent输入器复用同一选择组件。
+- 回答底部用量改为分离显示模型实际Token、输入/输出、额度扣减和估算费用，继续区分
+  `actual/unknown/not_applicable`与未配置单价。
+- 登录行为只读核对后保持不变：JWT默认30分钟、无Refresh Token和单设备会话表，同一账号
+  可多电脑登录，退出只清理当前浏览器，密码重置通过`token_version`使旧Token全部失效。
+- 完整验证为后端`447 passed`、前端`17 files / 60 tests passed`、SSE解析和Vite正式构建
+  通过；`git diff --check`通过。Impeccable一次扫描仅提示已批准的Inter回退字体、首页
+  流动渐变文字和首屏网格背景，没有功能或可访问性阻断。
+- 本地真实浏览器在`1440x900`和`390x844`验收首页、RAG、Agent、知识资产、筛选和治理
+  弹窗；页面级横向溢出为0，模型单价为输入¥2.50/输出¥10.00每百万Token，禁用模型状态
+  正确，控制台error/warn为0。临时超级管理员账号已精确删除，没有调用真实模型、
+  Embedding、Reranker或SMTP。
+- 任务开始前已有`backend/app/modules/auth/service.py`未提交修改保持SHA-256
+  `9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。
+- 生产仍运行阶段21.1版本；本轮没有SSH、备份、服务器拉取、容器重建、环境变量修改或
+  生产数据操作。发布时后端和Web都需要更新，数据库迁移仍为`0025`且无需执行新迁移。
+
 阶段17：
 
 - 17.1：`0022_memory_v2`、记忆Port/Repository/兼容迁移和无副作用上下文读取完成。
@@ -290,25 +320,23 @@ Vite production build passed
 
 下一任务先完整阅读`AGENTS.md`和本文件，再读取：
 
-- `docs/quota-policy-v2-design.md`
-- `docs/technical-design.md`第20、21节
-- `docs/release-audit-quota-v2.1.md`
-- usage模块的shadow指标、reservation恢复和当前生产只读计数
+- `docs/deployment.md`
+- `docs/release-audit-frontend-v3.0.md`
+- `docs/technical-design.md`的认证、知识资产和模型目录相关段落
+- 提交`612c3c0`及其后续handoff提交相对当前生产版本的差异
 
-不要读取历史RAG评估JSON，不主动制造付费模型流量，不自动启用enforce。
+不要读取历史RAG评估JSON，不主动制造付费模型流量，不自动启用enforce；没有用户当次
+明确授权时不得连接SSH或部署。
 
 ## 6. 唯一下一任务
 
-**阶段19 shadow自然流量观察。**
+**阶段21.2生产发布，等待用户当次明确授权。**
 
-本小步只读观察：
+获得授权后按L3发布：
 
-1. 观察自然发生的RAG/Agent请求，不为了样本主动调用模型。
-2. 核对would-block原因、预留低估、unknown、过期reservation、重复扣减和数据库错误。
-3. 发现shadow阻断、账本不一致、敏感内容、锁等待或P0/P1错误时立即恢复off并记录证据。
-4. 样本不足时继续shadow，不把0事件解释为策略已经正确；enforce必须另行预检和确认。
-
-禁止：
-
-- 读取或输出真实密钥、调用真实Qwen/Embedding/Reranker/SMTP。
-- 主动制造付费样本或直接启用enforce。
+1. 核对GitHub、生产提交、工作树、四容器、`0025`迁移头和当前shadow开关，完成生产备份。
+2. 配置生产RAG输入/输出单价，先更新backend并验证`/api/v1/models`认证边界，再更新Web；
+   不执行数据库迁移，不修改MySQL、Redis、Chroma和持久卷。
+3. 验证HTTP到HTTPS、健康、未登录401、管理员统一知识资产页、RAG/Agent模型菜单、静态哈希
+   和容器日志；不通过时按旧镜像和静态目录回滚。
+4. 发布后继续保持`QUOTA_POLICY_MODE=shadow`和自动记忆提取关闭，不主动制造模型流量。
