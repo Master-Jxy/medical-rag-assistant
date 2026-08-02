@@ -97,8 +97,8 @@ off完成迁移和无费用验收后已切到shadow观察，**enforce和自动�
   浏览器连接超时影响，未把线上可视DOM验收写成通过；本地同构构建的桌面/移动端可视
   验收与线上静态哈希一致性共同作为本轮视觉发布证据。
 
-阶段21.2导航、知识资产和模型透明度改版已完成本地开发与提交，功能提交为`612c3c0`，
-**尚未部署生产**：
+阶段21.2导航、知识资产和模型透明度改版已完成开发、验证并发布生产，功能提交为
+`612c3c0`，生产仓库提交为`8d52929`：
 
 - 公共顶栏新增`http://38.60.165.43/`中转站外链；桌面显示文字和图标，390px收敛为
   居中的外链图标。首页关键标题与公共登录按钮使用流动渐变；技术生态轨道悬停暂停，
@@ -124,8 +124,19 @@ off完成迁移和无费用验收后已切到shadow观察，**enforce和自动�
   Embedding、Reranker或SMTP。
 - 任务开始前已有`backend/app/modules/auth/service.py`未提交修改保持SHA-256
   `9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。
-- 生产仍运行阶段21.1版本；本轮没有SSH、备份、服务器拉取、容器重建、环境变量修改或
-  生产数据操作。发布时后端和Web都需要更新，数据库迁移仍为`0025`且无需执行新迁移。
+- 发布前完整备份为`/home/deploy/medical-rag-backups/backup-20260802T140844Z`，MySQL、
+  app_data、Chroma、Redis、环境文件和清单的SHA-256全部通过。GitHub直连超时后使用本地
+  生成并验证的增量Git bundle将同一提交安全快进到服务器，生产工作树最终保持干净。
+- 生产显式配置RAG与Agent输入¥2.50、输出¥10.00每百万Token；先重建backend并验证
+  模型目录未登录401、登录态RAG/Agent目录、启用/测试中状态及单价，再上传与本地哈希
+  一致的正式构建并重建web。MySQL、Redis和四个持久卷未重建，数据库仍为`0025`。
+- 发布后四容器healthy，HTTP固定308到HTTPS，健康接口200，首页、登录、RAG、Agent、
+  知识资产及旧兼容路由均为200。线上index/JS/CSS/图标哈希与本地逐项一致，backend/web
+  日志无关键错误；线上桌面和390px移动端首页截图正常，浏览器控制台error/warn为0。
+- 回滚静态目录和镜像保存在`/home/deploy/release-assets/20260802T141219Z-stage212`、
+  `/home/deploy/release-assets/20260802T141850Z-stage212-web`及`rollback-stage212`镜像标签。
+  `QUOTA_POLICY_MODE=shadow`、`QUOTA_ENFORCEMENT_ENABLED=false`和自动记忆提取关闭状态均
+  保持不变；本次没有调用真实模型、Embedding、Reranker或SMTP，也没有修改业务数据。
 
 阶段17：
 
@@ -320,23 +331,18 @@ Vite production build passed
 
 下一任务先完整阅读`AGENTS.md`和本文件，再读取：
 
-- `docs/deployment.md`
-- `docs/release-audit-frontend-v3.0.md`
-- `docs/technical-design.md`的认证、知识资产和模型目录相关段落
-- 提交`612c3c0`及其后续handoff提交相对当前生产版本的差异
+- `docs/technical-design.md`的知识资产、资料审核和文档治理相关段落
+- `docs/product-and-ui-design.md`的知识资产管理页面约束
+- `backend/app/modules/knowledge/asset_service.py`
+- `frontend/src/views/AdminAssetsView.vue`
 
-不要读取历史RAG评估JSON，不主动制造付费模型流量，不自动启用enforce；没有用户当次
-明确授权时不得连接SSH或部署。
+不要读取历史RAG评估JSON，不主动制造付费模型流量，不自动启用enforce；知识分类方案
+没有确认前不得引入模型调用或改变现有管理员人工选择语义。
 
 ## 6. 唯一下一任务
 
-**阶段21.2生产发布，等待用户当次明确授权。**
+**阶段21.3知识分类与科室标签受控优化方案。**
 
-获得授权后按L3发布：
-
-1. 核对GitHub、生产提交、工作树、四容器、`0025`迁移头和当前shadow开关，完成生产备份。
-2. 配置生产RAG输入/输出单价，先更新backend并验证`/api/v1/models`认证边界，再更新Web；
-   不执行数据库迁移，不修改MySQL、Redis、Chroma和持久卷。
-3. 验证HTTP到HTTPS、健康、未登录401、管理员统一知识资产页、RAG/Agent模型菜单、静态哈希
-   和容器日志；不通过时按旧镜像和静态目录回滚。
-4. 发布后继续保持`QUOTA_POLICY_MODE=shadow`和自动记忆提取关闭，不主动制造模型流量。
+先只做现状审计和方案设计：明确分类词表、科室标签来源、管理员人工选择与AI建议的边界、
+历史资产回填、低置信度处理、审核日志和失败回退。默认采用“系统建议、管理员确认”而不是
+模型自动发布；用户确认方案后再拆分后端契约、异步处理和前端交互任务。
