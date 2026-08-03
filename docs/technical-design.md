@@ -1822,7 +1822,7 @@ would-block、预留低估和预警用户；只有超级管理员能调整Token�
 本地三宽验收已完成并发布，生产先以off完成迁移与无费用黑盒验收后切到shadow观察；
 enforce仍未启用，必须在自然流量观察达标后另行评估。
 
-## 22. 阶段二十二：多会话并发、助手编排与知识治理 `[本地实现，L3验收中]`
+## 22. 阶段二十二：多会话并发、助手编排与知识治理 `[已完成并发布]`
 
 Stage 22 不引入微服务、消息队列或自由群聊式多 Agent。RAG 与 Agent 继续使用独立业务
 模块，但通过统一并发 Port 共享每用户运行槽位：默认最多同时运行 2 个不同会话，同一
@@ -1846,5 +1846,8 @@ Agent 模式固定为 `general/patient/clinician/knowledge`，工具白名单、
 
 完整接口、预算、失败策略和验收矩阵见
 [`docs/stage22-concurrent-agent-and-governance-design.md`](stage22-concurrent-agent-and-governance-design.md)。
-当前完整后端、前端、SSE和正式构建已通过；真实本地 MySQL 往返和登录态浏览器验收尚未
-完成，生产仍是 `0025`，Stage 22 不得写成已经上线。
+当前完整后端、前端、SSE、正式构建、桌面/390px浏览器验收和生产无费用验收均已通过；本机
+MySQL连接拒绝，因此没有虚报本地MySQL往返。生产已在备份后从 `0025` 迁移到
+`0026_stage22_runtime_contract`，提交为 `5c02056`，只重建backend/web，MySQL/Redis未重建。
+线上HTTP 308、HTTPS健康200、未授权401、静态资源哈希和核心数据数量不变均已核验。真实
+Qwen、Embedding、Reranker和SMTP调用仍未发生；额度保持shadow，自动记忆提取保持关闭。
