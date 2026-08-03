@@ -7,6 +7,8 @@ import {
   getAccessToken,
   setAccessToken,
 } from './token.js'
+import { clearAgentTimelines } from '../features/agent-chat/useAgentTimeline.js'
+import { abortAllConversationStreams } from '../features/agent-chat/useConversationStreamRegistry.js'
 
 const state = reactive({
   user: null,
@@ -66,12 +68,16 @@ export async function signUp(registration) {
 }
 
 export function signOut() {
+  abortAllConversationStreams()
+  clearAgentTimelines()
   clearAccessToken()
   state.user = null
   state.ready = true
 }
 
 window.addEventListener(AUTH_UNAUTHORIZED_EVENT, () => {
+  abortAllConversationStreams()
+  clearAgentTimelines()
   state.user = null
   state.ready = true
 })

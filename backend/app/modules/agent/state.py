@@ -71,6 +71,7 @@ class AgentGraphState(TypedDict):
     last_tool_result: NotRequired[dict[str, object] | None]
     next_action: NotRequired[str | None]
     final_output: NotRequired[str | None]
+    stream_final_output: NotRequired[bool]
     error_type: NotRequired[str | None]
     stop_reason: NotRequired[AgentStopReason | None]
     resolved_references: dict[str, object]
@@ -133,6 +134,7 @@ def create_initial_state(
         last_tool_result=None,
         next_action=None,
         final_output=None,
+        stream_final_output=False,
         error_type=None,
         stop_reason=None,
         resolved_references=(resolved_references or ResolvedReferences()).model_dump(

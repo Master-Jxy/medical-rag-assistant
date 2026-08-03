@@ -15,8 +15,7 @@ function requestId() {
 }
 
 export function useAgentStream(onSettled, onEvent) {
-  const registry = useConversationStreamRegistry()
-  let disposed = false
+  const registry = useConversationStreamRegistry('agent')
 
   function stateFor(threadId) {
     return registry.get(threadId)?.state || initialAgentStreamState()
@@ -67,7 +66,7 @@ export function useAgentStream(onSettled, onEvent) {
       throw error
     } finally {
       entry.controller = null
-      if (!disposed) await onSettled?.(threadId, entry.state)
+      await onSettled?.(threadId, entry.state)
     }
   }
 
@@ -106,7 +105,6 @@ export function useAgentStream(onSettled, onEvent) {
   }
 
   function abortAll() {
-    disposed = true
     registry.abortAll()
   }
 

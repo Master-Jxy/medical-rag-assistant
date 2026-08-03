@@ -207,3 +207,4 @@ def test_graph_direct_reply_completes_without_tool_step() -> None:
     assert result["status"] == AgentRunStatus.COMPLETED
     assert result["step_count"] == 0
     assert result["final_output"] == "你好，我是资料整理Agent。"
+    assert result["stream_final_output"] is True

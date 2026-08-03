@@ -1,5 +1,7 @@
 import { reactive } from 'vue'
 
+const sharedStates = reactive(new Map())
+
 export function createAgentTimelineState() {
   return {
     messages: {},
@@ -176,7 +178,7 @@ export function reduceAgentTimeline(state, event, data = {}) {
 }
 
 export function useAgentTimeline() {
-  const states = reactive(new Map())
+  const states = sharedStates
 
   function ensure(threadId) {
     if (!states.has(threadId)) states.set(threadId, createAgentTimelineState())
@@ -215,4 +217,8 @@ export function useAgentTimeline() {
   }
 
   return { states, messagesFor, hydrate, beginUser, handle, remove }
+}
+
+export function clearAgentTimelines() {
+  sharedStates.clear()
 }

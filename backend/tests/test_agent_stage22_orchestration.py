@@ -6,6 +6,8 @@ import pytest
 from app.core.config import Settings
 from app.infrastructure.agent_model import LangChainAgentModel, LangChainAgentPlanner
 from app.modules.agent.contracts import (
+    AgentToolArguments,
+    AgentToolContext,
     AgentToolResult,
     ResolvedReferences,
     ToolResultDigest,
@@ -36,10 +38,17 @@ class NoopTool:
     name = "search_knowledge"
     description = "fake knowledge search"
 
-    class arguments_model:
-        @staticmethod
-        def model_json_schema():
-            return {"type": "object"}
+    class arguments_model(AgentToolArguments):
+        query: str = ""
+        top_k: int = 5
+
+    def invoke(
+        self,
+        context: AgentToolContext,
+        arguments: AgentToolArguments,
+    ) -> AgentToolResult:
+        del context, arguments
+        return AgentToolResult(summary="已检索医学资料", source_ids=["doc-1"])
 
 
 def state_for(*, mode="general", task="普通问题", references=None):
@@ -70,27 +79,21 @@ def test_mode_policies_enforce_distinct_roles_tools_and_medical_boundaries() -> 
     assert "不越权写库" in knowledge.system_prompt
 
 
-def test_general_medical_task_uses_one_controlled_handoff() -> None:
-    client = RecordingJsonClient(
-        [
-            {
-                "route": "direct_reply",
-                "plan": [],
-                "allowed": True,
-                "response_message": "建议记录症状并及时就医评估。",
-            }
-        ]
-    )
-    planner = LangChainAgentPlanner(client, ToolRegistry([]))
-    runner = BoundedAgentGraph(planner=planner, registry=ToolRegistry([]))
+@pytest.mark.parametrize("task", ["我最近一直头疼", "高血压是什么", "呼吸道疾病有哪些"])
+def test_general_medical_task_uses_one_controlled_handoff(task) -> None:
+    registry = ToolRegistry([NoopTool()])
+    planner = LangChainAgentPlanner(RecordingJsonClient([]), registry)
+    runner = BoundedAgentGraph(planner=planner, registry=registry)
 
-    result = runner.invoke(state_for(task="我最近一直头疼"))
+    result = runner.invoke(state_for(task=task))
 
     assert result["status"] == AgentRunStatus.COMPLETED
     assert result["active_specialist"] == "patient_specialist"
     assert result["specialists"] == ["general_specialist", "patient_specialist"]
     assert result["handoff_count"] == 1
-    assert result["tool_call_count"] == 0
+    assert result["tool_call_count"] == 1
+    assert result["selected_tool"] == "search_knowledge"
+    assert result["tool_result_summaries"] == ["已检索医学资料"]
 
 
 def test_general_small_talk_is_answered_by_model_without_tool() -> None:

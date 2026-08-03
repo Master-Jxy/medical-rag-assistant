@@ -3,6 +3,7 @@ import { nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import ChatView from '../src/views/ChatView.vue'
+import { abortAllConversationStreams } from '../src/features/agent-chat/useConversationStreamRegistry.js'
 
 const api = vi.hoisted(() => ({
   createConversation: vi.fn(),
@@ -66,6 +67,7 @@ function mountChatView(options = {}) {
 }
 
 beforeEach(() => {
+  abortAllConversationStreams()
   vi.clearAllMocks()
   modelApi.getModelCatalog.mockResolvedValue({
     active_model_id: 'qwen',
@@ -264,6 +266,47 @@ describe('ChatView 会话交互', () => {
     expect(messageArea.style.scrollBehavior).toBe('')
   })
 
+  it('离开RAG页面再返回后保持同一条SSE并继续逐段显示', async () => {
+    let streamHandlers
+    let finishStream
+    api.streamConversation.mockImplementation((_id, _question, handlers) => {
+      streamHandlers = handlers
+      return new Promise((resolve) => { finishStream = resolve })
+    })
+
+    const firstView = mountChatView()
+    await flushPromises()
+    await firstView.get('textarea').setValue('跨页面长回答')
+    await firstView.get('form').trigger('submit')
+    await nextTick()
+
+    const signal = api.streamConversation.mock.calls[0][2].signal
+    streamHandlers.onToken('第一段')
+    await nextTick()
+    expect(firstView.text()).toContain('第一段')
+
+    firstView.unmount()
+    expect(signal.aborted).toBe(false)
+
+    const returnedView = mountChatView()
+    await flushPromises()
+    expect(returnedView.text()).toContain('第一段')
+    expect(returnedView.text()).not.toContain('上次回答未正常结束')
+
+    streamHandlers.onToken('第二段')
+    await nextTick()
+    expect(returnedView.text()).toContain('第一段第二段')
+
+    streamHandlers.onDone({
+      request_id: 'route-return-request',
+      user_message_id: 'route-return-user',
+      assistant_message_id: 'route-return-assistant',
+    })
+    finishStream()
+    await flushPromises()
+    returnedView.unmount()
+  })
+
   it('刷新后使用服务端active_run_id停止RAG回答', async () => {
     api.listConversations.mockResolvedValue({
       conversations: [{
@@ -398,7 +441,7 @@ describe('ChatView 会话交互', () => {
     wrapper.unmount()
   })
 
-  it('停止操作只作用于当前会话，切换不会中断其他流且卸载会清理控制器', async () => {
+  it('停止操作只作用于当前会话，切换和卸载都不会误断其他流', async () => {
     const streams = {}
     api.streamConversation.mockImplementation((id, _question, handlers) => new Promise((resolve) => {
       streams[id] = { handlers, resolve }
@@ -428,7 +471,7 @@ describe('ChatView 会话交互', () => {
     const signals = api.streamConversation.mock.calls.map((call) => call[2].signal)
     expect(signals.every((signal) => !signal.aborted)).toBe(true)
     wrapper.unmount()
-    expect(signals.every((signal) => signal.aborted)).toBe(true)
+    expect(signals.every((signal) => !signal.aborted)).toBe(true)
   })
 
   it('刷新后使用服务端has_unread恢复未读点，打开会话后提交已读序号', async () => {

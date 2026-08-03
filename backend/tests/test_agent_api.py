@@ -90,6 +90,19 @@ class StreamingReportPlanner(ReportPlanner):
         )
 
 
+class StreamingDirectReplyPlanner(StreamingReportPlanner):
+    def classify_and_plan(self, state):
+        return PlanDecision(
+            route="direct_reply",
+            response_message="这段规划阶段的完整回答不应整块发送。",
+        )
+
+    def stream_finalize(self, state):
+        yield GeneratedAgentTextChunk(content="第一段")
+        yield GeneratedAgentTextChunk(content="第二段")
+        yield GeneratedAgentTextChunk(content="", used_tokens=12)
+
+
 def test_agent_rest_sse_persistence_and_download() -> None:
     engine = build_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -248,6 +261,51 @@ def test_agent_final_answer_is_forwarded_as_multiple_sse_tokens() -> None:
             assert detail["final_result"] == "学习报告已完成。"
             assert detail["used_tokens"] == 56
             assert detail["estimated_cost_cny"] == 0.005
+    finally:
+        app.dependency_overrides.clear()
+        session.close()
+        engine.dispose()
+
+
+def test_agent_direct_reply_also_uses_the_streaming_finalizer() -> None:
+    engine = build_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = Session(engine, expire_on_commit=False)
+    user = User(
+        id="direct-stream-owner",
+        email="direct-stream-owner@example.com",
+        password_hash="hash",
+    )
+    session.add(user)
+    session.commit()
+    cancellation = AgentCancellationService()
+    service = AgentApplicationService(
+        session,
+        policy=AgentPolicy(enabled=True),
+        graph_factory=lambda user_id, run_id: BoundedAgentGraph(
+            planner=StreamingDirectReplyPlanner(),
+            registry=ToolRegistry([]),
+            stop_requested=lambda: cancellation.is_requested(user_id, run_id),
+        ),
+        cancellation=cancellation,
+        model_name="mock-direct-stream",
+    )
+    app.dependency_overrides[get_current_user] = lambda: UserResponse.model_validate(user)
+    app.dependency_overrides[get_agent_application_service] = lambda: service
+    try:
+        with TestClient(app) as client:
+            created = service.create_run("direct-stream-owner", "你好")
+            response = client.post(f"/api/v1/agent/runs/{created.id}/stream")
+
+            assert response.status_code == 200
+            assert response.text.count("event: token") == 2
+            assert "第一段" in response.text
+            assert "第二段" in response.text
+            assert "规划阶段的完整回答" not in response.text
+
+            detail = client.get(f"/api/v1/agent/runs/{created.id}").json()
+            assert detail["final_result"] == "第一段第二段"
+            assert detail["used_tokens"] == 12
     finally:
         app.dependency_overrides.clear()
         session.close()

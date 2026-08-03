@@ -167,6 +167,7 @@ class BoundedAgentGraph:
             "pending_handoff": pending_handoff,
             "clarification_key": decision.clarification_key,
             "final_output": None if should_use_tool else visible_output,
+            "stream_final_output": route == "direct_reply",
             **_with_usage(state, decision.usage),
         }
 

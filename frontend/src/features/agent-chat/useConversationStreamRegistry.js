@@ -1,5 +1,7 @@
 import { reactive } from 'vue'
 
+const registryEntries = new Map()
+
 const LOCAL_RUNNING_PHASES = new Set([
   'pending',
   'creating_message',
@@ -12,8 +14,9 @@ const LOCAL_RUNNING_PHASES = new Set([
 ])
 const SERVER_RUNNING_PHASES = new Set(['pending', 'running', 'stopping'])
 
-export function useConversationStreamRegistry() {
-  const entries = reactive(new Map())
+export function useConversationStreamRegistry(scope = 'default') {
+  if (!registryEntries.has(scope)) registryEntries.set(scope, reactive(new Map()))
+  const entries = registryEntries.get(scope)
 
   function get(id) {
     return id ? entries.get(id) || null : null
@@ -108,5 +111,12 @@ export function useConversationStreamRegistry() {
     abort,
     remove,
     abortAll,
+  }
+}
+
+export function abortAllConversationStreams() {
+  for (const entries of registryEntries.values()) {
+    for (const entry of entries.values()) entry.controller?.abort()
+    entries.clear()
   }
 }

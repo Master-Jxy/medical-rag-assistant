@@ -32,8 +32,10 @@ import {
 } from '../src/features/agent-chat/agentEventReducer.js'
 import {
   createAgentTimelineState,
+  clearAgentTimelines,
   reduceAgentTimeline,
 } from '../src/features/agent-chat/useAgentTimeline.js'
+import { abortAllConversationStreams } from '../src/features/agent-chat/useConversationStreamRegistry.js'
 
 const thread = {
   id: 'thread-1',
@@ -123,6 +125,8 @@ function mountView(options = {}) {
 }
 
 beforeEach(() => {
+  abortAllConversationStreams()
+  clearAgentTimelines()
   vi.clearAllMocks()
   modelApi.getModelCatalog.mockResolvedValue({
     active_model_id: 'qwen',
@@ -274,6 +278,58 @@ describe('Codex式资料Agent工作台', () => {
       expect.any(Object),
     )
     expect(agentApi.listAgentMessages).toHaveBeenCalledTimes(2)
+  })
+
+  it('离开Agent页面再返回后继续显示计划、工具和流式正文', async () => {
+    let handlers
+    let finishStream
+    agentApi.streamAgentMessage.mockImplementation((_id, _payload, _key, options) => {
+      handlers = options
+      return new Promise((resolve) => { finishStream = resolve })
+    })
+
+    const firstView = mountView()
+    await flushPromises()
+    await firstView.get('textarea').setValue('呼吸道疾病有哪些')
+    await firstView.get('form.composer').trigger('submit')
+    await nextTick()
+
+    handlers.onEvent('message_created', {
+      user_message_id: 'route-user',
+      assistant_message_id: 'route-assistant',
+      run_id: 'route-run',
+      user_sequence_no: 3,
+      assistant_sequence_no: 4,
+    })
+    handlers.onEvent('plan_ready', { plan: ['检索已发布医学资料'] })
+    handlers.onEvent('tool_started', {
+      step_id: 'route-step',
+      tool_name: 'search_knowledge',
+      step: 1,
+    })
+    handlers.onEvent('token', { content: '第一段' })
+    await nextTick()
+    const signal = agentApi.streamAgentMessage.mock.calls[0][3].signal
+    firstView.unmount()
+    expect(signal.aborted).toBe(false)
+
+    const returnedView = mountView()
+    await flushPromises()
+    expect(returnedView.text()).toContain('检索已发布医学资料')
+    expect(returnedView.text()).toContain('第一段')
+
+    handlers.onEvent('token', { content: '第二段' })
+    handlers.onEvent('message_completed', {
+      message_id: 'route-assistant',
+      status: 'completed',
+      sequence_no: 4,
+    })
+    await nextTick()
+    expect(returnedView.text()).toContain('第一段第二段')
+
+    finishStream()
+    await flushPromises()
+    returnedView.unmount()
   })
 
   it('新建、切换会话和模型回复结束后自动聚焦输入框', async () => {
@@ -569,7 +625,7 @@ describe('Codex式资料Agent工作台', () => {
     wrapper.unmount()
   })
 
-  it('停止按钮按当前thread选择run，运行中会话不能归档删除且卸载清理全部流', async () => {
+  it('停止按钮按当前thread选择run，运行中会话不能归档删除且卸载不断开流', async () => {
     const activeThreads = [{ ...thread }, { ...secondThread }]
     const streams = {}
     agentApi.listAgentThreads.mockResolvedValue({ items: activeThreads })
@@ -614,7 +670,7 @@ describe('Codex式资料Agent工作台', () => {
     ])
     const signals = agentApi.streamAgentMessage.mock.calls.map((call) => call[3].signal)
     wrapper.unmount()
-    expect(signals.every((signal) => signal.aborted)).toBe(true)
+    expect(signals.every((signal) => !signal.aborted)).toBe(true)
   })
 
   it('服务端has_unread可在刷新后恢复，模式可更新并用于新建会话', async () => {

@@ -8,6 +8,16 @@
 Stage 23 运行中断恢复已经完成并发布，生产代码提交为 684e4c1。发布前完整备份、
 指定提交同步、backend 单服务重建和无费用线上验收均通过，未调用真实模型。
 
+RAG/Agent 跨业务页面流式恢复缺陷已在本地修复并完成发布级验证，等待本次生产部署：
+
+- RAG 和 Agent 的 stream registry、Agent timeline 提升为模块级共享状态；普通路由
+  卸载不再 abort，返回页面继续显示原草稿、计划、工具事件和后续 token。
+- 明确停止、退出登录和认证失效仍会中止并清空流状态，不跨账号保留消息。
+- 医学疾病、症状、用药、检查、治疗和就医知识问题确定性调用
+  `search_knowledge`；通用闲聊仍可直接回答。
+- Agent 工具回答和 direct reply 最终正文都走真实流式 finalizer；不再把规划阶段完整
+  回答作为一个整块 token 事件发给前端。
+
 Stage 22 的 22.1～22.8 已完成并发布，功能提交为 `5c02056`，随后发布记录提交为
 `92dd751`。生产 Alembic head 为 `0026_stage22_runtime_contract`。生产使用 HTTPS
 入口，MySQL、Redis、应用数据和 Chroma 数据卷均保留，Stage 22 没有启用新的真实模型调用。
@@ -35,17 +45,17 @@ Stage 22 的 22.1～22.8 已完成并发布，功能提交为 `5c02056`，随后
 
 ```text
 backend\.venv\Scripts\python.exe -m pytest -q backend/tests
-469 passed, 113 warnings
+477 passed, 113 warnings
 
 D:\Nodejs\npm.cmd --prefix frontend test
-18 files / 70 tests passed
+18 files / 72 tests passed
 
 D:\Nodejs\npm.cmd --prefix frontend run test:stream
 SSE parser test passed
 
 D:\Nodejs\npm.cmd --prefix frontend run build
 Vite production build passed
-assets: index-LYaCnDip.css / index-DjpPtGBX.js
+assets: index-COHvwHZI.css / index-BliWlH2I.js
 
 backend\.venv\Scripts\python.exe -m alembic -c backend\alembic.ini heads
 0026_stage22_runtime_contract (head)
@@ -59,7 +69,8 @@ Protected auth hash
 
 浏览器无模型/无持久化 stub 验收通过：桌面和 390px 移动端均完成 RAG/Agent 并发、独立
 停止、后台未读、重新打开清除未读、运行中删除禁用、四种 Agent 模式、固定输入器和溢出
-检查，控制台无错误。真实本地 MySQL 连接拒绝，因此没有把本地结果写成真实 MySQL 验收。
+检查；本次又验证了 RAG/Agent 跨业务页面返回、活动草稿复用、Agent知识库计划、工具、
+来源和最终回答，控制台无错误。全部使用浏览器接口桩，没有调用模型或写入真实数据库。
 
 ## 3. 生产发布证据
 
@@ -103,7 +114,8 @@ Stage 23 已完成实现、无费用验证和生产发布：
 
 ## 7. 唯一下一任务
 
-**观察 Stage 23 的自然运行状态，不创建生产测试数据。**
+**部署本次 RAG/Agent 跨页面流式与医学检索修复，并执行无费用线上验收。**
 
-后续只在自然出现陈旧 pending 时核对其是否收敛为 failed、会话是否恢复 idle，
-并检查 backend 日志；没有异常前不增加后台定时器或新的恢复状态。
+先做完整生产备份和 SHA-256 校验，再同步指定提交、重建 backend/web，并只检查健康、
+未授权边界、静态资源哈希、迁移版本、核心数据数量和错误日志；未经独立确认不得调用
+真实 Qwen、Embedding、Reranker 或创建生产测试消息。

@@ -411,6 +411,8 @@ class LangChainAgentPlanner(AgentPlanner):
             return KNOWLEDGE_SPECIALIST, KNOWLEDGE_SPECIALIST
         if any(word in lowered for word in ("指南", "病例", "临床", "循证", "随访模板")):
             return CLINICIAN_SPECIALIST, CLINICIAN_SPECIALIST
+        if LangChainAgentPlanner._requires_medical_knowledge_search(task):
+            return PATIENT_SPECIALIST, PATIENT_SPECIALIST
         if any(
             word in lowered
             for word in (
@@ -506,6 +508,12 @@ class LangChainAgentPlanner(AgentPlanner):
                 plan=["读取指定的已发布资料", "生成带来源的整理结果"],
                 allowed=True,
             )
+        if LangChainAgentPlanner._requires_medical_knowledge_search(task):
+            return PlanDecision(
+                route="tool_required",
+                plan=["检索已发布医学资料", "整理带来源的回答"],
+                allowed=True,
+            )
         return None
 
     @staticmethod
@@ -554,7 +562,40 @@ class LangChainAgentPlanner(AgentPlanner):
                 tool_name="get_document_info",
                 arguments={"document_id": document_ids[0]},
             )
+        if LangChainAgentPlanner._requires_medical_knowledge_search(task):
+            return ToolDecision(
+                tool_name="search_knowledge",
+                arguments={"query": task[:500], "top_k": 5},
+            )
         return None
+
+    @staticmethod
+    def _requires_medical_knowledge_search(task: str) -> bool:
+        return any(
+            term in task
+            for term in (
+                "疾病",
+                "症状",
+                "用药",
+                "药物",
+                "检查",
+                "治疗",
+                "就医",
+                "头疼",
+                "头痛",
+                "感冒",
+                "发热",
+                "呼吸",
+                "咳嗽",
+                "哮喘",
+                "肺炎",
+                "高血压",
+                "糖尿病",
+                "心脏",
+                "肝脏",
+                "肾脏",
+            )
+        )
 
     @staticmethod
     def _finalize_plan_decision(

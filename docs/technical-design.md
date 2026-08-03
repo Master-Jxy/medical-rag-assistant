@@ -1832,12 +1832,18 @@ Stage 22 不引入微服务、消息队列或自由群聊式多 Agent。RAG 与 
 `last_read_sequence`，为 Agent thread 增加 `assistant_mode`。会话列表通过消息序号和
 read marker 推导未读状态，并返回运行摘要；read marker 只允许原子前移。前端 RAG 与
 Agent 各自通过按会话 stream registry 保存 AbortController、草稿消息、事件、run ID 和
-错误，SSE 回调闭包绑定会话 ID，切换页面内会话不会中止旧流。
+错误，SSE 回调闭包绑定会话 ID。registry 和 Agent timeline 是模块级响应式状态，
+切换页面内会话或从 RAG/Agent 跳到其他业务页面都不会中止旧流；重新进入页面时复用
+活动草稿继续增量展示。只有明确停止、退出登录或认证失效才中止并清空内存流状态。
 
 Agent 模式固定为 `general/patient/clinician/knowledge`，工具白名单、医学边界和模式切换
 均由后端强制。复杂任务最多路由到 2 个 specialist，handoff 最多 1 次、工具调用最多
 3 次、模型调用最多 4 次；这是受控 supervisor 路由，不是并行 swarm。公开计划和决策
 只使用后端模板与白名单字段，隐藏推理、Prompt和scratchpad不得进入SSE、数据库或页面。
+明确的医学疾病、症状、用药、检查、治疗或就医知识问题确定性进入
+`search_knowledge`，不允许规划模型把它降级成无来源直接回答。无需工具的
+`direct_reply`仍保留0-step run，但最终正文统一通过模型流式 finalizer 发送，规划阶段
+产生的整块候选正文不得作为单个token事件直接下发。
 
 知识治理统一到管理员资产应用服务。用户提交者不能永久删除已发布公共资料；管理员可以
 替换或永久删除系统资料和用户审核发布资料。替换保留上传者、标签、分类、科室和治理

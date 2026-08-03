@@ -48,9 +48,11 @@ const errorMessage = ref('')
 const conversations = ref([])
 const activeConversationId = ref('')
 const messageCache = reactive(new Map())
-const streamRegistry = useConversationStreamRegistry()
+const streamRegistry = useConversationStreamRegistry('rag')
 const messages = computed(() => (
-  messageCache.get(activeConversationId.value) || [{ ...WELCOME_MESSAGE }]
+  streamRegistry.get(activeConversationId.value)?.messages
+    || messageCache.get(activeConversationId.value)
+    || [{ ...WELCOME_MESSAGE }]
 ))
 const activeConversation = computed(() => conversations.value.find(
   (item) => item.id === activeConversationId.value,
@@ -214,6 +216,15 @@ async function loadConversation(
     }
   }
   messageCache.set(conversationId, merged.length ? merged : [{ ...WELCOME_MESSAGE }])
+  const liveEntry = streamRegistry.get(conversationId)
+  if (liveEntry?.messages) {
+    for (const stored of rows) {
+      const live = liveEntry.messages.find((item) => item.id === stored.id)
+      if (live && (stored.content || ['completed', 'failed', 'stopped'].includes(stored.status))) {
+        Object.assign(live, stored)
+      }
+    }
+  }
   updateConversationSummary(conversationId, conversation)
   if (markAsRead) await markConversationSeen(conversationId, rows)
   return conversation
@@ -352,6 +363,7 @@ async function sendQuestion() {
     entry = streamRegistry.start(conversationId, {
       phase: 'running',
       requestId: idempotencyKey,
+      messages: conversationMessages,
     })
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
@@ -485,7 +497,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   disposed = true
-  streamRegistry.abortAll()
 })
 </script>
 

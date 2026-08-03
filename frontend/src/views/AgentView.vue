@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { Bot, PanelLeft, X } from '@lucide/vue'
 import { downloadAgentArtifact } from '../api/agent.js'
 import { getApiErrorMessage } from '../api/http.js'
@@ -131,7 +131,9 @@ async function selectThread(thread) {
   errorMessage.value = ''
   try {
     await threadState.selectThread(thread)
-    timeline.hydrate(thread.id, threadState.messages.value, threadState.runDetails.value)
+    if (!stream.registry.get(thread.id)) {
+      timeline.hydrate(thread.id, threadState.messages.value, threadState.runDetails.value)
+    }
     stream.registry.clearUnread(thread.id)
     assistantMode.value = threadState.currentThread.value?.assistant_mode || 'general'
     references.value = { messageIds: [], sourceIds: [], artifactIds: [] }
@@ -364,7 +366,9 @@ onMounted(async () => {
   try {
     await threadState.loadThreads(true)
     if (currentThreadId.value) {
-      timeline.hydrate(currentThreadId.value, threadState.messages.value, threadState.runDetails.value)
+      if (!stream.registry.get(currentThreadId.value)) {
+        timeline.hydrate(currentThreadId.value, threadState.messages.value, threadState.runDetails.value)
+      }
       stream.registry.clearUnread(currentThreadId.value)
       assistantMode.value = threadState.currentThread.value?.assistant_mode || 'general'
     }
@@ -374,7 +378,6 @@ onMounted(async () => {
   }
 })
 
-onBeforeUnmount(() => stream.abortAll())
 </script>
 
 <template>

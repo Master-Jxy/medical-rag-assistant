@@ -457,9 +457,13 @@ class AgentApplicationService:
         model_call_count = int(state.get("model_call_count", 0))
         if status == AgentRunStatus.COMPLETED:
             output = state.get("final_output")
-            if not output and graph is not None:
+            streamed_output = False
+            if graph is not None and (
+                not output or state.get("stream_final_output")
+            ):
                 answer_stream = graph.stream_final_answer(state)
                 if answer_stream is not None:
+                    streamed_output = True
                     output_parts = []
                     for chunk in answer_stream:
                         if self.cancellation.is_requested(user_id, run_id):
@@ -536,7 +540,7 @@ class AgentApplicationService:
                 token_measurement=token_measurement,
             )
             self.session.commit()
-            if state.get("final_output"):
+            if state.get("final_output") and not streamed_output:
                 yield {"event": "token", "data": {"content": output}}
             self._emit("agent_run", user_id, run_id, "success")
             yield {
