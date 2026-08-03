@@ -5,9 +5,12 @@
 
 ## 1. 当前真实状态
 
-Stage 22 的 22.1～22.8 已完成并发布。GitHub 和生产提交均为 `5c02056`，生产 Alembic
-head 为 `0026_stage22_runtime_contract`。生产使用 HTTPS 入口，MySQL、Redis、应用数据和
-Chroma 数据卷均保留，Stage 22 没有启用新的真实模型调用。
+Stage 23 运行中断恢复已经完成并发布，生产代码提交为 684e4c1。发布前完整备份、
+指定提交同步、backend 单服务重建和无费用线上验收均通过，未调用真实模型。
+
+Stage 22 的 22.1～22.8 已完成并发布，功能提交为 `5c02056`，随后发布记录提交为
+`92dd751`。生产 Alembic head 为 `0026_stage22_runtime_contract`。生产使用 HTTPS
+入口，MySQL、Redis、应用数据和 Chroma 数据卷均保留，Stage 22 没有启用新的真实模型调用。
 
 本阶段已实现：
 
@@ -77,9 +80,9 @@ Protected auth hash
 - 不读取或提交 `.env`、SMTP 授权码、API Key、上传文件、Chroma 数据、日志或数据库备份。
 - 生产服务器工作区已同步指定提交；`frontend/dist` 是构建输入，不作为源代码提交。
 
-## 5. Stage 23 本地完成状态
+## 5. Stage 23 发布状态
 
-Stage 23 已完成本地实现和无费用验证：
+Stage 23 已完成实现、无费用验证和生产发布：
 
 - 新增 ConversationRecoveryService，只将超过 900 秒的 RAG assistant/pending 消息收敛为 failed。
 - 新鲜 pending、completed、failed、stopped 和用户消息保持不变；恢复后会话为 idle、最后消息为 failed，并保持未读。
@@ -87,7 +90,11 @@ Stage 23 已完成本地实现和无费用验证：
 - 配置校验保证恢复阈值大于生成锁 TTL 与清理收尾窗口，Compose 和 .env 示例已同步。
 - Agent 继续使用既有 AgentRecoveryService；stopping 仍不单独持久化。
 - 新增 5 项临时 SQLite 测试通过；全量后端回归基线 473 项通过，加上本阶段入口测试为 474 项，会话 CRUD/问答/SSE、停止/幂等、生成锁和模型重试回归通过。
-- 本地未调用 Qwen、Embedding、Reranker、SMTP 或真实 MySQL；没有部署、提交或推送。
+- 发布提交为 684e4c1；完整备份位于
+  /home/deploy/medical-rag-backups/backup-20260803T143105Z，全部 SHA-256 校验通过。
+- 服务器只重建 backend，MySQL、Redis、Web 和命名卷未重建；四容器健康。
+- HTTP 308、HTTPS 健康 200、未授权会话 401、900 秒实际配置和错误日志检查通过。
+- 未调用 Qwen、Embedding、Reranker 或 SMTP，未创建生产测试数据。
 
 ## 6. 新任务阅读范围
 
@@ -96,7 +103,7 @@ Stage 23 已完成本地实现和无费用验证：
 
 ## 7. 唯一下一任务
 
-**用户确认后，单独安排 Stage 23 的发布前审计和线上部署。**
+**观察 Stage 23 的自然运行状态，不创建生产测试数据。**
 
-发布前需要重新核对 diff、提交边界、生产配置是否保持 900 秒默认值、备份和回滚点；
-得到当次明确部署授权后，才同步 GitHub/服务器并做无模型健康、认证、会话恢复验收。
+后续只在自然出现陈旧 pending 时核对其是否收敛为 failed、会话是否恢复 idle，
+并检查 backend 日志；没有异常前不增加后台定时器或新的恢复状态。

@@ -96,8 +96,9 @@ conversation_recovery_complete 避免每个请求重复扫描。查询只取：
 - recovery age 不得小于等于生成锁 TTL 加收尾余量；
 - 原会话 CRUD、问答、SSE 停止/幂等、生成锁和模型重试测试保持通过。
 
-本阶段没有调用 Qwen、Embedding、Reranker、SMTP 或真实数据库，没有部署生产，
-也没有改变生产 .env 开关。
+本阶段没有调用 Qwen、Embedding、Reranker 或 SMTP，也没有改变生产模型开关。
+发布前完成生产完整备份，只重建 backend；线上 900 秒配置、四容器健康、HTTP 308、
+HTTPS 200、未授权 401 和错误日志检查通过。未创建生产测试数据。
 
 ## 6. 回滚与后续
 
