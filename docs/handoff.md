@@ -8,7 +8,7 @@
 Stage 23 运行中断恢复已经完成并发布，生产代码提交为 684e4c1。发布前完整备份、
 指定提交同步、backend 单服务重建和无费用线上验收均通过，未调用真实模型。
 
-RAG/Agent 跨业务页面流式恢复缺陷已在本地修复并完成发布级验证，等待本次生产部署：
+RAG/Agent 跨业务页面流式恢复缺陷已修复并发布，生产业务提交为 `c900235`：
 
 - RAG 和 Agent 的 stream registry、Agent timeline 提升为模块级共享状态；普通路由
   卸载不再 abort，返回页面继续显示原草稿、计划、工具事件和后续 token。
@@ -74,6 +74,22 @@ Protected auth hash
 
 ## 3. 生产发布证据
 
+- 本次修复完整备份目录：
+  `/home/deploy/medical-rag-backups/backup-20260803T154055Z`；MySQL、app_data、
+  chroma_data、redis_data、deploy.env、compose.yaml 和 manifest 的 SHA-256 全部通过。
+- 服务器从 `f6ce7e2` 快进到 `c900235`。直连 GitHub 遇到已知 HTTP/2 接收中断后，
+  改用本地验证过的完整 Git bundle 做 `fetch + merge --ff-only`，没有在线编辑源码。
+- 本地 `frontend/dist` 原子替换服务器构建输入，只重建 backend/web；MySQL、Redis 和
+  四个命名卷未重建，没有数据库迁移。四容器最终均为 healthy，生产工作区干净。
+- HTTP 返回 308 到固定 HTTPS；HTTPS 健康接口返回 200；未登录会话接口返回 401；
+  Alembic 仍为 `0026_stage22_runtime_contract`。
+- 线上 JS/CSS 与本地 SHA-256 一致：
+  `index-BliWlH2I.js` 为 `333cbd4b...dba07`，
+  `index-COHvwHZI.css` 为 `eaf5ccd3...8d70`。
+- 发布前后核心数量完全不变：users 14、conversations 9、messages 172、documents 27、
+  agent_threads 7、agent_messages 76；最近 backend/web 日志错误匹配数为 0。
+- 本次只做无费用健康、权限、迁移、静态资源、数据一致性和日志验收，没有调用 Qwen、
+  Embedding、Reranker 或 SMTP，没有创建生产测试消息。
 - 生产备份目录：`/home/deploy/medical-rag-backups/backup-20260803T012857Z`。
 - 备份中的 MySQL、app_data、chroma_data、redis_data、deploy.env、compose.yaml 和 manifest 均通过 `SHA256SUMS` 校验。
 - 服务器从 `8d529298` 快进到 `5c020561`，随后只重建 backend 和 web；MySQL/Redis 容器和四类数据卷没有重建。
@@ -86,7 +102,7 @@ Protected auth hash
 
 ## 4. 工作区与安全边界
 
-- 当前分支 `main` 已推送 `5c02056`；工作区只剩 `backend/app/modules/auth/service.py` 的既有用户修改，禁止修改、格式化、暂存、提交或回退。
+- 当前分支 `main` 已推送本次修复；工作区只剩 `backend/app/modules/auth/service.py` 的既有用户修改，禁止修改、格式化、暂存、提交或回退。
 - 受保护文件当前 SHA-256 为 `9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。
 - 不读取或提交 `.env`、SMTP 授权码、API Key、上传文件、Chroma 数据、日志或数据库备份。
 - 生产服务器工作区已同步指定提交；`frontend/dist` 是构建输入，不作为源代码提交。
@@ -114,8 +130,8 @@ Stage 23 已完成实现、无费用验证和生产发布：
 
 ## 7. 唯一下一任务
 
-**部署本次 RAG/Agent 跨页面流式与医学检索修复，并执行无费用线上验收。**
+**观察本次跨页面流式修复和 Stage 23 的自然运行状态，不创建生产测试数据。**
 
-先做完整生产备份和 SHA-256 校验，再同步指定提交、重建 backend/web，并只检查健康、
-未授权边界、静态资源哈希、迁移版本、核心数据数量和错误日志；未经独立确认不得调用
-真实 Qwen、Embedding、Reranker 或创建生产测试消息。
+后续只在用户自然使用后核对 RAG/Agent 切页返回是否持续增量显示，并在自然出现陈旧
+pending 时检查其是否收敛为 failed、会话是否恢复 idle；没有新证据前不调用真实模型、
+不创建测试消息，也不增加后台定时器或新的恢复状态。
