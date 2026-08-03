@@ -12,7 +12,7 @@ from app.core.exceptions import (
     AgentRunNotFoundAppError,
 )
 from app.modules.agent.cancellation import AgentCancellationService
-from app.modules.agent.contracts import AgentToolResult
+from app.modules.agent.contracts import AgentToolResult, ResolvedReferences
 from app.modules.agent.graph import BoundedAgentGraph
 from app.modules.agent.policy import AgentPolicy
 from app.modules.agent.repository import (
@@ -26,6 +26,7 @@ from app.modules.agent.schemas import (
     AgentStopResponse,
 )
 from app.modules.agent.state import AgentNode, AgentRunStatus, create_initial_state
+from app.modules.agent.public_events import public_summary
 from app.ports.telemetry import (
     NullTelemetry,
     TelemetryEvent,
@@ -132,6 +133,10 @@ class AgentApplicationService:
         run_id: str,
         *,
         task_context: str | None = None,
+        assistant_mode: str = "general",
+        resolved_references: ResolvedReferences | None = None,
+        previous_clarification_key: str | None = None,
+        context_budget: dict[str, int] | None = None,
     ) -> Iterator[dict[str, object]]:
         try:
             run = self.repository.get_run(user_id, run_id)
@@ -149,12 +154,17 @@ class AgentApplicationService:
             user_id=user_id,
             task=task_context or run.task,
             policy=self.policy,
+            assistant_mode=assistant_mode,
+            resolved_references=resolved_references,
+            previous_clarification_key=previous_clarification_key,
+            context_budget=context_budget,
         )
         graph = self.graph_factory(user_id, run_id)
         tool_started_at = monotonic()
         active_step = None
         last_node = None
         final_state = state
+        public_sequence = 0
         try:
             for current in graph.stream_values(state):
                 final_state = current
@@ -166,9 +176,35 @@ class AgentApplicationService:
                     continue
                 last_node = node
                 if node == AgentNode.CLASSIFY_AND_PLAN and current["plan"]:
+                    public_sequence += 1
                     yield {
                         "event": "plan_ready",
-                        "data": {"plan": current["plan"]},
+                        "data": {
+                            "plan": current["plan"],
+                            "public_code": "task_classified",
+                            "public_summary": public_summary("task_classified"),
+                            "specialist": current["active_specialist"],
+                            "tool": None,
+                            "status": "completed",
+                            "sequence": public_sequence,
+                        },
+                    }
+                elif node == AgentNode.HANDOFF:
+                    public_sequence += 1
+                    yield {
+                        "event": "decision",
+                        "data": {
+                            "action": "handoff",
+                            "summary": public_summary("handoff_completed"),
+                            "public_code": "handoff_completed",
+                            "public_summary": public_summary("handoff_completed"),
+                            "specialist": current["active_specialist"],
+                            "tool": None,
+                            "status": (
+                                "failed" if current.get("error_type") else "completed"
+                            ),
+                            "sequence": public_sequence,
+                        },
                     }
                 elif node == AgentNode.SELECT_TOOL:
                     tool_started_at = monotonic()
@@ -180,12 +216,19 @@ class AgentApplicationService:
                         parameters=current.get("tool_arguments", {}),
                     )
                     self.session.commit()
+                    public_sequence += 1
                     yield {
                         "event": "tool_started",
                         "data": {
                             "step_id": active_step.id,
                             "tool_name": current.get("selected_tool"),
                             "step": active_step.sequence,
+                            "public_code": "tool_started",
+                            "public_summary": public_summary("tool_started"),
+                            "specialist": current["active_specialist"],
+                            "tool": current.get("selected_tool"),
+                            "status": "running",
+                            "sequence": public_sequence,
                         },
                     }
                 elif node == AgentNode.EXECUTE_TOOL:
@@ -210,17 +253,24 @@ class AgentApplicationService:
                             error_type=current.get("error_type"),
                         )
                         self.session.commit()
+                    completed_code = (
+                        "tool_failed" if current.get("error_type") else "tool_completed"
+                    )
+                    public_sequence += 1
                     yield {
                         "event": "tool_completed",
                         "data": {
                             "step_id": active_step.id if active_step else None,
                             "tool_name": current.get("selected_tool"),
-                            "summary": (
-                                result.get("summary") if isinstance(result, dict) else None
-                            ),
+                            "summary": public_summary(completed_code),
                             "status": (
                                 "failed" if current.get("error_type") else "completed"
                             ),
+                            "public_code": completed_code,
+                            "public_summary": public_summary(completed_code),
+                            "specialist": current["active_specialist"],
+                            "tool": current.get("selected_tool"),
+                            "sequence": public_sequence,
                         },
                     }
                     active_step = None
@@ -284,6 +334,12 @@ class AgentApplicationService:
                         "finalize": "现有结果足以完成任务，正在组织最终回答。",
                         "fail": "工具结果不可用，任务将安全结束。",
                     }
+                    code = {
+                        "continue": "result_needs_tool",
+                        "finalize": "result_sufficient",
+                        "fail": "result_failed",
+                    }.get(action, "result_sufficient")
+                    public_sequence += 1
                     yield {
                         "event": "decision",
                         "data": {
@@ -292,6 +348,12 @@ class AgentApplicationService:
                                 action,
                                 "已检查工具结果，正在确定下一步。",
                             ),
+                            "public_code": code,
+                            "public_summary": public_summary(code),
+                            "specialist": current["active_specialist"],
+                            "tool": current.get("selected_tool"),
+                            "status": "completed",
+                            "sequence": public_sequence,
                         },
                     }
             if active_step is not None:
@@ -304,6 +366,7 @@ class AgentApplicationService:
                     user_id=user_id,
                     step_id=active_step.id,
                     status=step_status,
+                    result_summary=None,
                     duration_ms=round((monotonic() - tool_started_at) * 1000),
                     error_type=final_state.get("error_type")
                     or final_state.get("stop_reason"),
@@ -316,6 +379,15 @@ class AgentApplicationService:
                         "tool_name": final_state.get("selected_tool"),
                         "summary": None,
                         "status": step_status,
+                        "public_code": (
+                            "tool_failed" if step_status == "failed" else "tool_completed"
+                        ),
+                        "public_summary": public_summary(
+                            "tool_failed" if step_status == "failed" else "tool_completed"
+                        ),
+                        "specialist": final_state["active_specialist"],
+                        "tool": final_state.get("selected_tool"),
+                        "sequence": public_sequence + 1,
                     },
                 }
                 active_step = None
@@ -332,6 +404,7 @@ class AgentApplicationService:
                     user_id=user_id,
                     step_id=active_step.id,
                     status="stopped",
+                    result_summary=None,
                     duration_ms=round((monotonic() - tool_started_at) * 1000),
                     error_type="client_disconnected",
                 )
@@ -345,6 +418,7 @@ class AgentApplicationService:
                     user_id=user_id,
                     step_id=active_step.id,
                     status="failed",
+                    result_summary=None,
                     duration_ms=round((monotonic() - tool_started_at) * 1000),
                     error_type="AGENT_EXECUTION_FAILED",
                 )
@@ -378,10 +452,11 @@ class AgentApplicationService:
 
     def _finish_run(self, user_id: str, run_id: str, state, *, graph=None):
         status = state["status"]
+        used_tokens = int(state.get("used_tokens", 0))
+        estimated_cost_cny = float(state.get("estimated_cost_cny", 0))
+        model_call_count = int(state.get("model_call_count", 0))
         if status == AgentRunStatus.COMPLETED:
             output = state.get("final_output")
-            used_tokens = state["used_tokens"]
-            estimated_cost_cny = state["estimated_cost_cny"]
             if not output and graph is not None:
                 answer_stream = graph.stream_final_answer(state)
                 if answer_stream is not None:
@@ -415,6 +490,7 @@ class AgentApplicationService:
                             }
                         used_tokens += chunk.used_tokens
                         estimated_cost_cny += chunk.estimated_cost_cny
+                        model_call_count += chunk.model_calls
                         budget_reason = None
                         if used_tokens > state["max_tokens"]:
                             budget_reason = "token_budget"
@@ -469,6 +545,10 @@ class AgentApplicationService:
                     "run_id": run_id,
                     "used_tokens": used_tokens,
                     "estimated_cost_cny": estimated_cost_cny,
+                    "model_call_count": model_call_count,
+                    "tool_call_count": state.get("tool_call_count", 0),
+                    "specialists": state.get("specialists", []),
+                    "clarification_key": state.get("clarification_key"),
                 },
             }
         elif status == AgentRunStatus.STOPPED:

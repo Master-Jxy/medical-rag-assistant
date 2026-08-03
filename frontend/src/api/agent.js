@@ -1,8 +1,11 @@
 import http, { apiBaseUrl, createApiErrorFromResponse } from './http.js'
 import { getAuthorizationHeaders, notifyUnauthorized } from '../auth/token.js'
 
-export async function createAgentThread(title = '新对话') {
-  return (await http.post('/agent/threads', { title })).data
+export async function createAgentThread(title = '新对话', assistantMode = 'general') {
+  return (await http.post('/agent/threads', {
+    title,
+    assistant_mode: assistantMode,
+  })).data
 }
 
 export async function listAgentThreads(status = 'active') {
@@ -13,6 +16,13 @@ export async function listAgentThreads(status = 'active') {
 
 export async function getAgentThread(threadId) {
   return (await http.get(`/agent/threads/${encodeURIComponent(threadId)}`)).data
+}
+
+export async function markAgentThreadRead(threadId, lastReadSequence) {
+  return (await http.post(
+    `/agent/threads/${encodeURIComponent(threadId)}/read`,
+    { last_read_sequence: lastReadSequence },
+  )).data
 }
 
 export async function updateAgentThread(threadId, changes) {

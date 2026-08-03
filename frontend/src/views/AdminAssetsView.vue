@@ -29,8 +29,8 @@ import {
 } from '../api/adminPlatform'
 import {
   createSystemDocument,
-  deleteSystemDocument,
-  replaceSystemDocument,
+  deleteAdminDocument,
+  replaceAdminDocument,
 } from '../api/adminDocuments.js'
 import { getApiErrorMessage } from '../api/http'
 
@@ -209,10 +209,10 @@ async function confirmAction() {
   try {
     if (actionType.value === 'archive') await archiveAsset(item.document_id)
     else if (actionType.value === 'republish') await republishAsset(item.document_id)
-    else await deleteSystemDocument(item.document_id)
+    else await deleteAdminDocument(item.document_id)
     successMessage.value = actionType.value === 'archive'
       ? '资产已下线。'
-      : actionType.value === 'republish' ? '资产已重新发布。' : '系统资料及其向量片段已删除。'
+      : actionType.value === 'republish' ? '资产已重新发布。' : '知识资产及其文件、向量片段已永久删除。'
     actionTarget.value = null
     await load()
   } catch (error) {
@@ -257,7 +257,7 @@ async function replaceDocument(item, event) {
   if (!validateFile(file) || replacingId.value) return
   replacingId.value = item.document_id
   try {
-    const result = await replaceSystemDocument(item.document_id, file)
+    const result = await replaceAdminDocument(item.document_id, file)
     successMessage.value = `${item.file_name} 已整体替换为 ${result.file_name}。`
     await load()
   } catch (error) {
@@ -282,8 +282,8 @@ async function scanGovernance() {
 }
 
 const actionDialog = computed(() => {
-  if (actionType.value === 'delete-system') return {
-    title: '删除系统资料？',
+  if (actionType.value === 'delete') return {
+    title: '永久删除知识资产？',
     description: actionTarget.value ? `“${actionTarget.value.file_name}”的原文件、数据库记录和向量片段都会被删除。` : '',
     confirm: '确认删除',
   }
@@ -341,10 +341,10 @@ onMounted(load)
         <div class="asset-actions">
           <button class="icon-action" type="button" title="编辑治理信息" @click="openEdit(item)"><Pencil :size="15" /></button>
           <button v-if="item.review_status === 'in_review'" class="icon-action success" type="button" title="完成复核" @click="openReview(item)"><CalendarCheck :size="15" /></button>
-          <label v-if="item.is_system" class="icon-action file-action" title="整体替换"><input type="file" accept=".pdf,.txt" :disabled="Boolean(replacingId)" @change="replaceDocument(item, $event)" /><Replace :size="15" /></label>
+          <label class="icon-action file-action" title="整体替换"><input type="file" accept=".pdf,.txt" :disabled="Boolean(replacingId)" @change="replaceDocument(item, $event)" /><Replace :size="15" /></label>
           <button v-if="item.status === 'published'" class="icon-action" type="button" title="下线资产" @click="requestAction(item, 'archive')"><Archive :size="15" /></button>
           <button v-else-if="item.status === 'archived'" class="icon-action" type="button" title="重新发布" @click="requestAction(item, 'republish')"><RotateCcw :size="15" /></button>
-          <button v-if="item.is_system" class="icon-action danger" type="button" title="永久删除系统资料" @click="requestAction(item, 'delete-system')"><Trash2 :size="15" /></button>
+          <button class="icon-action danger" type="button" title="永久删除知识资产" @click="requestAction(item, 'delete')"><Trash2 :size="15" /></button>
         </div>
       </article>
     </section>

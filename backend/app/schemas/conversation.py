@@ -72,6 +72,11 @@ class ConversationSummary(BaseModel):
     id: str
     title: str
     message_count: int
+    last_read_sequence: int = 0
+    run_status: Literal["idle", "pending", "running", "stopping"] = "idle"
+    active_run_id: str | None = None
+    has_unread: bool = False
+    last_message_status: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -95,6 +100,15 @@ class ConversationDeleteResponse(BaseModel):
 class ConversationStopResponse(BaseModel):
     status: Literal["stopping", "idle"]
     message: str
+
+
+class ConversationReadRequest(BaseModel):
+    last_read_sequence: int = Field(ge=0)
+
+
+class ConversationReadResponse(BaseModel):
+    conversation_id: str
+    last_read_sequence: int
 
 
 class ConversationChatResponse(ChatResponse):

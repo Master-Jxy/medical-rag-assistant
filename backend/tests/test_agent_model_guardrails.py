@@ -98,7 +98,7 @@ def test_current_forbidden_task_still_wins_over_safe_conversation_history() -> N
     decision = planner.classify_and_plan({"task": context})
 
     assert decision.allowed is False
-    assert decision.plan == ["拒绝越权任务"]
+    assert decision.plan == []
 
 
 @pytest.mark.parametrize(
@@ -115,11 +115,9 @@ def test_current_forbidden_task_still_wins_over_safe_conversation_history() -> N
         "谢谢",
     ],
 )
-def test_small_talk_routes_to_zero_tool_direct_reply(task) -> None:
+def test_small_talk_is_left_to_general_model_instead_of_hardcoded_reply(task) -> None:
     decision = LangChainAgentPlanner._deterministic_plan_decision(task)
-    assert decision.route == "direct_reply"
-    assert decision.response_message
-    assert decision.plan == []
+    assert decision is None
 
 
 def test_missing_comparison_target_routes_to_clarification() -> None:

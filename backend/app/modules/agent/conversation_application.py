@@ -105,7 +105,7 @@ class AgentConversationApplication:
         if not self.policy.enabled:
             raise AgentDisabledError()
         try:
-            self.threads.get_thread(user_id, thread_id)
+            thread = self.threads.get_thread(user_id, thread_id)
         except AgentThreadNotFoundError as exc:
             raise AgentThreadNotFoundAppError() from exc
         metadata = {
@@ -232,6 +232,10 @@ class AgentConversationApplication:
                 user_id,
                 run.id,
                 task_context=context.rendered,
+                assistant_mode=thread.assistant_mode,
+                resolved_references=context.resolved_references,
+                previous_clarification_key=context.previous_clarification_key,
+                context_budget=dict(context.section_tokens),
             )
             for item in agent_stream:
                 event = str(item["event"])

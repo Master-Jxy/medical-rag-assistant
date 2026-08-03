@@ -36,7 +36,7 @@ class NoArguments(AgentToolArguments):
 
 
 class ReportTool:
-    name = "report_tool"
+    name = "generate_learning_report"
     description = "生成固定报告"
     arguments_model = NoArguments
 
@@ -60,10 +60,14 @@ class ReportTool:
 
 class ReportPlanner:
     def classify_and_plan(self, state):
-        return PlanDecision(plan=["生成学习报告"])
+        return PlanDecision(
+            plan=["生成学习报告"],
+            specialist="knowledge_specialist",
+            handoff_to="knowledge_specialist",
+        )
 
     def select_tool(self, state):
-        return ToolDecision(tool_name="report_tool", arguments={})
+        return ToolDecision(tool_name="generate_learning_report", arguments={})
 
     def inspect_result(self, state):
         return InspectionDecision(action="finalize", final_output="学习报告已完成。")
@@ -134,6 +138,11 @@ def test_agent_rest_sse_persistence_and_download() -> None:
             assert "event: artifact_ready" in streamed.text
             assert "event: run_completed" in streamed.text
             assert "学习报告已完成" in streamed.text
+            assert '"public_code": "handoff_completed"' in streamed.text
+            assert '"public_code": "tool_started"' in streamed.text
+            assert '"specialist": "knowledge_specialist"' in streamed.text
+            assert "chain_of_thought" not in streamed.text
+            assert "scratchpad" not in streamed.text
 
             detail = client.get(f"/api/v1/agent/runs/{run_id}")
             payload = detail.json()

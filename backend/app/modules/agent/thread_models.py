@@ -50,6 +50,12 @@ class AgentThread(Base):
     next_message_sequence: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=1
     )
+    last_read_sequence: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    assistant_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="general", server_default="general"
+    )
     last_message_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
@@ -71,6 +77,10 @@ class AgentThread(Base):
         CheckConstraint(
             "status IN ('active','archived')",
             name="ck_agent_threads_status",
+        ),
+        CheckConstraint(
+            "assistant_mode IN ('general','patient','clinician','knowledge')",
+            name="ck_agent_threads_assistant_mode",
         ),
         Index(
             "ix_agent_threads_user_status_last_message",

@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.agent.state import AgentGraphState
 from app.modules.agent.generation import GeneratedAgentTextChunk
+from app.modules.agent.mode_policy import ALL_SPECIALISTS
+from app.modules.agent.public_events import sanitize_public_plan
 
 
 class PlannerUsage(BaseModel):
@@ -14,6 +16,7 @@ class PlannerUsage(BaseModel):
 
     tokens: int = Field(default=0, ge=0)
     estimated_cost_cny: float = Field(default=0, ge=0)
+    model_calls: int = Field(default=0, ge=0, le=1)
 
 
 class PlanDecision(BaseModel):
@@ -29,6 +32,9 @@ class PlanDecision(BaseModel):
     allowed: bool = True
     refusal_message: str | None = Field(default=None, max_length=500)
     response_message: str | None = Field(default=None, max_length=2000)
+    specialist: str | None = Field(default=None, max_length=40)
+    handoff_to: str | None = Field(default=None, max_length=40)
+    clarification_key: str | None = Field(default=None, max_length=160)
     usage: PlannerUsage = Field(default_factory=PlannerUsage)
 
     @field_validator("plan", mode="before")
@@ -36,6 +42,20 @@ class PlanDecision(BaseModel):
     def normalize_empty_plan(cls, value):
         """非工具路由常被模型表示为null，统一为无公开执行计划。"""
         return [] if value is None else value
+
+    @field_validator("plan")
+    @classmethod
+    def sanitize_plan(cls, value: list[str]) -> list[str]:
+        if not value:
+            return []
+        return sanitize_public_plan(value)
+
+    @field_validator("specialist", "handoff_to")
+    @classmethod
+    def validate_specialist(cls, value: str | None) -> str | None:
+        if value is not None and value not in ALL_SPECIALISTS:
+            raise ValueError("specialist不在受控注册表")
+        return value
 
 
 class ToolDecision(BaseModel):

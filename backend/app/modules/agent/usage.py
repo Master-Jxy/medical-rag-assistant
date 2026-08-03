@@ -6,6 +6,34 @@ from threading import Lock
 from app.modules.rag.ports import ModelUsage
 
 
+class AgentModelCallBudgetExceeded(RuntimeError):
+    pass
+
+
+class AgentModelCallBudget:
+    """一次运行共享的模型调用硬闸门。"""
+
+    def __init__(self, max_calls: int = 4) -> None:
+        if not 1 <= max_calls <= 8:
+            raise ValueError("Agent模型调用上限必须位于1到8之间")
+        self.max_calls = max_calls
+        self._used_calls = 0
+        self._lock = Lock()
+
+    @property
+    def used_calls(self) -> int:
+        with self._lock:
+            return self._used_calls
+
+    def acquire(self, operation: str) -> int:
+        del operation
+        with self._lock:
+            if self._used_calls >= self.max_calls:
+                raise AgentModelCallBudgetExceeded("Agent模型调用次数已达到上限")
+            self._used_calls += 1
+            return self._used_calls
+
+
 @dataclass(frozen=True, slots=True)
 class AgentModelUsageObservation:
     sequence: int

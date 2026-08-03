@@ -114,7 +114,7 @@ def test_txt_upload_is_saved_split_and_registered_in_mysql(tmp_path) -> None:
         saved = session.get(KnowledgeDocument, result.document_id)
         assert result.file_name == "高血压资料.txt"
         assert result.is_system is False
-        assert result.can_delete is True
+        assert result.can_delete is False
         assert saved is not None and saved.uploader_id == owner.id
         assert len(vector_store.added_documents) == result.chunk_count
         assert vector_store.added_documents[0].metadata["visibility"] == "public"
@@ -178,17 +178,17 @@ def test_public_list_and_delete_permissions(tmp_path) -> None:
 
         owner_item = service.list_documents(owner.id).documents[0]
         other_item = service.list_documents(other.id).documents[0]
-        assert owner_item.can_delete is True
+        assert owner_item.can_delete is False
         assert other_item.can_delete is False
 
         with pytest.raises(DocumentDeleteForbiddenError):
             service.delete_document(other.id, uploaded.document_id)
 
-        result = service.delete_document(owner.id, uploaded.document_id)
-        assert result.document_id == uploaded.document_id
-        assert vector_store.deleted_ids == vector_store.added_ids
-        assert service.list_documents(owner.id).total == 0
-        assert not list((tmp_path / "uploads").glob("*.txt"))
+        with pytest.raises(DocumentDeleteForbiddenError):
+            service.delete_document(owner.id, uploaded.document_id)
+        assert not vector_store.deleted_ids
+        assert service.list_documents(owner.id).total == 1
+        assert list((tmp_path / "uploads").glob("*.txt"))
     finally:
         session.close()
         engine.dispose()
@@ -247,12 +247,12 @@ def test_delete_database_failure_restores_file_and_vector_snapshot(tmp_path) -> 
             raise RuntimeError("模拟数据库删除失败")
 
         service.repository.delete = fail_delete
-        with pytest.raises(DocumentStoreError):
+        with pytest.raises(DocumentDeleteForbiddenError):
             service.delete_document(owner.id, uploaded.document_id)
 
         assert stored_path.exists()
         assert set(vector_store.entries) == original_ids
-        assert vector_store.restore_calls == 1
+        assert vector_store.restore_calls == 0
         assert session.get(KnowledgeDocument, uploaded.document_id) is not None
     finally:
         session.close()

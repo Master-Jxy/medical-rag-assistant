@@ -11,6 +11,7 @@ class GeneratedAgentText:
     content: str
     used_tokens: int = 0
     estimated_cost_cny: float = 0
+    model_calls: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +19,7 @@ class GeneratedAgentTextChunk:
     content: str
     used_tokens: int = 0
     estimated_cost_cny: float = 0
+    model_calls: int = 0
 
 
 class AgentContentGeneratorPort(Protocol):

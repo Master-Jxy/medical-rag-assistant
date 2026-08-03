@@ -1,9 +1,79 @@
-"""Agent白名单工具的稳定契约。"""
+"""Agent白名单工具与受控编排的稳定契约。"""
 
 from dataclasses import dataclass
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class ResolvedReferences(BaseModel):
+    """规划前解析好的显式引用，不包含原始隐藏状态。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source_ids: tuple[str, ...] = ()
+    document_ids: tuple[str, ...] = ()
+    message_ids: tuple[str, ...] = ()
+    artifact_ids: tuple[str, ...] = ()
+    labels: tuple[str, ...] = ()
+
+
+class ToolResultDigest(BaseModel):
+    """后续模型可见的有界工具结果，禁止重新发送完整工具正文。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    tool_name: str = Field(min_length=1, max_length=64)
+    status: str = Field(pattern=r"^(completed|empty|failed|ambiguous)$")
+    summary: str = Field(min_length=1, max_length=800)
+    source_ids: tuple[str, ...] = ()
+    evidence_excerpt: str = Field(default="", max_length=1200)
+
+    @classmethod
+    def from_result(
+        cls,
+        tool_name: str,
+        result: "AgentToolResult | None",
+    ) -> "ToolResultDigest":
+        if result is None:
+            return cls(
+                tool_name=tool_name,
+                status="failed",
+                summary="工具未返回可用结果",
+            )
+        data = result.data if isinstance(result.data, dict) else {}
+        items = data.get("items") if isinstance(data, dict) else None
+        excerpts: list[str] = []
+        if isinstance(items, list):
+            remaining = 1200
+            for item in items[:3]:
+                if not isinstance(item, dict):
+                    continue
+                content = item.get("content")
+                if not isinstance(content, str) or not content.strip():
+                    continue
+                piece = content.strip()[: min(500, remaining)]
+                if piece:
+                    excerpts.append(piece)
+                    remaining -= len(piece)
+                if remaining <= 0:
+                    break
+        found = data.get("found") if isinstance(data, dict) else None
+        count = data.get("count") if isinstance(data, dict) else None
+        missing = data.get("missing_document_ids") if isinstance(data, dict) else None
+        if found is False or count == 0 or (missing and not result.source_ids):
+            status = "empty"
+        elif result.source_ids or result.artifacts or excerpts:
+            status = "completed"
+        else:
+            status = "ambiguous"
+        return cls(
+            tool_name=tool_name,
+            status=status,
+            summary=result.summary.strip()[:800],
+            source_ids=tuple(dict.fromkeys(result.source_ids))[:20],
+            evidence_excerpt="\n".join(excerpts)[:1200],
+        )
 
 
 class AgentToolArguments(BaseModel):
@@ -24,6 +94,7 @@ class AgentToolResult(BaseModel):
     data: dict[str, object] = Field(default_factory=dict)
     used_tokens: int = Field(default=0, ge=0)
     estimated_cost_cny: float = Field(default=0, ge=0)
+    model_calls: int = Field(default=0, ge=0, le=4)
 
 
 class AgentGeneratedArtifact(BaseModel):

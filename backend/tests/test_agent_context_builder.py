@@ -82,6 +82,13 @@ def test_context_prioritizes_current_explicit_recent_summary_and_memory() -> Non
         assert "更早目标：学习患者安全" in bundle.rendered
         assert "偏好：使用表格" in bundle.rendered
         assert "doc-1" in bundle.rendered
+        assert bundle.assistant_mode == "general"
+        assert bundle.resolved_references.source_ids == ("doc-1",)
+        assert bundle.resolved_references.message_ids == (referenced.id,)
+        assert bundle.rendered.index("[用户显式记忆]") < bundle.rendered.index(
+            "[最近消息]"
+        )
+        assert dict(bundle.section_tokens)["当前任务"] > 0
         assert referenced.id in bundle.included_message_ids
         assert recent.id in bundle.included_message_ids
         assert bundle.included_memory_count == 1

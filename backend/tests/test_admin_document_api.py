@@ -2,12 +2,14 @@
 
 from fastapi import Depends
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings
 from app.db.base import Base
 from app.db.session import build_engine, get_db_session
 from app.main import app
+from app.models import AuditEvent
 from app.modules.auth.tokens import get_token_service
 from app.services.admin_document_service import (
     AdminDocumentService,
@@ -77,6 +79,16 @@ def test_admin_document_routes_reject_spoofing_and_complete_crud(tmp_path) -> No
             )
             assert deleted.status_code == 200
             assert not vector_store.entries
+
+        with factory() as session:
+            events = session.scalars(select(AuditEvent)).all()
+            assert [event.action for event in events] == [
+                "knowledge_asset.created",
+                "knowledge_asset.file_replaced",
+                "knowledge_asset.permanently_deleted",
+            ]
+            assert all(event.actor_user_id == admin.id for event in events)
+            assert all(event.request_id for event in events)
     finally:
         app.dependency_overrides.clear()
         engine.dispose()

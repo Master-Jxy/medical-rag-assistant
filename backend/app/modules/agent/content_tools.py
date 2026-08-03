@@ -76,6 +76,7 @@ class SummarizeDocumentTool(_ContentTool):
             source_ids=[documents[0].document_id],
             used_tokens=generated.used_tokens,
             estimated_cost_cny=generated.estimated_cost_cny,
+            model_calls=generated.model_calls,
         )
 
 
@@ -100,6 +101,7 @@ class CompareDocumentsTool(_ContentTool):
             source_ids=source_ids,
             used_tokens=generated.used_tokens,
             estimated_cost_cny=generated.estimated_cost_cny,
+            model_calls=generated.model_calls,
         )
 
 
@@ -147,4 +149,5 @@ class GenerateLearningReportTool(_ContentTool):
             artifacts=[artifact],
             used_tokens=generated.used_tokens,
             estimated_cost_cny=generated.estimated_cost_cny,
+            model_calls=generated.model_calls,
         )

@@ -161,20 +161,21 @@ KnowledgeView 选择 PDF/TXT
 ### 4.3 文档删除
 
 ```text
-KnowledgeView 点击删除并二次确认
--> documents.js 发送 DELETE
--> Bearer JWT 解析当前用户
--> documents.py 调用 DocumentService
--> MySQL 查询登记并校验上传者
--> 系统文档或非上传者返回403
+普通用户在“我的资料”撤回未发布 submission
+-> 后端校验提交者、审核状态和所属关系
+-> 仅待审核/失败等未发布状态允许撤回
+-> 已发布公共资料拒绝由提交者永久删除
+
+管理员在统一知识资产页永久删除 published 资料
+-> require_admin 校验数据库角色
+-> KnowledgeAssetService 获取文档行锁
 -> 暂存文件并快照该文档的 Chroma 片段
--> 删除 Chroma 片段和 MySQL 登记
--> 提交成功后删除暂存文件
--> 返回成功
--> 页面只移除被删除的项目
+-> 同步删除向量、document、关联 submission 并写审计
+-> MySQL 提交成功后删除暂存文件
+-> 任一步失败时恢复文件、向量和登记状态
 ```
 
-提交前失败时恢复 Chroma 快照和文件。删除测试必须同时检查：目标文件、目标登记项、目标向量均消失，其他文档保持不变。
+提交前失败时恢复 Chroma 快照和文件。删除测试必须同时检查：目标文件、目标登记项、目标向量和关联 submission 一致消失，其他文档保持不变。
 
 ### 4.4 带会话的流式问答
 
@@ -463,14 +464,15 @@ Router / CLI
 
 ### 8.4 权限检查
 
-| 操作 | 未登录 | 已登录用户 | 上传者 | 系统管理员 |
+| 操作 | 未登录 | 普通用户 | 资料提交者 | 管理员/超级管理员 |
 | --- | --- | --- | --- | --- |
 | 检索公共文档 | 否 | 是 | 是 | 是 |
 | 查看自己的会话 | 否 | 是 | 是 | 是 |
 | 查看他人会话 | 否 | 否 | 否 | 按后续需求 |
-| 上传公共文档 | 否 | 是 | 是 | 是 |
-| 删除自己的上传 | 否 | 否 | 是 | 是 |
-| 删除系统文档 | 否 | 否 | 否 | 是 |
+| 提交待审核资料 | 否 | 是 | 是 | 是 |
+| 撤回未发布提交 | 否 | 否 | 是 | 是 |
+| 删除已发布公共资料 | 否 | 否 | 否 | 是 |
+| 替换系统或用户发布资料 | 否 | 否 | 否 | 是 |
 
 所有权校验必须在后端 Service/Repository 查询条件中完成，不能只靠前端隐藏按钮。
 
@@ -504,8 +506,8 @@ Router / CLI
 ```
 
 - 普通文档和系统文档必须复用同一套解析、哈希、切片、向量写入、删除快照和失败补偿能力。
-- `UserDocumentService` 只实现普通用户上传、公开列表和删除自己的资料。
-- `AdminDocumentService` 只实现系统文档新增、删除和替换，不接管会话、RAG 回答或普通用户资料。
+- `UserDocumentService` 只实现普通用户提交、公开列表和撤回未发布资料；不得永久删除已发布公共资产。
+- `AdminDocumentService` 和知识资产应用服务负责编排系统资料与用户审核发布资料的新增、删除和替换，不接管会话、RAG 回答或审核规则。
 - `DocumentService` 保留普通用户 API，用共享 `DocumentLifecycleService` 执行跨存储创建和删除；原有普通文档 API 契约未改变。
 
 `users` 增加：
@@ -523,11 +525,11 @@ Router / CLI
 | DELETE | `/api/v1/admin/documents/{id}` | 删除系统文档 |
 | PUT | `/api/v1/admin/documents/{id}/replace` | 用新文件整份替换系统文档 |
 
-权限规则：
+当前权限规则：
 
-- 普通登录用户继续可以上传公开资料并删除自己的上传。
-- 管理员额外拥有系统文档新增、删除和替换能力。
-- 用户上传资料的审核机制属于后续可选增强，不在任务 5.6 中改变现有上传规则。
+- 普通登录用户提交资料后进入审核流程，只能在发布前撤回自己的 submission。
+- 管理员可以新增系统资料，并统一删除或替换系统资料和用户审核后发布资料。
+- 超级管理员继承管理员知识治理能力；角色授予仍由认证模块独立负责。
 
 系统文档修改采用“整份替换”，不允许直接编辑磁盘 TXT：
 
@@ -1819,3 +1821,30 @@ would-block、预留低估和预警用户；只有超级管理员能调整Token�
 [`docs/quota-policy-v2-design.md`](quota-policy-v2-design.md)。阶段19代码、0025和
 本地三宽验收已完成并发布，生产先以off完成迁移与无费用黑盒验收后切到shadow观察；
 enforce仍未启用，必须在自然流量观察达标后另行评估。
+
+## 22. 阶段二十二：多会话并发、助手编排与知识治理 `[本地实现，L3验收中]`
+
+Stage 22 不引入微服务、消息队列或自由群聊式多 Agent。RAG 与 Agent 继续使用独立业务
+模块，但通过统一并发 Port 共享每用户运行槽位：默认最多同时运行 2 个不同会话，同一
+会话仍只能有一个生成任务。获取顺序固定为用户槽位后会话锁，释放顺序相反。
+
+`0026_stage22_runtime_contract` 为 RAG 会话和 Agent thread 增加
+`last_read_sequence`，为 Agent thread 增加 `assistant_mode`。会话列表通过消息序号和
+read marker 推导未读状态，并返回运行摘要；read marker 只允许原子前移。前端 RAG 与
+Agent 各自通过按会话 stream registry 保存 AbortController、草稿消息、事件、run ID 和
+错误，SSE 回调闭包绑定会话 ID，切换页面内会话不会中止旧流。
+
+Agent 模式固定为 `general/patient/clinician/knowledge`，工具白名单、医学边界和模式切换
+均由后端强制。复杂任务最多路由到 2 个 specialist，handoff 最多 1 次、工具调用最多
+3 次、模型调用最多 4 次；这是受控 supervisor 路由，不是并行 swarm。公开计划和决策
+只使用后端模板与白名单字段，隐藏推理、Prompt和scratchpad不得进入SSE、数据库或页面。
+
+知识治理统一到管理员资产应用服务。用户提交者不能永久删除已发布公共资料；管理员可以
+替换或永久删除系统资料和用户审核发布资料。替换保留上传者、标签、分类、科室和治理
+元数据，并同步关联 submission。MySQL、文件和 Chroma 仍使用行锁、快照、补偿和审计，
+不得宣称跨存储数据库原子事务。
+
+完整接口、预算、失败策略和验收矩阵见
+[`docs/stage22-concurrent-agent-and-governance-design.md`](stage22-concurrent-agent-and-governance-design.md)。
+当前完整后端、前端、SSE和正式构建已通过；真实本地 MySQL 往返和登录态浏览器验收尚未
+完成，生产仍是 `0025`，Stage 22 不得写成已经上线。

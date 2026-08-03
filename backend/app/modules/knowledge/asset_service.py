@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import AppError, DocumentStoreError
+from app.core.exceptions import AppError, DocumentBusyError, DocumentStoreError
 from app.modules.audit.ports import AuditPort, AuditRecord
 from app.modules.knowledge.asset_schemas import (
     KnowledgeAssetItem,
@@ -14,6 +14,7 @@ from app.modules.knowledge.asset_schemas import (
 )
 from app.modules.knowledge.lifecycle import DocumentLifecycleService
 from app.modules.knowledge.models import DocumentVersion, KnowledgeDocument
+from app.modules.knowledge.repository import DocumentLockConflictError
 from app.modules.jobs.ports import JobPort
 
 
@@ -236,7 +237,13 @@ class KnowledgeAssetService:
     ) -> KnowledgeAssetItem:
         if old_document_id == new_document_id:
             raise AssetStateConflictError()
-        old = self._get_document(old_document_id)
+        try:
+            old = self.lifecycle.repository.get_by_id_for_update(old_document_id)
+        except DocumentLockConflictError as exc:
+            self.session.rollback()
+            raise DocumentBusyError() from exc
+        if old is None:
+            raise AssetNotFoundError()
         new = self._get_document(new_document_id)
         if old.status not in {"published", "ready"} or new.status != "published":
             raise AssetStateConflictError()

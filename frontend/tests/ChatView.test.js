@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   deleteConversation: vi.fn(),
   getConversation: vi.fn(),
   listConversations: vi.fn(),
+  markConversationRead: vi.fn(),
   stopConversationStream: vi.fn(),
   streamConversation: vi.fn(),
 }))
@@ -18,17 +19,18 @@ vi.mock('../src/api/conversations.js', () => api)
 vi.mock('../src/api/models.js', () => modelApi)
 
 const summaries = [
-  { id: 'conversation-1', title: '第一段会话', message_count: 2 },
-  { id: 'conversation-2', title: '第二段会话', message_count: 2 },
+  { id: 'conversation-1', title: '第一段会话', message_count: 2, run_status: 'idle', has_unread: false, last_read_sequence: 0 },
+  { id: 'conversation-2', title: '第二段会话', message_count: 2, run_status: 'idle', has_unread: false, last_read_sequence: 0 },
 ]
 
 const details = {
   'conversation-1': {
     id: 'conversation-1',
     messages: [
-      { id: 'message-1', role: 'user', content: '第一段问题', status: 'completed', sources: [] },
+      { id: 'message-1', sequence: 1, role: 'user', content: '第一段问题', status: 'completed', sources: [] },
       {
         id: 'message-2',
+        sequence: 2,
         role: 'assistant',
         content: '第一段回答',
         status: 'completed',
@@ -44,8 +46,8 @@ const details = {
   'conversation-2': {
     id: 'conversation-2',
     messages: [
-      { id: 'message-3', role: 'user', content: '第二段问题', status: 'completed', sources: [] },
-      { id: 'message-4', role: 'assistant', content: '第二段回答', status: 'completed', sources: [] },
+      { id: 'message-3', sequence: 1, role: 'user', content: '第二段问题', status: 'completed', sources: [] },
+      { id: 'message-4', sequence: 2, role: 'assistant', content: '第二段回答', status: 'completed', sources: [] },
     ],
   },
 }
@@ -73,6 +75,10 @@ beforeEach(() => {
   api.getConversation.mockImplementation(async (id) => structuredClone(details[id]))
   api.deleteConversation.mockResolvedValue({ message: '会话已删除' })
   api.stopConversationStream.mockResolvedValue({ status: 'stopping', message: '正在停止回答' })
+  api.markConversationRead.mockImplementation(async (id, lastReadSequence) => ({
+    conversation_id: id,
+    last_read_sequence: lastReadSequence,
+  }))
 })
 
 describe('ChatView 会话交互', () => {
@@ -258,6 +264,28 @@ describe('ChatView 会话交互', () => {
     expect(messageArea.style.scrollBehavior).toBe('')
   })
 
+  it('刷新后使用服务端active_run_id停止RAG回答', async () => {
+    api.listConversations.mockResolvedValue({
+      conversations: [{
+        ...summaries[0],
+        run_status: 'pending',
+        active_run_id: 'request-from-server',
+      }],
+    })
+    const wrapper = mountChatView()
+    await flushPromises()
+
+    const stop = wrapper.findAll('button').find((item) => item.text() === '停止生成')
+    expect(stop).toBeTruthy()
+    await stop.trigger('click')
+    await flushPromises()
+
+    expect(api.stopConversationStream).toHaveBeenCalledWith(
+      'conversation-1',
+      'request-from-server',
+    )
+  })
+
   it('引用来源默认整组收起，并可点击展开和再次收起', async () => {
     const wrapper = mountChatView()
     await flushPromises()
@@ -297,5 +325,126 @@ describe('ChatView 会话交互', () => {
     expect(api.deleteConversation).toHaveBeenCalledWith('conversation-1')
     expect(wrapper.find('[data-conversation-id="conversation-1"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('第二段回答')
+  })
+
+  it('会话A后台生成时可新建并发送会话B，A完成后显示未读且不会写入B', async () => {
+    const currentSummaries = summaries.map((item) => ({ ...item }))
+    const currentDetails = structuredClone(details)
+    const streams = {}
+    api.listConversations.mockImplementation(async () => ({
+      conversations: currentSummaries.map((item) => ({ ...item })),
+    }))
+    api.getConversation.mockImplementation(async (id) => structuredClone(currentDetails[id]))
+    api.createConversation.mockImplementation(async () => {
+      const summary = {
+        id: 'conversation-3',
+        title: '并发会话',
+        message_count: 0,
+        run_status: 'idle',
+        has_unread: false,
+        last_read_sequence: 0,
+      }
+      currentSummaries.unshift(summary)
+      currentDetails[summary.id] = { ...summary, messages: [] }
+      return { ...summary }
+    })
+    api.streamConversation.mockImplementation((id, _question, handlers) => new Promise((resolve) => {
+      streams[id] = { handlers, resolve }
+    }))
+
+    const wrapper = mountChatView()
+    await flushPromises()
+    await wrapper.get('textarea').setValue('A的问题')
+    await wrapper.get('form').trigger('submit')
+    await nextTick()
+    expect(wrapper.get('[data-conversation-id="conversation-1"] .conversation-spinner').exists()).toBe(true)
+
+    await wrapper.get('.new-chat-button').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('textarea').attributes('disabled')).toBeUndefined()
+    await wrapper.get('textarea').setValue('B的问题')
+    await wrapper.get('form').trigger('submit')
+    await nextTick()
+
+    expect(api.streamConversation.mock.calls.map((call) => call[0])).toEqual([
+      'conversation-1',
+      'conversation-3',
+    ])
+    expect(wrapper.get('[data-conversation-id="conversation-1"] .conversation-spinner').exists()).toBe(true)
+    expect(wrapper.get('[data-conversation-id="conversation-3"] .conversation-spinner').exists()).toBe(true)
+
+    currentDetails['conversation-1'].messages.push(
+      { id: 'a-user-new', sequence: 3, role: 'user', content: 'A的问题', status: 'completed', sources: [] },
+      { id: 'a-assistant-new', sequence: 4, role: 'assistant', content: 'A的后台回答', status: 'completed', sources: [] },
+    )
+    currentSummaries.find((item) => item.id === 'conversation-1').has_unread = true
+    streams['conversation-1'].handlers.onDone({
+      user_message_id: 'a-user-new',
+      assistant_message_id: 'a-assistant-new',
+      request_id: 'request-a',
+    })
+    streams['conversation-1'].resolve()
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('A的后台回答')
+    expect(wrapper.get('[data-conversation-id="conversation-1"] .conversation-unread').exists()).toBe(true)
+    expect(wrapper.get('[data-conversation-id="conversation-3"] .conversation-spinner').exists()).toBe(true)
+
+    await wrapper.get('[data-conversation-id="conversation-1"] [data-testid="conversation-main"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('A的后台回答')
+    expect(wrapper.find('[data-conversation-id="conversation-1"] .conversation-unread').exists()).toBe(false)
+    expect(api.markConversationRead).toHaveBeenCalledWith('conversation-1', 4)
+    wrapper.unmount()
+  })
+
+  it('停止操作只作用于当前会话，切换不会中断其他流且卸载会清理控制器', async () => {
+    const streams = {}
+    api.streamConversation.mockImplementation((id, _question, handlers) => new Promise((resolve) => {
+      streams[id] = { handlers, resolve }
+    }))
+    const wrapper = mountChatView()
+    await flushPromises()
+
+    await wrapper.get('textarea').setValue('A长回答')
+    await wrapper.get('form').trigger('submit')
+    await wrapper.get('[data-conversation-id="conversation-2"] [data-testid="conversation-main"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('textarea').setValue('B长回答')
+    await wrapper.get('form').trigger('submit')
+    await nextTick()
+
+    await wrapper.get('[data-conversation-id="conversation-1"] [data-testid="conversation-main"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="stop-generation"]').trigger('click')
+    await wrapper.get('[data-conversation-id="conversation-2"] [data-testid="conversation-main"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="stop-generation"]').trigger('click')
+
+    expect(api.stopConversationStream.mock.calls.map((call) => call[0])).toEqual([
+      'conversation-1',
+      'conversation-2',
+    ])
+    const signals = api.streamConversation.mock.calls.map((call) => call[2].signal)
+    expect(signals.every((signal) => !signal.aborted)).toBe(true)
+    wrapper.unmount()
+    expect(signals.every((signal) => signal.aborted)).toBe(true)
+  })
+
+  it('刷新后使用服务端has_unread恢复未读点，打开会话后提交已读序号', async () => {
+    api.listConversations.mockResolvedValue({
+      conversations: summaries.map((item) => ({
+        ...item,
+        has_unread: item.id === 'conversation-2',
+      })),
+    })
+    const wrapper = mountChatView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-conversation-id="conversation-2"] .conversation-unread').exists()).toBe(true)
+    await wrapper.get('[data-conversation-id="conversation-2"] [data-testid="conversation-main"]').trigger('click')
+    await flushPromises()
+    expect(api.markConversationRead).toHaveBeenCalledWith('conversation-2', 2)
+    expect(wrapper.find('[data-conversation-id="conversation-2"] .conversation-unread').exists()).toBe(false)
   })
 })

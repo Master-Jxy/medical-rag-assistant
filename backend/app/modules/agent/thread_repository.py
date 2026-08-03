@@ -1,9 +1,10 @@
 """按用户隔离的Agent会话与消息持久化。"""
 
 from datetime import datetime, timezone
+from dataclasses import dataclass
 from uuid import uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import case, delete, exists, func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.modules.agent.models import AgentArtifact, AgentRun, AgentStep
@@ -53,6 +54,15 @@ class UnsafeAgentMessageMetadataError(ValueError):
     pass
 
 
+@dataclass(frozen=True)
+class AgentThreadRuntimeRecord:
+    thread: AgentThread
+    run_status: str
+    active_run_id: str | None
+    has_unread: bool
+    last_message_status: str | None
+
+
 def _contains_forbidden_key(value: object) -> bool:
     if isinstance(value, dict):
         return any(
@@ -74,11 +84,16 @@ class AgentThreadRepository:
         *,
         user_id: str,
         title: str = "新对话",
+        assistant_mode: str = "general",
     ) -> AgentThread:
         normalized_title = title.strip()
         if not normalized_title or len(normalized_title) > 200:
             raise ValueError("Agent会话标题长度必须为1到200个字符")
-        thread = AgentThread(user_id=user_id, title=normalized_title)
+        thread = AgentThread(
+            user_id=user_id,
+            title=normalized_title,
+            assistant_mode=assistant_mode,
+        )
         self.session.add(thread)
         self.session.flush()
         return thread
@@ -105,12 +120,34 @@ class AgentThreadRepository:
             ).all()
         )
 
+    def list_thread_summaries(
+        self,
+        user_id: str,
+        *,
+        status: str | None = None,
+        offset: int = 0,
+        limit: int = 20,
+    ) -> list[AgentThreadRuntimeRecord]:
+        statement = self._runtime_statement(user_id)
+        if status is not None:
+            statement = statement.where(AgentThread.status == status)
+        rows = self.session.execute(
+            statement.order_by(
+                AgentThread.last_message_at.desc(),
+                AgentThread.id.desc(),
+            )
+            .offset(offset)
+            .limit(limit)
+        ).all()
+        return [self._runtime_record(row) for row in rows]
+
     def get_thread(
         self,
         user_id: str,
         thread_id: str,
         *,
         include_messages: bool = False,
+        for_update: bool = False,
     ) -> AgentThread:
         statement = select(AgentThread).where(
             AgentThread.id == thread_id,
@@ -118,10 +155,24 @@ class AgentThreadRepository:
         )
         if include_messages:
             statement = statement.options(selectinload(AgentThread.messages))
+        if for_update:
+            statement = statement.with_for_update()
         thread = self.session.scalar(statement)
         if thread is None:
             raise AgentThreadNotFoundError()
         return thread
+
+    def get_thread_summary(
+        self,
+        user_id: str,
+        thread_id: str,
+    ) -> AgentThreadRuntimeRecord:
+        row = self.session.execute(
+            self._runtime_statement(user_id).where(AgentThread.id == thread_id)
+        ).one_or_none()
+        if row is None:
+            raise AgentThreadNotFoundError()
+        return self._runtime_record(row)
 
     def reserve_turn(
         self,
@@ -190,6 +241,55 @@ class AgentThreadRepository:
         thread.status = "archived" if archived else "active"
         self.session.flush()
         return thread
+
+    def change_assistant_mode(
+        self,
+        user_id: str,
+        thread_id: str,
+        assistant_mode: str,
+    ) -> AgentThread:
+        thread = self.get_thread(user_id, thread_id)
+        thread.assistant_mode = assistant_mode
+        thread.updated_at = datetime.now(timezone.utc)
+        self.session.flush()
+        return thread
+
+    def mark_read(
+        self,
+        user_id: str,
+        thread_id: str,
+        last_read_sequence: int,
+    ) -> int:
+        self.get_thread(user_id, thread_id)
+        latest_sequence = self.session.scalar(
+            select(func.coalesce(func.max(AgentMessage.sequence_no), 0)).where(
+                AgentMessage.thread_id == thread_id,
+                AgentMessage.user_id == user_id,
+            )
+        ) or 0
+        target = min(last_read_sequence, int(latest_sequence))
+        self.session.execute(
+            update(AgentThread)
+            .where(
+                AgentThread.id == thread_id,
+                AgentThread.user_id == user_id,
+            )
+            .values(
+                last_read_sequence=case(
+                    (AgentThread.last_read_sequence < target, target),
+                    else_=AgentThread.last_read_sequence,
+                )
+            )
+            .execution_options(synchronize_session=False)
+        )
+        self.session.flush()
+        marker = self.session.scalar(
+            select(AgentThread.last_read_sequence).where(
+                AgentThread.id == thread_id,
+                AgentThread.user_id == user_id,
+            )
+        )
+        return int(marker or 0)
 
     def create_message(
         self,
@@ -400,6 +500,71 @@ class AgentThreadRepository:
         if message is None:
             raise AgentMessageNotFoundError()
         return message
+
+    @staticmethod
+    def _runtime_statement(user_id: str):
+        active_run_id = (
+            select(AgentRun.id)
+            .where(
+                AgentRun.thread_id == AgentThread.id,
+                AgentRun.user_id == user_id,
+                AgentRun.status.in_(("pending", "running")),
+            )
+            .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
+            .limit(1)
+            .correlate(AgentThread)
+            .scalar_subquery()
+        )
+        active_run_status = (
+            select(AgentRun.status)
+            .where(
+                AgentRun.thread_id == AgentThread.id,
+                AgentRun.user_id == user_id,
+                AgentRun.status.in_(("pending", "running")),
+            )
+            .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
+            .limit(1)
+            .correlate(AgentThread)
+            .scalar_subquery()
+        )
+        last_message_status = (
+            select(AgentMessage.status)
+            .where(
+                AgentMessage.thread_id == AgentThread.id,
+                AgentMessage.user_id == user_id,
+            )
+            .order_by(AgentMessage.sequence_no.desc())
+            .limit(1)
+            .correlate(AgentThread)
+            .scalar_subquery()
+        )
+        has_unread = exists(
+            select(AgentMessage.id).where(
+                AgentMessage.thread_id == AgentThread.id,
+                AgentMessage.user_id == user_id,
+                AgentMessage.role == "assistant",
+                AgentMessage.status.in_(("completed", "failed", "stopped")),
+                AgentMessage.sequence_no > AgentThread.last_read_sequence,
+            )
+        ).correlate(AgentThread)
+        return select(
+            AgentThread,
+            active_run_status.label("run_status"),
+            active_run_id.label("active_run_id"),
+            has_unread.label("has_unread"),
+            last_message_status.label("last_message_status"),
+        ).where(AgentThread.user_id == user_id)
+
+    @staticmethod
+    def _runtime_record(row) -> AgentThreadRuntimeRecord:
+        thread, run_status, active_run_id, has_unread, last_message_status = row
+        return AgentThreadRuntimeRecord(
+            thread=thread,
+            run_status=run_status or "idle",
+            active_run_id=active_run_id,
+            has_unread=bool(has_unread),
+            last_message_status=last_message_status,
+        )
 
     @staticmethod
     def _validate_metadata(metadata: dict[str, object]) -> None:

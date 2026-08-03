@@ -5,7 +5,7 @@ from pathlib import Path
 
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     upload_concurrency_limit: int = Field(default=1, gt=0, le=10)
     upload_concurrency_ttl_seconds: int = Field(default=600, gt=0, le=3600)
     generation_lock_ttl_seconds: int = Field(default=600, gt=0, le=3600)
+    generation_active_run_limit: int = Field(default=2, ge=1, le=4)
+    generation_lock_cleanup_grace_seconds: int = Field(default=30, ge=1, le=300)
     idempotency_in_progress_ttl_seconds: int = Field(default=600, gt=0, le=3600)
     idempotency_result_ttl_seconds: int = Field(default=86400, gt=0, le=604800)
     auth_rate_limit_fallback_max_keys: int = Field(default=4096, gt=0, le=100000)
@@ -115,6 +117,10 @@ class Settings(BaseSettings):
     telemetry_log_backup_count: int = Field(default=5, ge=1, le=30)
     agent_enabled: bool = False
     agent_max_steps: int = Field(default=5, ge=1, le=5)
+    agent_max_tool_calls: int = Field(default=3, ge=1, le=3)
+    agent_max_model_calls: int = Field(default=4, ge=1, le=4)
+    agent_max_specialists: int = Field(default=2, ge=1, le=2)
+    agent_max_handoffs: int = Field(default=1, ge=0, le=1)
     agent_tool_timeout_seconds: float = Field(default=30.0, gt=0, le=60)
     agent_run_timeout_seconds: float = Field(default=120.0, gt=0, le=600)
     agent_max_tokens: int = Field(default=12_000, ge=1, le=200_000)
@@ -232,6 +238,19 @@ class Settings(BaseSettings):
             cleaned = value.strip().lower()
             return cleaned or None
         return value
+
+    @model_validator(mode="after")
+    def validate_generation_lock_lifetime(self):
+        minimum = (
+            self.agent_run_timeout_seconds
+            + self.generation_lock_cleanup_grace_seconds
+        )
+        if self.generation_lock_ttl_seconds <= minimum:
+            raise ValueError(
+                "GENERATION_LOCK_TTL_SECONDS 必须大于 "
+                "AGENT_RUN_TIMEOUT_SECONDS 与收尾余量之和"
+            )
+        return self
 
     def require_dashscope_api_key(self) -> str:
         """需要调用模型时再检查密钥，避免健康检查被密钥配置影响。"""

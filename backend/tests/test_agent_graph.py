@@ -31,7 +31,7 @@ class EmptyArguments(AgentToolArguments):
 
 
 class StubTool:
-    name = "stub_tool"
+    name = "search_knowledge"
     description = "返回固定的用户可见结果"
     arguments_model = EmptyArguments
 
@@ -65,7 +65,7 @@ class StubPlanner:
         return PlanDecision(plan=["检索资料", "形成结论"], usage=self.usage)
 
     def select_tool(self, state):
-        return ToolDecision(tool_name="stub_tool", arguments={})
+        return ToolDecision(tool_name="search_knowledge", arguments={})
 
     def inspect_result(self, state):
         return InspectionDecision(
@@ -83,6 +83,7 @@ def initial_state(policy: AgentPolicy):
         user_id="user-1",
         task="整理患者安全资料",
         policy=policy,
+        assistant_mode="knowledge",
     )
 
 

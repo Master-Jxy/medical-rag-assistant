@@ -49,17 +49,13 @@ beforeEach(() => {
 })
 
 describe('KnowledgeView 文档权限', () => {
-  it('系统文档显示保护状态，只有可删除文档出现删除按钮', async () => {
+  it('已发布公共文档统一显示为受保护资产，不提供永久删除入口', async () => {
     const wrapper = mountKnowledge()
     await flushPromises()
 
     expect(wrapper.text()).toContain('系统资料')
-    expect(wrapper.findAll('.delete-button')).toHaveLength(1)
-    expect(wrapper.get('.delete-button').element.closest('.document-row').textContent).toContain('我的资料.txt')
-
-    await wrapper.get('.delete-button').trigger('click')
-    expect(wrapper.text()).toContain('确认删除文档？')
-    expect(wrapper.text()).toContain('我的资料.txt')
+    expect(wrapper.findAll('.delete-button')).toHaveLength(0)
+    expect(wrapper.text()).toContain('发布后由管理员统一治理')
   })
 
   it('上传成功只提示已提交审核，不提示已经入库', async () => {

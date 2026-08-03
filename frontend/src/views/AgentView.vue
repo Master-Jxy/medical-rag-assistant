@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Bot, PanelLeft, X } from '@lucide/vue'
 import { downloadAgentArtifact } from '../api/agent.js'
 import { getApiErrorMessage } from '../api/http.js'
@@ -27,6 +27,14 @@ const renameTarget = ref(null)
 const renameTitle = ref('')
 const deleteTarget = ref(null)
 const threadActionPending = ref(false)
+const assistantMode = ref('general')
+
+const ASSISTANT_MODES = [
+  { value: 'general', label: '通用助手' },
+  { value: 'patient', label: '患者助手' },
+  { value: 'clinician', label: '医生助手' },
+  { value: 'knowledge', label: '知识库助手' },
+]
 
 async function focusComposer() {
   await nextTick()
@@ -55,21 +63,48 @@ const referenceLabels = computed(() => [
   })),
 ])
 
-const stream = useAgentStream(async () => {
-  await threadState.reloadCurrent()
-  timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
-  await focusComposer()
-}, timeline.handle)
+const stream = useAgentStream(async (threadId) => {
+  const isCurrent = threadState.currentThread.value?.id === threadId
+  await threadState.reloadThread(threadId, { markAsRead: isCurrent })
+  timeline.hydrate(
+    threadId,
+    threadState.messageCache.get(threadId) || [],
+    threadState.runDetailsCache.get(threadId) || {},
+  )
+  try {
+    await threadState.loadThreads(false)
+  } catch {
+    // 流结果已经进入对应会话缓存，侧栏刷新失败不覆盖已完成回答。
+  }
+  if (isCurrent) {
+    stream.registry.clearUnread(threadId)
+    await focusComposer()
+  } else {
+    stream.registry.markUnread(threadId)
+  }
+}, (threadId, event, data) => timeline.handle(threadId, event, data))
 
-const displayMessages = timeline.messages
+const currentThreadId = computed(() => threadState.currentThread.value?.id || '')
+const currentStreamState = computed(() => stream.stateFor(currentThreadId.value))
+const currentRunning = computed(() => stream.runningFor(
+  currentThreadId.value,
+  threadState.currentThread.value?.run_status,
+))
+const displayMessages = computed(() => timeline.messagesFor(currentThreadId.value))
 const runDetails = computed(() => threadState.runDetails.value)
+const runningThreadIds = computed(() => threadState.threads.value
+  .filter((thread) => stream.runningFor(thread.id, thread.run_status))
+  .map((thread) => thread.id))
+const unreadThreadIds = computed(() => threadState.threads.value
+  .filter((thread) => stream.registry.hasUnread(thread.id, thread.has_unread))
+  .map((thread) => thread.id))
 
 const sources = computed(() => {
   const rows = displayMessages.value.flatMap((item) => {
     if (item.metadata?.sources?.length) return item.metadata.sources
     return (item.metadata?.source_ids || []).map((document_id) => ({ document_id }))
   })
-  rows.push(...stream.state.value.sources)
+  rows.push(...currentStreamState.value.sources)
   return rows.filter(
     (item, index, all) => item.document_id
       && all.findIndex((other) => (
@@ -82,7 +117,7 @@ const sources = computed(() => {
 
 const artifacts = computed(() => {
   const stored = Object.values(runDetails.value).flatMap((run) => run?.artifacts || [])
-  const live = stream.state.value.artifacts.map((item) => ({
+  const live = currentStreamState.value.artifacts.map((item) => ({
     id: item.artifact_id,
     file_name: item.file_name,
     mime_type: item.mime_type,
@@ -96,7 +131,9 @@ async function selectThread(thread) {
   errorMessage.value = ''
   try {
     await threadState.selectThread(thread)
-    timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
+    timeline.hydrate(thread.id, threadState.messages.value, threadState.runDetails.value)
+    stream.registry.clearUnread(thread.id)
+    assistantMode.value = threadState.currentThread.value?.assistant_mode || 'general'
     references.value = { messageIds: [], sourceIds: [], artifactIds: [] }
     threadDrawerOpen.value = false
     await focusComposer()
@@ -108,8 +145,8 @@ async function selectThread(thread) {
 async function createThread() {
   errorMessage.value = ''
   try {
-    await threadState.newThread()
-    timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
+    const thread = await threadState.newThread('新对话', assistantMode.value)
+    timeline.hydrate(thread.id, threadState.messages.value, threadState.runDetails.value)
     threadDrawerOpen.value = false
     await focusComposer()
   } catch (error) {
@@ -137,9 +174,18 @@ async function confirmRename() {
 }
 
 async function archiveThread(thread) {
+  if (stream.runningFor(thread.id, thread.run_status)) {
+    errorMessage.value = '该会话仍在生成，请先打开会话并停止任务后再归档。'
+    return
+  }
   try {
     await threadState.archiveThread(thread)
-    timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
+    timeline.remove(thread.id)
+    if (currentThreadId.value) timeline.hydrate(
+      currentThreadId.value,
+      threadState.messages.value,
+      threadState.runDetails.value,
+    )
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
   }
@@ -148,7 +194,11 @@ async function archiveThread(thread) {
 async function restoreThread(thread) {
   try {
     await threadState.restoreThread(thread)
-    timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
+    if (currentThreadId.value) timeline.hydrate(
+      currentThreadId.value,
+      threadState.messages.value,
+      threadState.runDetails.value,
+    )
     notice.value = '会话已恢复到进行中。'
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
@@ -165,6 +215,10 @@ async function showThreadStatus(status) {
 }
 
 async function removeThread(thread) {
+  if (stream.runningFor(thread.id, thread.run_status)) {
+    errorMessage.value = '该会话仍在生成，请先打开会话并停止任务后再删除。'
+    return
+  }
   deleteTarget.value = thread
 }
 
@@ -173,7 +227,13 @@ async function confirmRemoveThread() {
   threadActionPending.value = true
   try {
     await threadState.removeThread(deleteTarget.value)
-    timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
+    timeline.remove(deleteTarget.value.id)
+    stream.registry.remove(deleteTarget.value.id)
+    if (currentThreadId.value) timeline.hydrate(
+      currentThreadId.value,
+      threadState.messages.value,
+      threadState.runDetails.value,
+    )
     references.value = { messageIds: [], sourceIds: [], artifactIds: [] }
     selectedSource.value = null
     selectedArtifact.value = null
@@ -192,13 +252,18 @@ async function send(content) {
   notice.value = ''
   try {
     let thread = threadState.currentThread.value
-    if (!thread) thread = await threadState.newThread()
+    if (!thread) thread = await threadState.newThread('新对话', assistantMode.value)
     if (thread.title === '新对话') {
       await threadState.renameThread(thread, content.slice(0, 30))
     }
-    timeline.beginUser(content)
-    await stream.send(thread.id, content, references.value)
+    const selectedReferences = {
+      messageIds: [...references.value.messageIds],
+      sourceIds: [...references.value.sourceIds],
+      artifactIds: [...references.value.artifactIds],
+    }
     references.value = { messageIds: [], sourceIds: [], artifactIds: [] }
+    timeline.beginUser(thread.id, content)
+    await stream.send(thread.id, content, selectedReferences)
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
   }
@@ -226,18 +291,35 @@ function removeReference(item) {
 
 async function retry(messageId) {
   errorMessage.value = ''
+  const threadId = currentThreadId.value
+  if (!threadId) return
   try {
-    await stream.retry(messageId)
+    await stream.retry(threadId, messageId)
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
   }
 }
 
 async function stop() {
+  const thread = threadState.currentThread.value
+  if (!thread) return
   try {
-    await stream.stop()
+    await stream.stop(thread.id, thread.active_run_id)
     notice.value = '正在安全停止当前任务。'
   } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+  }
+}
+
+async function changeAssistantMode(event) {
+  const mode = event.target.value
+  assistantMode.value = mode
+  const thread = threadState.currentThread.value
+  if (!thread) return
+  try {
+    await threadState.setAssistantMode(thread, mode)
+  } catch (error) {
+    assistantMode.value = thread.assistant_mode || 'general'
     errorMessage.value = getApiErrorMessage(error)
   }
 }
@@ -281,12 +363,18 @@ async function download(artifact) {
 onMounted(async () => {
   try {
     await threadState.loadThreads(true)
-    timeline.hydrate(threadState.messages.value, threadState.runDetails.value)
+    if (currentThreadId.value) {
+      timeline.hydrate(currentThreadId.value, threadState.messages.value, threadState.runDetails.value)
+      stream.registry.clearUnread(currentThreadId.value)
+      assistantMode.value = threadState.currentThread.value?.assistant_mode || 'general'
+    }
     await focusComposer()
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
   }
 })
+
+onBeforeUnmount(() => stream.abortAll())
 </script>
 
 <template>
@@ -302,8 +390,8 @@ onMounted(async () => {
       </div>
     </header>
 
-    <div v-if="errorMessage || stream.state.value.error" class="state-panel error">
-      {{ errorMessage || stream.state.value.error }}
+    <div v-if="errorMessage || currentStreamState.error" class="state-panel error">
+      {{ errorMessage || currentStreamState.error }}
     </div>
     <div v-if="notice" class="state-panel success">{{ notice }}</div>
 
@@ -316,6 +404,8 @@ onMounted(async () => {
           :selected-id="threadState.currentThread.value?.id || ''"
           :loading="threadState.loading.value"
           :status-filter="threadState.statusFilter.value"
+          :running-ids="runningThreadIds"
+          :unread-ids="unreadThreadIds"
           @new="createThread"
           @select="selectThread"
           @rename="renameThread"
@@ -330,12 +420,27 @@ onMounted(async () => {
       <main class="conversation-shell">
         <div class="conversation-title">
           <strong><Bot :size="16" />{{ threadState.currentThread.value?.title || '新Agent会话' }}</strong>
-          <span v-if="stream.running.value"><i></i> Agent 正在工作</span>
+          <div class="conversation-controls">
+            <label>
+              <span>助手模式</span>
+              <select
+                :value="assistantMode"
+                :disabled="currentRunning"
+                aria-label="选择助手模式"
+                @change="changeAssistantMode"
+              >
+                <option v-for="mode in ASSISTANT_MODES" :key="mode.value" :value="mode.value">
+                  {{ mode.label }}
+                </option>
+              </select>
+            </label>
+            <span v-if="currentRunning" class="current-run"><i></i> Agent 正在工作</span>
+          </div>
         </div>
         <AgentConversation
           :messages="displayMessages"
           :run-details="runDetails"
-          :live="stream.state.value"
+          :live="currentStreamState"
           @retry="retry"
           @select-source="selectSource"
           @select-artifact="selectArtifact"
@@ -345,8 +450,8 @@ onMounted(async () => {
         />
         <AgentComposer
           ref="composer"
-          :disabled="stream.running.value"
-          :running="stream.running.value"
+          :disabled="currentRunning"
+          :running="currentRunning"
           :references="referenceLabels"
           @send="send"
           @stop="stop"
@@ -432,15 +537,19 @@ onMounted(async () => {
   border-bottom: 1px solid var(--ui-divider);
   background: rgba(255, 255, 255, .5);
 }
-.conversation-title strong { min-width: 0; display: flex; align-items: center; gap: 7px; overflow: hidden; color: var(--ink); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.conversation-title span {
+.conversation-title > strong { min-width: 0; display: flex; align-items: center; gap: 7px; overflow: hidden; color: var(--ink); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-controls { display: flex; align-items: center; gap: 12px; }
+.conversation-controls label { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
+.conversation-controls select { height: 28px; padding: 0 28px 0 9px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: #fff; font: inherit; font-size: 12px; }
+.conversation-controls select:disabled { cursor: not-allowed; opacity: .65; }
+.current-run {
   display: flex;
   align-items: center;
   gap: 7px;
   color: var(--primary);
   font-size: 12px;
 }
-.conversation-title i {
+.current-run i {
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -483,5 +592,10 @@ onMounted(async () => {
   .page-toolbar h1 { margin: 2px 0; font-size: 18px; }
   .mobile-tools { margin-left: auto; }
   .mobile-tools button { min-height: 40px; border-color: rgba(92,108,158,.16); border-radius: 12px; background: rgba(255,255,255,.58); }
+  .conversation-title { padding: 0 10px; }
+  .conversation-title > strong { max-width: 38%; }
+  .conversation-controls { min-width: 0; gap: 7px; }
+  .conversation-controls label > span, .current-run { display: none; }
+  .conversation-controls select { max-width: 126px; }
 }
 </style>

@@ -11,12 +11,16 @@ export async function createSystemDocument(file) {
   return response.data
 }
 
-export async function replaceSystemDocument(documentId, file) {
+export async function replaceAdminDocument(documentId, file) {
   const response = await http.put(`/admin/documents/${documentId}/replace`, formDataFor(file))
   return response.data
 }
 
-export async function deleteSystemDocument(documentId) {
+export async function deleteAdminDocument(documentId) {
   const response = await http.delete(`/admin/documents/${documentId}`)
   return response.data
 }
+
+// 兼容旧调用名；后端入口已统一支持系统资料和用户审核发布资料。
+export const replaceSystemDocument = replaceAdminDocument
+export const deleteSystemDocument = deleteAdminDocument

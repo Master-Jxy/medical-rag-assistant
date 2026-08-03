@@ -23,6 +23,14 @@ export async function deleteConversation(conversationId) {
   return response.data
 }
 
+export async function markConversationRead(conversationId, lastReadSequence) {
+  const response = await http.post(
+    `/conversations/${encodeURIComponent(conversationId)}/read`,
+    { last_read_sequence: lastReadSequence },
+  )
+  return response.data
+}
+
 export async function stopConversationStream(conversationId, idempotencyKey) {
   const response = await http.post(
     `/conversations/${conversationId}/chat/stop`,

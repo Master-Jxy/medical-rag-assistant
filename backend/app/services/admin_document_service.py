@@ -1,24 +1,16 @@
-"""管理员系统文档用例；授权由路由依赖负责，存储一致性由共享生命周期负责。"""
+"""管理员知识文档用例；授权由路由依赖负责，存储一致性由共享生命周期负责。"""
 
 from fastapi import Depends, UploadFile
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-from sqlalchemy import select
 from uuid import uuid4
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import (
-    DocumentNotFoundError,
-    DocumentStoreError,
-    SystemDocumentRequiredError,
-)
 from app.db.session import get_db_session
 from app.infrastructure.vector_store import VectorStoreService
+from app.modules.audit.ports import AuditPort, AuditRecord
+from app.modules.audit.repository import SqlAlchemyAuditRecorder
 from app.modules.knowledge.lifecycle import DocumentLifecycleService
-from app.modules.knowledge.models import (
-    DocumentVersion,
-    KnowledgeSubmission,
-)
+from app.modules.knowledge.models import DocumentVersion
 from app.modules.knowledge.repository import DocumentRepository
 from app.schemas.document import DocumentDeleteResponse, DocumentUploadResponse
 from app.services.document_service import document_to_item, get_vector_store_service
@@ -36,11 +28,13 @@ class AdminDocumentService:
         settings: Settings | None = None,
         vector_store: VectorStoreService | None = None,
         upload_protection: UploadProtectionService | None = None,
+        audit: AuditPort | None = None,
     ) -> None:
         self.session = session
         self.settings = settings or get_settings()
         self.vector_store = vector_store or VectorStoreService(self.settings)
         self.upload_protection = upload_protection
+        self.audit = audit or SqlAlchemyAuditRecorder(session)
         self.repository = DocumentRepository(session)
         self.lifecycle = DocumentLifecycleService(
             session,
@@ -54,6 +48,7 @@ class AdminDocumentService:
         upload_file: UploadFile,
         *,
         actor_user_id: str | None = None,
+        request_id: str | None = None,
     ) -> DocumentUploadResponse:
         async def create_document():
             return await self.lifecycle.create_document(
@@ -81,25 +76,83 @@ class AdminDocumentService:
                 tags=[],
             )
         )
+        if actor_user_id is not None:
+            self.audit.record(
+                AuditRecord(
+                    actor_user_id=actor_user_id,
+                    action="knowledge_asset.created",
+                    object_type="knowledge_document",
+                    object_id=record.id,
+                    request_id=request_id,
+                    details={"source_type": "system"},
+                )
+            )
         self.session.commit()
         return DocumentUploadResponse(
             **document_to_item(record, can_delete=True).model_dump()
         )
 
-    def delete_system_document(self, document_id: str) -> DocumentDeleteResponse:
-        try:
-            record = self.repository.get_by_id(document_id)
-        except SQLAlchemyError as exc:
-            raise DocumentStoreError() from exc
-        if record is None:
-            raise DocumentNotFoundError()
-        if not record.is_system:
-            raise SystemDocumentRequiredError()
-        linked_submission = self._get_linked_submission(document_id)
-        if linked_submission is not None:
-            self.session.delete(linked_submission)
-        deleted_id = self.lifecycle.delete_document(record)
+    def delete_document(
+        self,
+        document_id: str,
+        *,
+        actor_user_id: str | None = None,
+        request_id: str | None = None,
+    ) -> DocumentDeleteResponse:
+        deleted_id = self.lifecycle.delete_managed_document(
+            document_id,
+            audit=self.audit,
+            actor_user_id=actor_user_id,
+            request_id=request_id,
+        )
         return DocumentDeleteResponse(document_id=deleted_id)
+
+    def delete_system_document(
+        self,
+        document_id: str,
+        *,
+        actor_user_id: str | None = None,
+        request_id: str | None = None,
+    ) -> DocumentDeleteResponse:
+        """兼容旧调用；系统资料与用户发布资料共用治理生命周期。"""
+        return self.delete_document(
+            document_id,
+            actor_user_id=actor_user_id,
+            request_id=request_id,
+        )
+
+    async def replace_document(
+        self,
+        document_id: str,
+        upload_file: UploadFile,
+        *,
+        actor_user_id: str | None = None,
+        request_id: str | None = None,
+    ) -> DocumentUploadResponse:
+        async def perform_replace():
+            return await self.lifecycle.replace_document(
+                document_id,
+                upload_file,
+                audit=self.audit,
+                actor_user_id=actor_user_id,
+                request_id=request_id,
+            )
+
+        try:
+            record = (
+                await self.upload_protection.execute(
+                    actor_user_id,
+                    perform_replace,
+                    policy=ADMIN_UPLOAD_POLICY,
+                )
+                if self.upload_protection is not None and actor_user_id is not None
+                else await perform_replace()
+            )
+        finally:
+            await upload_file.close()
+        return DocumentUploadResponse(
+            **document_to_item(record, can_delete=True).model_dump()
+        )
 
     async def replace_system_document(
         self,
@@ -107,58 +160,14 @@ class AdminDocumentService:
         upload_file: UploadFile,
         *,
         actor_user_id: str | None = None,
+        request_id: str | None = None,
     ) -> DocumentUploadResponse:
-        old_version = self.session.scalar(
-            select(DocumentVersion).where(DocumentVersion.document_id == document_id)
-        )
-        linked_submission = self._get_linked_submission(document_id)
-        next_version = (old_version.version + 1) if old_version else 2
-        inherited_tags = list(old_version.tags or []) if old_version else []
-
-        async def replace_document():
-            return await self.lifecycle.replace_system_document(document_id, upload_file)
-
-        try:
-            record = (
-                await self.upload_protection.execute(
-                    actor_user_id,
-                    replace_document,
-                    policy=ADMIN_UPLOAD_POLICY,
-                )
-                if self.upload_protection is not None and actor_user_id is not None
-                else await replace_document()
-            )
-        finally:
-            await upload_file.close()
-        if linked_submission is not None:
-            linked_submission.original_name = record.original_name
-            linked_submission.stored_name = record.stored_name
-            linked_submission.content_hash = record.content_hash
-            linked_submission.size_bytes = record.size_bytes
-            linked_submission.status = "published"
-            linked_submission.document_id = record.id
-        self.session.add(
-            DocumentVersion(
-                id=str(uuid4()),
-                document_id=record.id,
-                version=next_version,
-                replaces_document_id=None,
-                source="system_replacement",
-                tags=inherited_tags,
-            )
-        )
-        self.session.commit()
-        return DocumentUploadResponse(
-            **document_to_item(record, can_delete=True).model_dump()
-        )
-
-    def _get_linked_submission(
-        self, document_id: str
-    ) -> KnowledgeSubmission | None:
-        return self.session.scalar(
-            select(KnowledgeSubmission).where(
-                KnowledgeSubmission.document_id == document_id
-            )
+        """兼容旧调用；系统资料与用户发布资料共用治理生命周期。"""
+        return await self.replace_document(
+            document_id,
+            upload_file,
+            actor_user_id=actor_user_id,
+            request_id=request_id,
         )
 
 

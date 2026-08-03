@@ -27,16 +27,22 @@ export function reduceAgentEvent(state, event, data = {}) {
     return { ...state, phase: 'running_tools', plan: data.plan || [] }
   }
   if (event === 'tool_started') {
+    const stepId = data.step_id || `live-${data.step}`
+    const existingIndex = state.steps.findIndex((item) => item.id === stepId)
+    const steps = [...state.steps]
+    const step = {
+      id: stepId,
+      sequence: data.step,
+      tool_name: data.tool_name,
+      status: 'running',
+      result_summary: '',
+    }
+    if (existingIndex >= 0) steps[existingIndex] = { ...steps[existingIndex], ...step }
+    else steps.push(step)
     return {
       ...state,
       phase: 'running_tools',
-      steps: [...state.steps, {
-        id: `live-${data.step}`,
-        sequence: data.step,
-        tool_name: data.tool_name,
-        status: 'running',
-        result_summary: '',
-      }],
+      steps,
     }
   }
   if (event === 'tool_completed') {
@@ -70,6 +76,9 @@ export function reduceAgentEvent(state, event, data = {}) {
       : (data.source_ids || []).map((document_id) => ({ document_id })) }
   }
   if (event === 'artifact_ready') {
+    if (state.artifacts.some((item) => (
+      item.artifact_id === data.artifact_id || item.id === data.artifact_id
+    ))) return state
     return { ...state, artifacts: [...state.artifacts, data] }
   }
   if (event === 'token') {

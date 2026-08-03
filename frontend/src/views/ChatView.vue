@@ -1,8 +1,9 @@
 <script setup>
-import { nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
   ChevronDown,
   History,
+  LoaderCircle,
   PanelLeft,
   Plus,
   Send,
@@ -18,6 +19,7 @@ import {
   deleteConversation,
   getConversation,
   listConversations,
+  markConversationRead,
   stopConversationStream,
   streamConversation,
 } from '../api/conversations.js'
@@ -29,6 +31,7 @@ import MarkdownContent from '../components/MarkdownContent.vue'
 import ModelSelector from '../components/ModelSelector.vue'
 import UsageMeta from '../components/UsageMeta.vue'
 import { createUuid } from '../utils/uuid.js'
+import { useConversationStreamRegistry } from '../features/agent-chat/useConversationStreamRegistry.js'
 
 const WELCOME_MESSAGE = {
   id: 'welcome',
@@ -39,22 +42,32 @@ const WELCOME_MESSAGE = {
 
 const question = ref('')
 const questionInput = ref(null)
-const sending = ref(false)
-const stopping = ref(false)
 const loadingConversations = ref(true)
 const loadingMessages = ref(false)
 const errorMessage = ref('')
 const conversations = ref([])
 const activeConversationId = ref('')
-const messages = ref([{ ...WELCOME_MESSAGE }])
+const messageCache = reactive(new Map())
+const streamRegistry = useConversationStreamRegistry()
+const messages = computed(() => (
+  messageCache.get(activeConversationId.value) || [{ ...WELCOME_MESSAGE }]
+))
+const activeConversation = computed(() => conversations.value.find(
+  (item) => item.id === activeConversationId.value,
+) || null)
+const sending = computed(() => streamRegistry.isRunning(
+  activeConversationId.value,
+  activeConversation.value?.run_status,
+))
+const stopping = computed(() => streamRegistry.get(activeConversationId.value)?.phase === 'stopping')
 const messageArea = ref(null)
-const activeController = ref(null)
-const activeIdempotencyKey = ref('')
 const deleteTarget = ref(null)
 const deleting = ref(false)
 const mobileHistoryOpen = ref(false)
 const feedbackTarget = ref(null)
 const feedbackSubmitting = ref(false)
+let selectionVersion = 0
+let disposed = false
 const feedbackForm = reactive({
   rating: 'up',
   questionCategory: 'general',
@@ -71,6 +84,7 @@ function mapStoredMessage(message) {
   }
   return {
     id: message.id,
+    sequence: Number(message.sequence || 0),
     role: message.role,
     content,
     sources: message.sources || [],
@@ -80,6 +94,42 @@ function mapStoredMessage(message) {
     usage: message.usage || null,
     feedbackRating: null,
   }
+}
+
+function findConversation(conversationId) {
+  return conversations.value.find((item) => item.id === conversationId) || null
+}
+
+function updateConversationSummary(conversationId, changes) {
+  const conversation = findConversation(conversationId)
+  if (conversation) Object.assign(conversation, changes)
+}
+
+function maxReadableSequence(rows) {
+  return rows.reduce((maximum, row) => (
+    ['completed', 'failed', 'stopped'].includes(row.status)
+      ? Math.max(maximum, Number(row.sequence || 0))
+      : maximum
+  ), 0)
+}
+
+async function markConversationSeen(conversationId, rows) {
+  const sequence = maxReadableSequence(rows)
+  if (!sequence) return
+  const result = await markConversationRead(conversationId, sequence)
+  updateConversationSummary(conversationId, {
+    last_read_sequence: result.last_read_sequence,
+    has_unread: false,
+  })
+  streamRegistry.clearUnread(conversationId)
+}
+
+function conversationIsRunning(conversation) {
+  return streamRegistry.isRunning(conversation.id, conversation.run_status)
+}
+
+function conversationHasUnread(conversation) {
+  return streamRegistry.hasUnread(conversation.id, conversation.has_unread)
 }
 
 function openFeedback(message, rating) {
@@ -147,41 +197,59 @@ function resizeQuestionInput() {
 
 async function refreshConversationList() {
   const data = await listConversations()
-  conversations.value = data.conversations
+  conversations.value = data.conversations.map((item) => ({ ...item }))
+}
+
+async function loadConversation(
+  conversationId,
+  { markAsRead = false, preserveCache = false } = {},
+) {
+  const conversation = await getConversation(conversationId)
+  const rows = conversation.messages.map(mapStoredMessage)
+  const existing = preserveCache ? messageCache.get(conversationId) || [] : []
+  const merged = [...rows]
+  for (const message of existing) {
+    if (message.id !== 'welcome' && !merged.some((item) => item.id === message.id)) {
+      merged.push(message)
+    }
+  }
+  messageCache.set(conversationId, merged.length ? merged : [{ ...WELCOME_MESSAGE }])
+  updateConversationSummary(conversationId, conversation)
+  if (markAsRead) await markConversationSeen(conversationId, rows)
+  return conversation
 }
 
 async function selectConversation(conversationId) {
-  if (sending.value) return
   if (conversationId === activeConversationId.value) {
     await focusQuestionInput()
     return
   }
+  const version = ++selectionVersion
+  activeConversationId.value = conversationId
   errorMessage.value = ''
   loadingMessages.value = true
   try {
-    const conversation = await getConversation(conversationId)
-    activeConversationId.value = conversation.id
-    messages.value = conversation.messages.length
-      ? conversation.messages.map(mapStoredMessage)
-      : [{ ...WELCOME_MESSAGE }]
+    await loadConversation(conversationId, { markAsRead: true })
+    streamRegistry.clearUnread(conversationId)
   } catch (error) {
-    errorMessage.value = getApiErrorMessage(error)
+    if (version === selectionVersion) errorMessage.value = getApiErrorMessage(error)
   } finally {
-    loadingMessages.value = false
-    mobileHistoryOpen.value = false
-    await scrollToBottom()
-    await focusQuestionInput()
+    if (version === selectionVersion) {
+      loadingMessages.value = false
+      mobileHistoryOpen.value = false
+      await scrollToBottom()
+      await focusQuestionInput()
+    }
   }
 }
 
 async function startNewConversation() {
-  if (sending.value) return
   errorMessage.value = ''
   try {
     const conversation = await createConversation()
     conversations.value.unshift(conversation)
     activeConversationId.value = conversation.id
-    messages.value = [{ ...WELCOME_MESSAGE }]
+    messageCache.set(conversation.id, [{ ...WELCOME_MESSAGE }])
     mobileHistoryOpen.value = false
     await focusQuestionInput()
   } catch (error) {
@@ -190,7 +258,10 @@ async function startNewConversation() {
 }
 
 function requestDelete(conversation) {
-  if (sending.value) return
+  if (conversationIsRunning(conversation)) {
+    errorMessage.value = '该会话仍在生成，请先打开会话并停止回答后再删除。'
+    return
+  }
   deleteTarget.value = conversation
   errorMessage.value = ''
 }
@@ -198,6 +269,11 @@ function requestDelete(conversation) {
 async function confirmDelete() {
   if (!deleteTarget.value || deleting.value) return
   const target = deleteTarget.value
+  if (conversationIsRunning(target)) {
+    errorMessage.value = '该会话仍在生成，请先停止回答后再删除。'
+    deleteTarget.value = null
+    return
+  }
   const deletingActiveConversation = target.id === activeConversationId.value
   deleting.value = true
   errorMessage.value = ''
@@ -205,14 +281,14 @@ async function confirmDelete() {
   try {
     await deleteConversation(target.id)
     conversations.value = conversations.value.filter((item) => item.id !== target.id)
+    messageCache.delete(target.id)
+    streamRegistry.remove(target.id)
     deleteTarget.value = null
 
     if (deletingActiveConversation) {
       activeConversationId.value = ''
       if (conversations.value.length) {
         await selectConversation(conversations.value[0].id)
-      } else {
-        messages.value = [{ ...WELCOME_MESSAGE }]
       }
     }
   } catch (error) {
@@ -227,6 +303,7 @@ async function ensureConversation() {
   const conversation = await createConversation()
   conversations.value.unshift(conversation)
   activeConversationId.value = conversation.id
+  messageCache.set(conversation.id, [{ ...WELCOME_MESSAGE }])
   return conversation.id
 }
 
@@ -243,7 +320,13 @@ async function sendQuestion() {
     return
   }
 
-  if (messages.value.length === 1 && messages.value[0].id === 'welcome') messages.value = []
+  let conversationMessages = messageCache.get(conversationId)
+  if (!conversationMessages || (
+    conversationMessages.length === 1 && conversationMessages[0].id === 'welcome'
+  )) {
+    conversationMessages = []
+    messageCache.set(conversationId, conversationMessages)
+  }
   const userMessage = reactive({
     id: createUuid(),
     role: 'user',
@@ -260,75 +343,123 @@ async function sendQuestion() {
     status: 'pending',
     feedbackRating: null,
   })
-  messages.value.push(userMessage, assistantMessage)
+  conversationMessages.push(userMessage, assistantMessage)
   question.value = ''
-  sending.value = true
   nextTick(resizeQuestionInput)
-  activeController.value = new AbortController()
   const idempotencyKey = createUuid()
-  activeIdempotencyKey.value = idempotencyKey
+  let entry
+  try {
+    entry = streamRegistry.start(conversationId, {
+      phase: 'running',
+      requestId: idempotencyKey,
+    })
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+    return
+  }
   await scrollToBottom()
+  let terminalReceived = false
 
   try {
     await streamConversation(conversationId, cleanedQuestion, {
       idempotencyKey,
-      signal: activeController.value.signal,
+      signal: entry.controller.signal,
       onToken(content) {
         assistantMessage.content += content
-        scrollToBottom()
+        if (activeConversationId.value === conversationId) scrollToBottom()
       },
       onSources(sources) {
         assistantMessage.sources = sources
       },
       onDone(data) {
+        if (terminalReceived) return
+        terminalReceived = true
         userMessage.id = data.user_message_id || userMessage.id
         assistantMessage.id = data.assistant_message_id || assistantMessage.id
         assistantMessage.requestId = data.request_id
         assistantMessage.disclaimer = data.disclaimer
         assistantMessage.status = 'completed'
         assistantMessage.usage = data.usage || null
+        entry.phase = 'settling'
       },
       onStopped(data) {
+        if (terminalReceived) return
+        terminalReceived = true
         userMessage.id = data.user_message_id || userMessage.id
         assistantMessage.id = data.assistant_message_id || assistantMessage.id
         assistantMessage.requestId = data.request_id
-        errorMessage.value = data.message || '已停止生成。'
+        if (activeConversationId.value === conversationId) {
+          errorMessage.value = data.message || '已停止生成。'
+        }
         assistantMessage.status = 'stopped'
+        entry.phase = 'settling'
       },
     })
   } catch (error) {
-    errorMessage.value = getApiErrorMessage(error)
+    if (error?.name !== 'AbortError' && activeConversationId.value === conversationId) {
+      errorMessage.value = getApiErrorMessage(error)
+    }
+    entry.error = getApiErrorMessage(error)
+    entry.phase = error?.name === 'AbortError' ? 'stopped' : 'failed'
+    if (activeConversationId.value !== conversationId) streamRegistry.markUnread(conversationId)
     if (!assistantMessage.content) {
-      messages.value = messages.value.filter((message) => message.id !== assistantMessage.id)
+      const index = conversationMessages.findIndex((message) => message.id === assistantMessage.id)
+      if (index >= 0) conversationMessages.splice(index, 1)
     }
   } finally {
     assistantMessage.streaming = false
-    sending.value = false
-    activeController.value = null
-    activeIdempotencyKey.value = ''
-    stopping.value = false
-    try {
-      await refreshConversationList()
-    } catch {
-      // 回答已完成时，会话列表刷新失败不影响当前消息展示。
+    if (entry.phase === 'settling') entry.phase = assistantMessage.status
+    else if (['running', 'stopping'].includes(entry.phase)) entry.phase = 'completed'
+    entry.controller = null
+    if (!disposed) {
+      try {
+        await refreshConversationList()
+      } catch {
+        // 回答已完成时，会话列表刷新失败不影响当前消息展示。
+      }
+      const isCurrent = activeConversationId.value === conversationId
+      try {
+        await loadConversation(conversationId, {
+          markAsRead: isCurrent,
+          preserveCache: true,
+        })
+      } catch {
+        // 已有流式缓存可继续展示，读取持久化结果失败时等待下次打开会话恢复。
+      }
+      if (isCurrent) {
+        streamRegistry.clearUnread(conversationId)
+        await scrollToBottom()
+        await focusQuestionInput()
+      } else {
+        streamRegistry.markUnread(conversationId)
+      }
     }
-    await scrollToBottom()
-    await focusQuestionInput()
   }
 }
 
 async function stopGeneration() {
-  if (!sending.value || stopping.value || !activeIdempotencyKey.value) return
-  stopping.value = true
+  const conversationId = activeConversationId.value
+  let entry = streamRegistry.get(conversationId)
+  const requestId = entry?.requestId || activeConversation.value?.active_run_id || ''
+  if (!sending.value || stopping.value || !requestId) return
+  if (!entry) {
+    entry = streamRegistry.start(conversationId, {
+      phase: 'stopping',
+      requestId,
+      controller: null,
+    })
+  } else {
+    entry.phase = 'stopping'
+  }
   try {
     const result = await stopConversationStream(
-      activeConversationId.value,
-      activeIdempotencyKey.value,
+      conversationId,
+      requestId,
     )
-    if (result.status !== 'stopping') activeController.value?.abort()
+    if (result.status !== 'stopping') streamRegistry.abort(conversationId)
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
-    activeController.value?.abort()
+    streamRegistry.abort(conversationId)
   }
 }
 
@@ -350,6 +481,11 @@ onMounted(async () => {
     loadingConversations.value = false
     await focusQuestionInput()
   }
+})
+
+onBeforeUnmount(() => {
+  disposed = true
+  streamRegistry.abortAll()
 })
 </script>
 
@@ -385,7 +521,7 @@ onMounted(async () => {
           <strong><History :size="16" />会话</strong>
           <button type="button" class="mobile-close-button" aria-label="关闭历史会话" @click="mobileHistoryOpen = false"><X :size="17" /></button>
         </div>
-        <el-button type="primary" round class="new-chat-button" :disabled="sending" @click="startNewConversation">
+        <el-button type="primary" round class="new-chat-button" @click="startNewConversation">
           <Plus :size="16" />新建会话
         </el-button>
         <div class="sidebar-title">历史会话</div>
@@ -396,11 +532,27 @@ onMounted(async () => {
           :key="conversation.id"
           class="conversation-item"
           :data-conversation-id="conversation.id"
-          :class="{ active: conversation.id === activeConversationId }"
+          :class="{
+            active: conversation.id === activeConversationId,
+            running: conversationIsRunning(conversation),
+          }"
           @click="selectConversation(conversation.id)"
         >
-          <button type="button" class="conversation-main" data-testid="conversation-main" :disabled="sending">
-            <strong>{{ conversation.title }}</strong>
+          <button type="button" class="conversation-main" data-testid="conversation-main">
+            <span class="conversation-name">
+              <strong>{{ conversation.title }}</strong>
+              <LoaderCircle
+                v-if="conversationIsRunning(conversation)"
+                class="conversation-spinner"
+                :size="14"
+                aria-label="正在生成"
+              />
+              <i
+                v-else-if="conversationHasUnread(conversation)"
+                class="conversation-unread"
+                aria-label="有未读回答"
+              ></i>
+            </span>
             <small>{{ conversation.message_count }} 条消息</small>
           </button>
           <button
@@ -408,7 +560,8 @@ onMounted(async () => {
             class="conversation-delete"
             data-testid="conversation-delete"
             :aria-label="`删除会话：${conversation.title}`"
-            :disabled="sending"
+            :disabled="conversationIsRunning(conversation)"
+            :title="conversationIsRunning(conversation) ? '请先停止当前会话' : ''"
             @click.stop="requestDelete(conversation)"
           >
             <Trash2 :size="14" />
@@ -581,10 +734,14 @@ onMounted(async () => {
 .conversation-item.active { color: var(--primary-dark); background: #e8f3ef; box-shadow: inset 2px 0 var(--brand); }
 .conversation-main { min-width: 0; display: grid; gap: 5px; padding: 7px; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
 .conversation-main:disabled, .conversation-delete:disabled { cursor: not-allowed; opacity: .65; }
-.conversation-main strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-name { min-width: 0; display: flex; align-items: center; gap: 7px; }
+.conversation-main strong { min-width: 0; flex: 1; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-spinner { flex: 0 0 auto; color: var(--primary); animation: conversation-spin .8s linear infinite; }
+.conversation-unread { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--action); box-shadow: 0 0 0 3px rgba(44, 103, 214, .12); }
 .conversation-main small { color: var(--muted); font-size: 10px; }
 .conversation-delete { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 5px; color: var(--danger); background: transparent; cursor: pointer; opacity: 0; }
 .conversation-item:hover .conversation-delete, .conversation-item:focus-within .conversation-delete { opacity: 1; }
+@keyframes conversation-spin { to { transform: rotate(360deg); } }
 .chat-panel { min-width: 0; min-height: 0; height: 100%; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; overflow: hidden; }
 .message-area { min-height: 0; overflow-y: auto; padding: 16px clamp(16px, 3vw, 40px); scroll-behavior: smooth; }
 .message-loading { display: grid; height: 100%; place-items: center; color: var(--muted); font-size: 13px; }

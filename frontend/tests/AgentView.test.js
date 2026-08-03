@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const agentApi = vi.hoisted(() => ({
@@ -8,6 +9,7 @@ const agentApi = vi.hoisted(() => ({
   getAgentRun: vi.fn(),
   listAgentMessages: vi.fn(),
   listAgentThreads: vi.fn(),
+  markAgentThreadRead: vi.fn(),
   retryAgentMessage: vi.fn(),
   stopAgentRun: vi.fn(),
   streamAgentMessage: vi.fn(),
@@ -37,6 +39,12 @@ const thread = {
   id: 'thread-1',
   title: '患者安全',
   status: 'active',
+  assistant_mode: 'general',
+  last_read_sequence: 0,
+  run_status: 'idle',
+  active_run_id: null,
+  has_unread: false,
+  last_message_status: 'completed',
   summary: null,
   summary_until_message_id: null,
   last_message_at: '2026-07-26T00:00:00Z',
@@ -48,6 +56,12 @@ const archivedThread = {
   id: 'thread-archived',
   title: '已归档患者安全',
   status: 'archived',
+}
+const secondThread = {
+  ...thread,
+  id: 'thread-2',
+  title: '第二段Agent会话',
+  assistant_mode: 'patient',
 }
 const run = {
   id: 'run-1',
@@ -129,6 +143,10 @@ beforeEach(() => {
     ...changes,
   }))
   agentApi.stopAgentRun.mockResolvedValue({ status: 'stopping' })
+  agentApi.markAgentThreadRead.mockImplementation(async (id, lastReadSequence) => ({
+    thread_id: id,
+    last_read_sequence: lastReadSequence,
+  }))
   citationApi.getDocumentTrace.mockResolvedValue({
     document_id: 'doc-1',
     file_name: '患者安全.pdf',
@@ -428,5 +446,204 @@ describe('Codex式资料Agent工作台', () => {
     expect(state.messages['assistant-1'].content).toBe('完成')
     expect(state.messages['assistant-1'].parts.steps).toHaveLength(1)
     expect(state.messages['user-1'].sequence_no).toBe(9)
+  })
+
+  it('乱序事件会在消息创建后回放，重复消息和工具事件保持幂等', () => {
+    let state = createAgentTimelineState()
+    state = reduceAgentTimeline(state, 'message_created', {
+      user_message_id: 'user-old',
+      assistant_message_id: 'assistant-old',
+      user_sequence_no: 1,
+      assistant_sequence_no: 2,
+      run_id: 'run-old',
+    })
+    state = reduceAgentTimeline(state, 'message_completed', {
+      sequence_no: 2,
+      status: 'completed',
+    })
+    state = reduceAgentTimeline(state, 'optimistic_user', {
+      id: 'pending-new',
+      content: '新问题',
+    })
+    state = reduceAgentTimeline(state, 'token', { content: '先到的回答' })
+    state = reduceAgentTimeline(state, 'tool_started', {
+      step_id: 'step-early',
+      step: 1,
+      tool_name: 'search_knowledge',
+    })
+    state = reduceAgentTimeline(state, 'message_created', {
+      user_message_id: 'user-late',
+      assistant_message_id: 'assistant-late',
+      user_sequence_no: 3,
+      assistant_sequence_no: 4,
+      run_id: 'run-late',
+    })
+    state = reduceAgentTimeline(state, 'message_created', {
+      user_message_id: 'user-late',
+      assistant_message_id: 'assistant-late',
+      user_sequence_no: 3,
+      assistant_sequence_no: 4,
+      run_id: 'run-late',
+    })
+    state = reduceAgentTimeline(state, 'tool_started', {
+      step_id: 'step-early',
+      step: 1,
+      tool_name: 'search_knowledge',
+    })
+
+    expect(state.messages['assistant-late'].content).toBe('先到的回答')
+    expect(state.messages['assistant-late'].parts.steps).toHaveLength(1)
+    expect(state.messages['assistant-old'].content).toBe('')
+  })
+
+  it('会话A运行时可切换并发送B，A后台完成后只在A显示未读', async () => {
+    const activeThreads = [{ ...thread }, { ...secondThread }]
+    const messagesByThread = {
+      'thread-1': structuredClone(messages),
+      'thread-2': [],
+    }
+    const streams = {}
+    agentApi.listAgentThreads.mockImplementation(async () => ({
+      items: activeThreads.map((item) => ({ ...item })),
+    }))
+    agentApi.listAgentMessages.mockImplementation(async (id) => ({
+      items: structuredClone(messagesByThread[id]),
+    }))
+    agentApi.getAgentRun.mockImplementation(async (id) => ({
+      ...run,
+      id,
+      thread_id: id === 'run-a-new' ? 'thread-1' : 'thread-1',
+    }))
+    agentApi.streamAgentMessage.mockImplementation((id, _payload, _key, handlers) => new Promise((resolve) => {
+      streams[id] = { handlers, resolve }
+    }))
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('textarea').setValue('A的新任务')
+    await wrapper.get('form.composer').trigger('submit')
+    await nextTick()
+    expect(wrapper.get('[data-thread-id="thread-1"] .run-spinner').exists()).toBe(true)
+
+    await wrapper.get('[data-thread-id="thread-2"] .thread-main').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('textarea').attributes('disabled')).toBeUndefined()
+    await wrapper.get('textarea').setValue('B的新任务')
+    await wrapper.get('form.composer').trigger('submit')
+    await nextTick()
+    expect(agentApi.streamAgentMessage.mock.calls.map((call) => call[0])).toEqual([
+      'thread-1',
+      'thread-2',
+    ])
+
+    messagesByThread['thread-1'].push(
+      { ...messages[0], id: 'a-user-new', sequence_no: 3, content: 'A的新任务' },
+      { ...messages[1], id: 'a-assistant-new', sequence_no: 4, run_id: 'run-a-new', content: 'A的后台结果' },
+    )
+    activeThreads[0].has_unread = true
+    streams['thread-1'].handlers.onEvent('message_created', {
+      user_message_id: 'a-user-new',
+      assistant_message_id: 'a-assistant-new',
+      user_sequence_no: 3,
+      assistant_sequence_no: 4,
+      run_id: 'run-a-new',
+    })
+    streams['thread-1'].handlers.onEvent('token', { content: 'A的后台结果' })
+    streams['thread-1'].handlers.onEvent('message_completed', {
+      message_id: 'a-assistant-new',
+      sequence_no: 4,
+      status: 'completed',
+    })
+    streams['thread-1'].resolve()
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('A的后台结果')
+    expect(wrapper.get('[data-thread-id="thread-1"] .unread-dot').exists()).toBe(true)
+    expect(wrapper.get('[data-thread-id="thread-2"] .run-spinner').exists()).toBe(true)
+
+    await wrapper.get('[data-thread-id="thread-1"] .thread-main').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('A的后台结果')
+    expect(wrapper.find('[data-thread-id="thread-1"] .unread-dot').exists()).toBe(false)
+    expect(agentApi.markAgentThreadRead).toHaveBeenCalledWith('thread-1', 4)
+    wrapper.unmount()
+  })
+
+  it('停止按钮按当前thread选择run，运行中会话不能归档删除且卸载清理全部流', async () => {
+    const activeThreads = [{ ...thread }, { ...secondThread }]
+    const streams = {}
+    agentApi.listAgentThreads.mockResolvedValue({ items: activeThreads })
+    agentApi.listAgentMessages.mockImplementation(async (id) => ({
+      items: id === 'thread-1' ? structuredClone(messages) : [],
+    }))
+    agentApi.streamAgentMessage.mockImplementation((id, _payload, _key, handlers) => {
+      handlers.onEvent('message_created', {
+        user_message_id: `${id}-user`,
+        assistant_message_id: `${id}-assistant`,
+        user_sequence_no: 3,
+        assistant_sequence_no: 4,
+        run_id: `${id}-run`,
+      })
+      return new Promise((resolve) => {
+        streams[id] = { handlers, resolve }
+      })
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('textarea').setValue('运行A')
+    await wrapper.get('form.composer').trigger('submit')
+    await wrapper.get('[data-thread-id="thread-2"] .thread-main').trigger('click')
+    await flushPromises()
+    await wrapper.get('textarea').setValue('运行B')
+    await wrapper.get('form.composer').trigger('submit')
+    await nextTick()
+
+    expect(wrapper.get('[data-thread-id="thread-1"] .thread-actions .danger').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-thread-id="thread-2"] .thread-actions .danger').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-thread-id="thread-2"] .thread-main').trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((item) => item.text() === '停止生成').trigger('click')
+    await wrapper.get('[data-thread-id="thread-1"] .thread-main').trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((item) => item.text() === '停止生成').trigger('click')
+
+    expect(agentApi.stopAgentRun.mock.calls.map((call) => call[0])).toEqual([
+      'thread-2-run',
+      'thread-1-run',
+    ])
+    const signals = agentApi.streamAgentMessage.mock.calls.map((call) => call[3].signal)
+    wrapper.unmount()
+    expect(signals.every((signal) => signal.aborted)).toBe(true)
+  })
+
+  it('服务端has_unread可在刷新后恢复，模式可更新并用于新建会话', async () => {
+    agentApi.listAgentThreads.mockResolvedValue({
+      items: [{ ...thread }, { ...secondThread, has_unread: true }],
+    })
+    agentApi.listAgentMessages.mockImplementation(async (id) => ({
+      items: id === 'thread-1' ? structuredClone(messages) : [{
+        ...messages[1],
+        id: 'thread-2-answer',
+        thread_id: 'thread-2',
+        sequence_no: 2,
+      }],
+    }))
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-thread-id="thread-2"] .unread-dot').exists()).toBe(true)
+    await wrapper.get('[data-thread-id="thread-2"] .thread-main').trigger('click')
+    await flushPromises()
+    expect(agentApi.markAgentThreadRead).toHaveBeenCalledWith('thread-2', 2)
+
+    await wrapper.get('select[aria-label="选择助手模式"]').setValue('clinician')
+    await flushPromises()
+    expect(agentApi.updateAgentThread).toHaveBeenCalledWith('thread-2', {
+      assistant_mode: 'clinician',
+    })
+    await wrapper.get('.new-thread').trigger('click')
+    await flushPromises()
+    expect(agentApi.createAgentThread).toHaveBeenCalledWith('新对话', 'clinician')
   })
 })

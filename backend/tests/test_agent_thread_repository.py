@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from app.db.base import Base
 from app.db.session import build_engine
+from app.core.exceptions import AgentRunConflictError
 from app.models import User
 from app.modules.agent.models import AgentArtifact, AgentRun, AgentStep
 from app.modules.agent.policy import AgentPolicy
@@ -22,6 +23,7 @@ from app.modules.agent.thread_schemas import (
     AgentMessageResponse,
     AgentThreadResponse,
 )
+from app.modules.agent.thread_service import AgentThreadService
 
 
 def create_user(session: Session, user_id: str) -> None:
@@ -33,6 +35,56 @@ def create_user(session: Session, user_id: str) -> None:
         )
     )
     session.flush()
+
+
+def test_running_thread_cannot_be_archived_reconfigured_or_deleted() -> None:
+    engine = build_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as session:
+        create_user(session, "owner")
+        threads = AgentThreadRepository(session)
+        runs = AgentRepository(session)
+        thread = threads.create_thread(user_id="owner", title="运行中会话")
+        run = runs.create_run(
+            user_id="owner",
+            task="运行中的任务",
+            policy=AgentPolicy(),
+        )
+        run.thread_id = thread.id
+        runs.start_run("owner", run.id)
+        session.commit()
+
+        service = AgentThreadService(session)
+        with pytest.raises(AgentRunConflictError):
+            service.update(
+                "owner",
+                thread.id,
+                title=None,
+                status="archived",
+            )
+        with pytest.raises(AgentRunConflictError):
+            service.update(
+                "owner",
+                thread.id,
+                title=None,
+                status=None,
+                assistant_mode="patient",
+            )
+        with pytest.raises(AgentRunConflictError):
+            service.delete("owner", thread.id)
+
+        assert session.get(AgentThread, thread.id) is not None
+        runs.complete_run(
+            "owner",
+            run.id,
+            final_result="完成",
+            used_tokens=0,
+            estimated_cost_cny=0,
+        )
+        session.commit()
+        service.delete("owner", thread.id)
+        assert session.get(AgentThread, thread.id) is None
+    engine.dispose()
 
 
 def test_threads_are_isolated_and_support_rename_and_archive() -> None:
@@ -336,4 +388,87 @@ def test_message_sequence_is_stable_when_timestamps_are_identical() -> None:
         assert (user_message.sequence_no, assistant_message.sequence_no) == (1, 2)
         assert user_message.turn_id == assistant_message.turn_id == turn_id
         assert thread.next_message_sequence == 3
+    engine.dispose()
+
+
+def test_thread_runtime_summary_transitions_from_running_to_unread() -> None:
+    engine = build_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as session:
+        create_user(session, "owner")
+        create_user(session, "other")
+        threads = AgentThreadRepository(session)
+        runs = AgentRepository(session)
+        thread = threads.create_thread(
+            user_id="owner",
+            assistant_mode="patient",
+        )
+        user_sequence, assistant_sequence, turn_id = threads.reserve_turn(
+            "owner", thread.id
+        )
+        trigger = threads.create_message(
+            user_id="owner",
+            thread_id=thread.id,
+            role="user",
+            content="问题",
+            sequence_no=user_sequence,
+            turn_id=turn_id,
+        )
+        run = runs.create_run(
+            user_id="owner",
+            task="问题",
+            policy=AgentPolicy(),
+        )
+        run.thread_id = thread.id
+        run.trigger_message_id = trigger.id
+        assistant = threads.create_message(
+            user_id="owner",
+            thread_id=thread.id,
+            role="assistant",
+            content="",
+            status="streaming",
+            run_id=run.id,
+            reply_to_message_id=trigger.id,
+            sequence_no=assistant_sequence,
+            turn_id=turn_id,
+        )
+        run.response_message_id = assistant.id
+        runs.start_run("owner", run.id)
+        session.commit()
+
+        active = threads.get_thread_summary("owner", thread.id)
+        assert active.thread.assistant_mode == "patient"
+        assert active.run_status == "running"
+        assert active.active_run_id == run.id
+        assert active.last_message_status == "streaming"
+        assert active.has_unread is False
+
+        threads.update_message(
+            "owner",
+            thread.id,
+            assistant.id,
+            content="回答",
+            status="completed",
+            metadata={},
+        )
+        runs.complete_run(
+            "owner",
+            run.id,
+            final_result="回答",
+            used_tokens=0,
+            estimated_cost_cny=0,
+        )
+        session.commit()
+
+        completed = threads.get_thread_summary("owner", thread.id)
+        assert completed.run_status == "idle"
+        assert completed.active_run_id is None
+        assert completed.last_message_status == "completed"
+        assert completed.has_unread is True
+        assert threads.mark_read("owner", thread.id, assistant.sequence_no) == 2
+        assert threads.mark_read("owner", thread.id, 1) == 2
+        session.commit()
+        assert threads.get_thread_summary("owner", thread.id).has_unread is False
+        with pytest.raises(AgentThreadNotFoundError):
+            threads.mark_read("other", thread.id, 2)
     engine.dispose()

@@ -33,6 +33,8 @@ from app.modules.agent.thread_schemas import (
     AgentMessageStreamRequest,
     AgentThreadCreate,
     AgentThreadListResponse,
+    AgentThreadReadRequest,
+    AgentThreadReadResponse,
     AgentThreadResponse,
     AgentThreadUpdate,
 )
@@ -143,7 +145,11 @@ def create_thread(
     current_user: UserResponse = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> AgentThreadResponse:
-    return AgentThreadService(session).create(current_user.id, payload.title)
+    return AgentThreadService(session).create(
+        current_user.id,
+        payload.title,
+        payload.assistant_mode,
+    )
 
 
 @router.get("/threads", response_model=AgentThreadListResponse)
@@ -180,6 +186,23 @@ def get_thread(
     return AgentThreadService(session).get(current_user.id, thread_id)
 
 
+@router.post(
+    "/threads/{thread_id}/read",
+    response_model=AgentThreadReadResponse,
+)
+def mark_thread_read(
+    thread_id: str,
+    payload: AgentThreadReadRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> AgentThreadReadResponse:
+    return AgentThreadService(session).mark_read(
+        current_user.id,
+        thread_id,
+        payload.last_read_sequence,
+    )
+
+
 @router.patch("/threads/{thread_id}", response_model=AgentThreadResponse)
 def update_thread(
     thread_id: str,
@@ -192,6 +215,7 @@ def update_thread(
         thread_id,
         title=payload.title,
         status=payload.status,
+        assistant_mode=payload.assistant_mode,
     )
 
 

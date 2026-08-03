@@ -1,8 +1,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { AlertTriangle, Database, FileText, Layers3, RefreshCw, Trash2, UploadCloud, X } from '@lucide/vue'
+import { Database, FileText, Layers3, RefreshCw, UploadCloud, X } from '@lucide/vue'
 
-import { deleteDocument, getDocuments, uploadDocument } from '../api/documents'
+import { getDocuments, uploadDocument } from '../api/documents'
 import { getApiErrorMessage } from '../api/http'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -15,8 +15,6 @@ const fileInput = ref(null)
 const dragActive = ref(false)
 const uploading = ref(false)
 const uploadProgress = ref(0)
-const deleting = ref(false)
-const deleteTarget = ref(null)
 const errorMessage = ref('')
 const successMessage = ref('')
 
@@ -87,31 +85,6 @@ async function startUpload() {
     errorMessage.value = getApiErrorMessage(error)
   } finally {
     uploading.value = false
-  }
-}
-
-function requestDelete(document) {
-  if (!document.can_delete) return
-  deleteTarget.value = document
-  errorMessage.value = ''
-}
-
-async function confirmDelete() {
-  if (!deleteTarget.value || deleting.value) return
-  deleting.value = true
-  errorMessage.value = ''
-  successMessage.value = ''
-  const target = deleteTarget.value
-
-  try {
-    await deleteDocument(target.document_id)
-    deleteTarget.value = null
-    successMessage.value = `${target.file_name} 已从知识库中删除。`
-    await loadDocuments()
-  } catch (error) {
-    errorMessage.value = getApiErrorMessage(error)
-  } finally {
-    deleting.value = false
   }
 }
 
@@ -216,25 +189,13 @@ onMounted(loadDocuments)
           <span data-label="大小">{{ formatFileSize(document.file_size) }}</span>
           <span data-label="片段">{{ document.chunk_count }}</span>
           <span data-label="上传时间">{{ formatDate(document.created_at) }}</span>
-          <button v-if="document.can_delete" class="delete-button" title="删除文档" aria-label="删除文档" @click="requestDelete(document)"><Trash2 :size="15" /></button>
-          <span v-else class="protected-label" data-label="权限" :title="document.is_system ? '系统预置资料不可删除' : '只有上传者可以删除'">
-            {{ document.is_system ? '系统资料' : '仅上传者可删' }}
+          <span class="protected-label" data-label="权限" title="发布后由管理员统一治理">
+            {{ document.is_system ? '系统资料' : '发布后由管理员统一治理' }}
           </span>
         </article>
       </div>
     </section>
 
-    <div v-if="deleteTarget" class="dialog-backdrop" @click.self="deleteTarget = null">
-      <div class="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-title">
-        <div class="warning-mark"><AlertTriangle :size="20" /></div>
-        <h2 id="delete-title">确认删除文档？</h2>
-        <p>“{{ deleteTarget.file_name }}”的原文件、登记记录和全部向量片段都会被删除，此操作无法撤销。</p>
-        <div>
-          <el-button round :disabled="deleting" @click="deleteTarget = null">取消</el-button>
-          <el-button type="danger" round :loading="deleting" @click="confirmDelete">确认删除</el-button>
-        </div>
-      </div>
-    </div>
   </section>
 </template>
 

@@ -1,4 +1,4 @@
-"""文档 API 权限测试：公共可见、上传者删除、系统文档保护。"""
+"""文档 API 权限测试：公共可见、发布后统一由管理员治理。"""
 
 from fastapi import Depends
 from fastapi.testclient import TestClient
@@ -90,13 +90,18 @@ def test_document_api_requires_login_and_enforces_public_permissions(tmp_path) -
             assert forbidden.status_code == 403
             assert forbidden.json()["error"]["code"] == "DOCUMENT_DELETE_FORBIDDEN"
 
-            deleted = client.delete(
+            owner_forbidden = client.delete(
                 f"/api/v1/documents/{document_id}", headers=auth_headers(owner.id)
             )
-            assert deleted.status_code == 200
+            assert owner_forbidden.status_code == 403
+            assert owner_forbidden.json()["error"]["code"] == "DOCUMENT_DELETE_FORBIDDEN"
+            owner_list = client.get(
+                "/api/v1/documents", headers=auth_headers(owner.id)
+            ).json()
+            assert owner_list["documents"][0]["can_delete"] is False
             assert client.get(
                 "/api/v1/documents", headers=auth_headers(other.id)
-            ).json()["total"] == 0
+            ).json()["total"] == 1
     finally:
         app.dependency_overrides.clear()
         engine.dispose()

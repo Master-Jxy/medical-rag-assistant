@@ -44,7 +44,10 @@ class ToolRegistry:
     def names(self) -> tuple[str, ...]:
         return tuple(sorted(self._tools))
 
-    def definitions(self) -> list[dict[str, object]]:
+    def definitions(
+        self,
+        allowed_names: set[str] | frozenset[str] | None = None,
+    ) -> list[dict[str, object]]:
         return [
             {
                 "name": tool.name,
@@ -52,7 +55,11 @@ class ToolRegistry:
                 "parameters": tool.arguments_model.model_json_schema(),
             }
             for tool in sorted(self._tools.values(), key=lambda item: item.name)
+            if allowed_names is None or tool.name in allowed_names
         ]
+
+    def contains(self, name: str) -> bool:
+        return name in self._tools
 
     def invoke(
         self,

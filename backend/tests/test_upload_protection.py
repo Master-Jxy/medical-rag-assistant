@@ -57,7 +57,7 @@ class NeverCalledLifecycle:
         self.called = True
         raise AssertionError("受保护拒绝不应进入文档生命周期")
 
-    async def replace_system_document(self, *args, **kwargs):
+    async def replace_document(self, *args, **kwargs):
         self.called = True
         raise AssertionError("受保护拒绝不应进入文档替换生命周期")
 
@@ -70,7 +70,7 @@ class RecordingLifecycle:
         self.calls.append("create")
         return self._record("created", upload_file.filename)
 
-    async def replace_system_document(self, _document_id, upload_file):
+    async def replace_document(self, _document_id, upload_file, **_kwargs):
         self.calls.append("replace")
         return self._record("replaced", upload_file.filename)
 
@@ -239,6 +239,7 @@ def test_admin_create_and_replace_skip_frequency_limit() -> None:
     fake_session = SimpleNamespace(
         add=lambda _record: None,
         commit=lambda: None,
+        flush=lambda: None,
         scalar=lambda _statement: None,
     )
     service = AdminDocumentService(

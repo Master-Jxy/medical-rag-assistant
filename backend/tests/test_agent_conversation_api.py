@@ -43,7 +43,7 @@ class NoArguments(AgentToolArguments):
 
 
 class ReportTool:
-    name = "report_tool"
+    name = "generate_learning_report"
     description = "生成固定报告"
     arguments_model = NoArguments
 
@@ -67,10 +67,14 @@ class ReportTool:
 class ReportPlanner:
     def classify_and_plan(self, state):
         assert "当前任务" in state["task"]
-        return PlanDecision(plan=["生成报告"])
+        return PlanDecision(
+            plan=["生成报告"],
+            specialist="knowledge_specialist",
+            handoff_to="knowledge_specialist",
+        )
 
     def select_tool(self, state):
-        return ToolDecision(tool_name="report_tool", arguments={})
+        return ToolDecision(tool_name="generate_learning_report", arguments={})
 
     def inspect_result(self, state):
         return InspectionDecision(action="finalize", final_output="报告已完成。")
@@ -193,10 +197,13 @@ def test_agent_thread_api_streams_persists_and_replays_without_duplicate_run() -
         with TestClient(app) as client:
             created_thread = client.post(
                 "/api/v1/agent/threads",
-                json={"title": "患者安全"},
+                json={"title": "患者安全", "assistant_mode": "patient"},
             )
             assert created_thread.status_code == 201
             thread_id = created_thread.json()["id"]
+            assert created_thread.json()["assistant_mode"] == "patient"
+            assert created_thread.json()["run_status"] == "idle"
+            assert created_thread.json()["has_unread"] is False
 
             response = client.post(
                 f"/api/v1/agent/threads/{thread_id}/messages/stream",
@@ -226,6 +233,29 @@ def test_agent_thread_api_streams_persists_and_replays_without_duplicate_run() -
             assert run["trigger_message_id"] == messages[0]["id"]
             assert run["response_message_id"] == messages[1]["id"]
 
+            thread_summary = client.get("/api/v1/agent/threads").json()["items"][0]
+            assert thread_summary["run_status"] == "idle"
+            assert thread_summary["active_run_id"] is None
+            assert thread_summary["has_unread"] is True
+            assert thread_summary["last_message_status"] == "completed"
+            assert thread_summary["last_read_sequence"] == 0
+
+            marked = client.post(
+                f"/api/v1/agent/threads/{thread_id}/read",
+                json={"last_read_sequence": messages[1]["sequence_no"]},
+            )
+            assert marked.status_code == 200
+            assert marked.json() == {
+                "thread_id": thread_id,
+                "last_read_sequence": messages[1]["sequence_no"],
+            }
+            lower_marker = client.post(
+                f"/api/v1/agent/threads/{thread_id}/read",
+                json={"last_read_sequence": 1},
+            )
+            assert lower_marker.json()["last_read_sequence"] == messages[1]["sequence_no"]
+            assert client.get("/api/v1/agent/threads").json()["items"][0]["has_unread"] is False
+
             replay = client.post(
                 f"/api/v1/agent/threads/{thread_id}/messages/stream",
                 headers={"Idempotency-Key": "message-1"},
@@ -243,10 +273,15 @@ def test_agent_thread_api_streams_persists_and_replays_without_duplicate_run() -
 
             renamed = client.patch(
                 f"/api/v1/agent/threads/{thread_id}",
-                json={"title": "患者安全报告", "status": "archived"},
+                json={
+                    "title": "患者安全报告",
+                    "status": "archived",
+                    "assistant_mode": "clinician",
+                },
             )
             assert renamed.json()["title"] == "患者安全报告"
             assert renamed.json()["status"] == "archived"
+            assert renamed.json()["assistant_mode"] == "clinician"
     finally:
         app.dependency_overrides.clear()
         session.close()
@@ -293,7 +328,11 @@ def test_three_rounds_reuse_recent_messages_and_explicit_artifact() -> None:
 
         def classify_and_plan(self, state):
             self.contexts.append(state["task"])
-            return PlanDecision(plan=["生成报告"])
+            return PlanDecision(
+                plan=["生成报告"],
+                specialist="knowledge_specialist",
+                handoff_to="knowledge_specialist",
+            )
 
     engine = build_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -449,7 +488,7 @@ def test_process_restart_recovery_marks_run_step_and_message_failed() -> None:
             user_id=user.id,
             run_id=run.id,
             node_name="execute_tool",
-            tool_name="report_tool",
+            tool_name="generate_learning_report",
             parameters={},
         )
         assistant = threads.create_message(

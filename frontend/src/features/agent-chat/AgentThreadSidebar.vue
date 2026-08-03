@@ -1,9 +1,13 @@
 <script setup>
+import { LoaderCircle } from '@lucide/vue'
+
 defineProps({
   threads: { type: Array, default: () => [] },
   selectedId: { type: String, default: '' },
   loading: Boolean,
   statusFilter: { type: String, default: 'active' },
+  runningIds: { type: Array, default: () => [] },
+  unreadIds: { type: Array, default: () => [] },
 })
 defineEmits([
   'new',
@@ -39,10 +43,24 @@ defineEmits([
       v-for="thread in threads"
       :key="thread.id"
       class="thread-row"
-      :class="{ active: selectedId === thread.id }"
+      :class="{ active: selectedId === thread.id, running: runningIds.includes(thread.id) }"
+      :data-thread-id="thread.id"
     >
       <button class="thread-main" @click="$emit('select', thread)">
-        <strong>{{ thread.title }}</strong>
+        <span class="thread-title">
+          <strong>{{ thread.title }}</strong>
+          <LoaderCircle
+            v-if="runningIds.includes(thread.id)"
+            class="run-spinner"
+            :size="14"
+            aria-label="正在生成"
+          />
+          <i
+            v-else-if="unreadIds.includes(thread.id)"
+            class="unread-dot"
+            aria-label="有未读回答"
+          ></i>
+        </span>
         <small>{{ new Date(thread.last_message_at).toLocaleString() }}</small>
       </button>
       <div class="thread-actions">
@@ -50,6 +68,8 @@ defineEmits([
         <button
           v-if="statusFilter === 'active'"
           :aria-label="`归档 ${thread.title}`"
+          :disabled="runningIds.includes(thread.id)"
+          :title="runningIds.includes(thread.id) ? '请先停止当前会话' : ''"
           @click="$emit('archive', thread)"
         >
           归档
@@ -57,7 +77,13 @@ defineEmits([
         <button v-else :aria-label="`恢复 ${thread.title}`" @click="$emit('restore', thread)">
           恢复
         </button>
-        <button class="danger" :aria-label="`删除 ${thread.title}`" @click="$emit('delete', thread)">
+        <button
+          class="danger"
+          :aria-label="`删除 ${thread.title}`"
+          :disabled="runningIds.includes(thread.id)"
+          :title="runningIds.includes(thread.id) ? '请先停止当前会话' : ''"
+          @click="$emit('delete', thread)"
+        >
           删除
         </button>
       </div>
@@ -133,6 +159,10 @@ defineEmits([
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.thread-title { min-width: 0; display: flex; align-items: center; gap: 7px; }
+.thread-title strong { min-width: 0; flex: 1; }
+.run-spinner { flex: 0 0 auto; color: var(--primary); animation: thread-spin .8s linear infinite; }
+.unread-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--action); box-shadow: 0 0 0 3px rgba(44, 103, 214, .12); }
 .thread-main small, .empty { color: var(--muted); font-size: 10px; }
 .thread-actions {
   display: flex;
@@ -158,7 +188,9 @@ defineEmits([
   cursor: pointer;
 }
 .thread-actions .danger { color: #ad5547; }
+.thread-actions button:disabled { cursor: not-allowed; opacity: .45; }
 .empty { padding: 26px 8px; text-align: center; }
+@keyframes thread-spin { to { transform: rotate(360deg); } }
 @media (max-width: 760px) {
   .thread-actions { max-height: 28px; padding-top: 4px; opacity: 1; }
 }

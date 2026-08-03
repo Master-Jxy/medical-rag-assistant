@@ -515,8 +515,9 @@ class DisconnectingAgentRunner:
     def __init__(self, session):
         self.session = session
 
-    def stream_run(self, user_id, run_id, *, task_context):
-        del task_context
+    def stream_run(self, user_id, run_id, *, task_context, **runtime_context):
+        assert runtime_context["assistant_mode"] == "general"
+        del task_context, runtime_context
         yield {"event": "run_started", "data": {"run_id": run_id}}
         try:
             yield {"event": "token", "data": {"content": "partial"}}

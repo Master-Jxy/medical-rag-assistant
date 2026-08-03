@@ -10,6 +10,7 @@ from fastapi import UploadFile
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -21,11 +22,15 @@ from app.core.exceptions import (
     DocumentStoreError,
     DuplicateDocumentError,
     FileTooLargeError,
-    SystemDocumentRequiredError,
     UnsupportedFileTypeError,
 )
 from app.infrastructure.vector_store import VectorStoreService
-from app.modules.knowledge.models import KnowledgeDocument
+from app.modules.audit.ports import AuditPort, AuditRecord
+from app.modules.knowledge.models import (
+    DocumentVersion,
+    KnowledgeDocument,
+    KnowledgeSubmission,
+)
 from app.modules.knowledge.repository import (
     DocumentLockConflictError,
     DocumentRepository,
@@ -44,7 +49,7 @@ class PreparedDocument:
 
 
 class DocumentLifecycleService:
-    """集中实现跨三处存储的创建、删除和系统文档整体替换。"""
+    """集中实现跨 MySQL、文件系统和向量库的文档生命周期。"""
 
     def __init__(
         self,
@@ -143,13 +148,22 @@ class DocumentLifecycleService:
                 pass
             raise DocumentStoreError() from exc
 
-    async def replace_system_document(
-        self, document_id: str, upload_file: UploadFile
+    async def replace_document(
+        self,
+        document_id: str,
+        upload_file: UploadFile,
+        *,
+        audit: AuditPort | None = None,
+        actor_user_id: str | None = None,
+        request_id: str | None = None,
+        reason: str = "管理员整份替换",
     ) -> KnowledgeDocument:
         prepared: PreparedDocument | None = None
         old_snapshot: dict | None = None
         old_record: KnowledgeDocument | None = None
         old_copy: KnowledgeDocument | None = None
+        old_version_values: dict | None = None
+        submission_states: list[dict] = []
         switched = False
         old_file_moved = False
         old_delete_started = False
@@ -163,36 +177,88 @@ class DocumentLifecycleService:
                 raise DocumentBusyError() from exc
             if old_record is None:
                 raise DocumentNotFoundError()
-            if not old_record.is_system:
-                raise SystemDocumentRequiredError()
 
             old_copy = self._copy_record(old_record)
+            old_version = self.session.scalar(
+                select(DocumentVersion).where(
+                    DocumentVersion.document_id == old_record.id
+                )
+            )
+            old_version_values = self._copy_version_values(old_version)
+            linked_submissions = self.session.scalars(
+                select(KnowledgeSubmission).where(
+                    KnowledgeSubmission.document_id == old_record.id
+                )
+            ).all()
+            submission_states = [
+                self._copy_submission_state(submission)
+                for submission in linked_submissions
+            ]
             old_path = self.settings.upload_dir / old_record.stored_name
             tombstone_path = self.settings.upload_dir / f".{old_record.stored_name}.replacing"
             if not old_path.is_file():
                 raise DocumentStoreError()
             old_snapshot = self.vector_store.snapshot_documents(old_record.chunk_ids)
-            if set(old_snapshot.get("ids") or []) != set(old_record.chunk_ids):
+            if old_record.status in {"published", "ready"} and set(
+                old_snapshot.get("ids") or []
+            ) != set(old_record.chunk_ids):
                 raise DocumentStoreError()
 
             prepared = await self._prepare_upload(
-                upload_file, uploader_id=None, is_system=True
+                upload_file,
+                uploader_id=old_record.uploader_id,
+                is_system=old_record.is_system,
             )
+            for submission in linked_submissions:
+                submission.document_id = None
+            self.session.flush()
+            if old_version is not None:
+                self.session.delete(old_version)
             self.repository.delete(old_record)
+            self.session.flush()
             self.repository.add(prepared.record)
+            self.session.flush()
+            self.session.add(
+                self._build_replacement_version(
+                    prepared.record,
+                    old_version_values,
+                )
+            )
+            for submission in linked_submissions:
+                self._sync_published_submission(submission, prepared.record)
             self.session.commit()
             switched = True
 
             old_path.replace(tombstone_path)
             old_file_moved = True
             old_delete_started = True
-            self.vector_store.delete_documents(old_record.chunk_ids)
-            tombstone_path.unlink(missing_ok=True)
+            self.vector_store.delete_documents(old_copy.chunk_ids)
+            if audit is not None and actor_user_id is not None:
+                audit.record(
+                    AuditRecord(
+                        actor_user_id=actor_user_id,
+                        action="knowledge_asset.file_replaced",
+                        object_type="knowledge_document",
+                        object_id=old_copy.id,
+                        request_id=request_id,
+                        details={
+                            "replacement_document_id": prepared.record.id,
+                            "source_type": self._source_type(
+                                old_copy, old_version_values
+                            ),
+                            "reason": reason,
+                        },
+                    )
+                )
+                self.session.commit()
+            try:
+                tombstone_path.unlink(missing_ok=True)
+            except OSError:
+                pass
             self.session.refresh(prepared.record)
             return prepared.record
         except (
             DocumentNotFoundError,
-            SystemDocumentRequiredError,
             DocumentBusyError,
             UnsupportedFileTypeError,
             FileTooLargeError,
@@ -211,19 +277,156 @@ class DocumentLifecycleService:
         except Exception as exc:
             self.session.rollback()
             if switched and prepared is not None and old_copy is not None:
-                self._rollback_replacement(
-                    prepared,
-                    old_copy,
-                    old_snapshot,
-                    tombstone_path,
-                    old_file_moved,
-                    old_delete_started,
-                )
+                try:
+                    self._restore_delete(
+                        self.settings.upload_dir / old_copy.stored_name,
+                        tombstone_path
+                        or self.settings.upload_dir
+                        / f".{old_copy.stored_name}.replacing",
+                        old_snapshot,
+                        old_file_moved,
+                        old_delete_started,
+                    )
+                    self._restore_replaced_database(
+                        prepared,
+                        old_copy,
+                        old_version_values,
+                        submission_states,
+                    )
+                except Exception:
+                    pass
             elif prepared is not None:
                 self._cleanup_prepared(prepared)
             raise DocumentStoreError() from exc
         finally:
             await upload_file.close()
+
+    async def replace_system_document(
+        self, document_id: str, upload_file: UploadFile
+    ) -> KnowledgeDocument:
+        """兼容旧调用；管理员入口统一改用 replace_document。"""
+        return await self.replace_document(document_id, upload_file)
+
+    def delete_managed_document(
+        self,
+        document_id: str,
+        *,
+        audit: AuditPort | None = None,
+        actor_user_id: str | None = None,
+        request_id: str | None = None,
+        reason: str = "管理员永久删除",
+    ) -> str:
+        old_copy: KnowledgeDocument | None = None
+        old_version_values: dict | None = None
+        submission_states: list[dict] = []
+        snapshot: dict | None = None
+        file_moved = False
+        delete_started = False
+        database_deleted = False
+        tombstone_path: Path | None = None
+
+        try:
+            try:
+                record = self.repository.get_by_id_for_update(document_id)
+            except DocumentLockConflictError as exc:
+                self.session.rollback()
+                raise DocumentBusyError() from exc
+            if record is None:
+                raise DocumentNotFoundError()
+
+            old_copy = self._copy_record(record)
+            version = self.session.scalar(
+                select(DocumentVersion).where(DocumentVersion.document_id == record.id)
+            )
+            old_version_values = self._copy_version_values(version)
+            submissions = self.session.scalars(
+                select(KnowledgeSubmission).where(
+                    KnowledgeSubmission.document_id == record.id
+                )
+            ).all()
+            submission_states = [
+                self._copy_submission_state(submission) for submission in submissions
+            ]
+            stored_path = self.settings.upload_dir / record.stored_name
+            tombstone_path = self.settings.upload_dir / f".{record.stored_name}.deleting"
+            if not stored_path.is_file():
+                raise DocumentStoreError()
+            snapshot = self.vector_store.snapshot_documents(record.chunk_ids)
+            if record.status in {"published", "ready"} and set(
+                snapshot.get("ids") or []
+            ) != set(record.chunk_ids):
+                raise DocumentStoreError()
+
+            for submission in submissions:
+                submission.status = "archived"
+                submission.document_id = None
+            self.session.flush()
+            if version is not None:
+                self.session.delete(version)
+            self.repository.delete(record)
+            self.session.commit()
+            database_deleted = True
+
+            stored_path.replace(tombstone_path)
+            file_moved = True
+            delete_started = True
+            self.vector_store.delete_documents(old_copy.chunk_ids)
+            if audit is not None and actor_user_id is not None:
+                audit.record(
+                    AuditRecord(
+                        actor_user_id=actor_user_id,
+                        action="knowledge_asset.permanently_deleted",
+                        object_type="knowledge_document",
+                        object_id=old_copy.id,
+                        request_id=request_id,
+                        details={
+                            "source_type": self._source_type(
+                                old_copy, old_version_values
+                            ),
+                            "reason": reason,
+                        },
+                    )
+                )
+                self.session.commit()
+            try:
+                tombstone_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return old_copy.id
+        except (DocumentNotFoundError, DocumentBusyError, DocumentStoreError):
+            self.session.rollback()
+            if database_deleted and old_copy is not None:
+                self._restore_delete(
+                    self.settings.upload_dir / old_copy.stored_name,
+                    tombstone_path
+                    or self.settings.upload_dir / f".{old_copy.stored_name}.deleting",
+                    snapshot,
+                    file_moved,
+                    delete_started,
+                )
+                self._restore_deleted_database(
+                    old_copy, old_version_values, submission_states
+                )
+            raise
+        except Exception as exc:
+            self.session.rollback()
+            if database_deleted and old_copy is not None:
+                try:
+                    self._restore_delete(
+                        self.settings.upload_dir / old_copy.stored_name,
+                        tombstone_path
+                        or self.settings.upload_dir
+                        / f".{old_copy.stored_name}.deleting",
+                        snapshot,
+                        file_moved,
+                        delete_started,
+                    )
+                    self._restore_deleted_database(
+                        old_copy, old_version_values, submission_states
+                    )
+                except Exception:
+                    pass
+            raise DocumentStoreError() from exc
 
     async def _prepare_upload(
         self,
@@ -329,27 +532,133 @@ class DocumentLifecycleService:
         if file_moved and tombstone_path.exists():
             tombstone_path.replace(stored_path)
 
-    def _rollback_replacement(
+    def _restore_replaced_database(
         self,
         prepared: PreparedDocument,
         old_record: KnowledgeDocument,
-        old_snapshot: dict | None,
-        tombstone_path: Path | None,
-        old_file_moved: bool,
-        old_delete_started: bool,
+        old_version_values: dict | None,
+        submission_states: list[dict],
     ) -> None:
-        old_path = self.settings.upload_dir / old_record.stored_name
-        if old_delete_started and old_snapshot is not None:
-            self.vector_store.restore_documents(old_snapshot)
-        if old_file_moved and tombstone_path is not None and tombstone_path.exists():
-            tombstone_path.replace(old_path)
-
+        for state in submission_states:
+            submission = self.session.get(KnowledgeSubmission, state["id"])
+            if submission is not None:
+                submission.document_id = None
+        self.session.flush()
+        current_version = self.session.scalar(
+            select(DocumentVersion).where(
+                DocumentVersion.document_id == prepared.record.id
+            )
+        )
+        if current_version is not None:
+            self.session.delete(current_version)
         current = self.repository.get_by_id(prepared.record.id)
         if current is not None:
             self.repository.delete(current)
+        self.session.flush()
         self.repository.add(old_record)
+        self.session.flush()
+        if old_version_values is not None:
+            self.session.add(
+                DocumentVersion(document_id=old_record.id, **old_version_values)
+            )
+        self._restore_submissions(submission_states)
         self.session.commit()
         self._cleanup_prepared(prepared)
+
+    def _restore_deleted_database(
+        self,
+        old_record: KnowledgeDocument,
+        old_version_values: dict | None,
+        submission_states: list[dict],
+    ) -> None:
+        self.repository.add(old_record)
+        self.session.flush()
+        if old_version_values is not None:
+            self.session.add(
+                DocumentVersion(document_id=old_record.id, **old_version_values)
+            )
+        self._restore_submissions(submission_states)
+        self.session.commit()
+
+    def _restore_submissions(self, submission_states: list[dict]) -> None:
+        for state in submission_states:
+            submission = self.session.get(KnowledgeSubmission, state["id"])
+            if submission is None:
+                continue
+            for field, value in state.items():
+                if field != "id":
+                    setattr(submission, field, value)
+
+    @staticmethod
+    def _copy_version_values(version: DocumentVersion | None) -> dict | None:
+        if version is None:
+            return None
+        return {
+            "id": version.id,
+            "version": version.version,
+            "replaces_document_id": version.replaces_document_id,
+            "source": version.source,
+            "tags": list(version.tags or []),
+            "category": version.category,
+            "department": version.department,
+            "expires_at": version.expires_at,
+            "review_due_at": version.review_due_at,
+            "last_reviewed_at": version.last_reviewed_at,
+            "review_status": version.review_status,
+            "created_at": version.created_at,
+        }
+
+    @staticmethod
+    def _copy_submission_state(submission: KnowledgeSubmission) -> dict:
+        return {
+            "id": submission.id,
+            "original_name": submission.original_name,
+            "stored_name": submission.stored_name,
+            "content_hash": submission.content_hash,
+            "size_bytes": submission.size_bytes,
+            "status": submission.status,
+            "document_id": submission.document_id,
+        }
+
+    @staticmethod
+    def _sync_published_submission(
+        submission: KnowledgeSubmission, record: KnowledgeDocument
+    ) -> None:
+        submission.original_name = record.original_name
+        submission.stored_name = record.stored_name
+        submission.content_hash = record.content_hash
+        submission.size_bytes = record.size_bytes
+        submission.status = "published"
+        submission.document_id = record.id
+
+    @staticmethod
+    def _build_replacement_version(
+        record: KnowledgeDocument, old_values: dict | None
+    ) -> DocumentVersion:
+        values = old_values or {}
+        return DocumentVersion(
+            id=str(uuid4()),
+            document_id=record.id,
+            version=int(values.get("version") or 0) + 1,
+            replaces_document_id=values.get("replaces_document_id"),
+            source=values.get("source")
+            or ("system" if record.is_system else "user_submission"),
+            tags=list(values.get("tags") or []),
+            category=values.get("category"),
+            department=values.get("department"),
+            expires_at=values.get("expires_at"),
+            review_due_at=values.get("review_due_at"),
+            last_reviewed_at=values.get("last_reviewed_at"),
+            review_status=values.get("review_status") or "current",
+        )
+
+    @staticmethod
+    def _source_type(
+        record: KnowledgeDocument, version_values: dict | None
+    ) -> str:
+        if record.is_system:
+            return "system"
+        return str((version_values or {}).get("source") or "user_submission")
 
     @staticmethod
     def _copy_record(record: KnowledgeDocument) -> KnowledgeDocument:

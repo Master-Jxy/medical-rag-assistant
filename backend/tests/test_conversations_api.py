@@ -71,7 +71,54 @@ def test_conversation_crud_with_messages_and_sources(tmp_path) -> None:
             )
             assert list_response.status_code == 200
             assert list_response.json()["total"] == 1
-            assert list_response.json()["conversations"][0]["message_count"] == 2
+            summary = list_response.json()["conversations"][0]
+            assert summary["message_count"] == 2
+            assert summary["run_status"] == "idle"
+            assert summary["active_run_id"] is None
+            assert summary["has_unread"] is True
+            assert summary["last_message_status"] == "completed"
+            assert summary["last_read_sequence"] == 0
+
+            marked = client.post(
+                f"/api/v1/conversations/{conversation_id}/read",
+                json={"last_read_sequence": 2},
+                headers=headers,
+            )
+            assert marked.status_code == 200
+            assert marked.json() == {
+                "conversation_id": conversation_id,
+                "last_read_sequence": 2,
+            }
+            lower_marker = client.post(
+                f"/api/v1/conversations/{conversation_id}/read",
+                json={"last_read_sequence": 1},
+                headers=headers,
+            )
+            assert lower_marker.json()["last_read_sequence"] == 2
+            assert client.get(
+                "/api/v1/conversations", headers=headers
+            ).json()["conversations"][0]["has_unread"] is False
+
+            with test_session_factory() as session:
+                pending = Message(
+                    conversation_id=conversation_id,
+                    sequence=3,
+                    role="assistant",
+                    content="",
+                    status="pending",
+                )
+                session.add(pending)
+                session.commit()
+                pending_id = pending.id
+            active_summary = client.get(
+                "/api/v1/conversations", headers=headers
+            ).json()["conversations"][0]
+            assert active_summary["run_status"] == "pending"
+            assert active_summary["last_message_status"] == "pending"
+            assert active_summary["has_unread"] is False
+            with test_session_factory() as session:
+                session.delete(session.get(Message, pending_id))
+                session.commit()
 
             detail_response = client.get(
                 f"/api/v1/conversations/{conversation_id}", headers=headers
@@ -138,6 +185,76 @@ def test_conversation_title_and_pagination_are_validated(tmp_path) -> None:
     assert invalid_limit.status_code == 422
 
 
+def test_running_conversation_exposes_request_id_and_cannot_be_deleted(tmp_path) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'running-delete.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    user = create_test_user(factory, "running-delete")
+    headers = auth_headers(user.id)
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/v1/conversations",
+                json={"title": "正在回答"},
+                headers=headers,
+            ).json()
+            with factory() as session:
+                session.add_all(
+                    [
+                        Message(
+                            conversation_id=created["id"],
+                            sequence=1,
+                            role="user",
+                            content="问题",
+                            status="completed",
+                        ),
+                        Message(
+                            conversation_id=created["id"],
+                            sequence=2,
+                            role="assistant",
+                            content="",
+                            status="pending",
+                            request_id="request-running-delete",
+                        ),
+                    ]
+                )
+                session.commit()
+
+            summary = client.get("/api/v1/conversations", headers=headers).json()[
+                "conversations"
+            ][0]
+            assert summary["run_status"] == "pending"
+            assert summary["active_run_id"] == "request-running-delete"
+
+            blocked = client.delete(
+                f"/api/v1/conversations/{created['id']}", headers=headers
+            )
+            assert blocked.status_code == 409
+            assert blocked.json()["error"]["code"] == (
+                "CONVERSATION_GENERATION_IN_PROGRESS"
+            )
+
+            with factory() as session:
+                pending = session.query(Message).filter_by(
+                    conversation_id=created["id"], status="pending"
+                ).one()
+                pending.status = "stopped"
+                session.commit()
+            assert client.delete(
+                f"/api/v1/conversations/{created['id']}", headers=headers
+            ).status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
 def test_two_users_cannot_list_read_update_or_delete_each_others_conversations(
     tmp_path,
 ) -> None:
@@ -179,6 +296,11 @@ def test_two_users_cannot_list_read_update_or_delete_each_others_conversations(
                 ),
                 client.delete(
                     f"/api/v1/conversations/{conversation_id}", headers=headers_b
+                ),
+                client.post(
+                    f"/api/v1/conversations/{conversation_id}/read",
+                    json={"last_read_sequence": 1},
+                    headers=headers_b,
                 ),
             ]
             for response in cross_user_responses:

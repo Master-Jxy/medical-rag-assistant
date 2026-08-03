@@ -60,6 +60,12 @@ def test_empty_database_upgrades_to_owned_conversation_schema(tmp_path) -> None:
         "users",
         "documents",
     } <= tables
+    assert "last_read_sequence" in {
+        column["name"] for column in inspector.get_columns("conversations")
+    }
+    assert {"last_read_sequence", "assistant_mode"} <= {
+        column["name"] for column in inspector.get_columns("agent_threads")
+    }
     assert "parse_quality" in {
         column["name"] for column in inspector.get_columns("knowledge_submissions")
     }
@@ -535,6 +541,101 @@ def test_quota_policy_v2_migration_preserves_usage_reservations_and_overrides(
             column["name"]
             for column in inspect(engine).get_columns("quota_periods")
         }
+
+
+def test_stage22_runtime_contract_backfills_read_markers_and_downgrades_safely(
+    tmp_path,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'stage22-runtime.db'}"
+    config = build_alembic_config(database_url)
+    command.upgrade(config, "0025_quota_policy_v2")
+    engine = build_engine(database_url)
+    now = datetime.now(timezone.utc)
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users "
+                "(id, email, password_hash, is_active, role, token_version, "
+                "created_at, updated_at) VALUES "
+                "('stage22-user', 'stage22@example.com', 'hash', 1, 'user', 0, "
+                ":now, :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO conversations "
+                "(id, user_id, title, created_at, updated_at) VALUES "
+                "('legacy-conversation', 'stage22-user', '旧RAG会话', :now, :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO messages "
+                "(id, conversation_id, sequence, role, content, status, request_id, created_at) VALUES "
+                "('rag-user', 'legacy-conversation', 1, 'user', '问题', 'completed', NULL, :now), "
+                "('rag-answer', 'legacy-conversation', 2, 'assistant', '回答', 'completed', NULL, :now), "
+                "('rag-pending', 'legacy-conversation', 3, 'assistant', '', 'pending', NULL, :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO agent_threads "
+                "(id, user_id, title, status, summary, summary_until_message_id, "
+                "next_message_sequence, last_message_at, created_at, updated_at) VALUES "
+                "('legacy-thread', 'stage22-user', '旧Agent会话', 'active', NULL, NULL, "
+                "4, :now, :now, :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO agent_messages "
+                "(id, thread_id, user_id, sequence_no, turn_id, role, content, status, "
+                "run_id, reply_to_message_id, metadata, created_at, updated_at) VALUES "
+                "('agent-user', 'legacy-thread', 'stage22-user', 1, NULL, 'user', "
+                "'问题', 'completed', NULL, NULL, '{}', :now, :now), "
+                "('agent-answer', 'legacy-thread', 'stage22-user', 2, NULL, 'assistant', "
+                "'回答', 'completed', NULL, NULL, '{}', :now, :now), "
+                "('agent-pending', 'legacy-thread', 'stage22-user', 3, NULL, 'assistant', "
+                "'', 'streaming', NULL, NULL, '{}', :now, :now)"
+            ),
+            {"now": now},
+        )
+
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        assert connection.execute(
+            text(
+                "SELECT last_read_sequence FROM conversations "
+                "WHERE id = 'legacy-conversation'"
+            )
+        ).scalar_one() == 2
+        assert connection.execute(
+            text(
+                "SELECT last_read_sequence, assistant_mode FROM agent_threads "
+                "WHERE id = 'legacy-thread'"
+            )
+        ).one() == (2, "general")
+
+    command.downgrade(config, "0025_quota_policy_v2")
+    inspector = inspect(engine)
+    assert "last_read_sequence" not in {
+        column["name"] for column in inspector.get_columns("conversations")
+    }
+    assert {"last_read_sequence", "assistant_mode"}.isdisjoint(
+        {column["name"] for column in inspector.get_columns("agent_threads")}
+    )
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text("SELECT COUNT(*) FROM conversations WHERE id = 'legacy-conversation'")
+        ) == 1
+        assert connection.scalar(
+            text("SELECT COUNT(*) FROM agent_threads WHERE id = 'legacy-thread'")
+        ) == 1
 
 
 def test_stage9_upgrade_registers_legacy_documents_without_duplicate_publication(

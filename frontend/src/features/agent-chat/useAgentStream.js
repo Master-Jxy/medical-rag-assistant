@@ -1,4 +1,3 @@
-import { computed, ref } from 'vue'
 import {
   retryAgentMessage,
   stopAgentRun,
@@ -8,6 +7,7 @@ import {
   initialAgentStreamState,
   reduceAgentEvent,
 } from './agentEventReducer.js'
+import { useConversationStreamRegistry } from './useConversationStreamRegistry.js'
 
 function requestId() {
   return globalThis.crypto?.randomUUID?.()
@@ -15,50 +15,108 @@ function requestId() {
 }
 
 export function useAgentStream(onSettled, onEvent) {
-  const state = ref(initialAgentStreamState())
-  const running = computed(() => [
-    'creating_message',
-    'planning',
-    'running_tools',
-    'streaming_answer',
-  ].includes(state.value.phase))
+  const registry = useConversationStreamRegistry()
+  let disposed = false
 
-  function handle(event, data) {
-    state.value = reduceAgentEvent(state.value, event, data)
-    onEvent?.(event, data)
+  function stateFor(threadId) {
+    return registry.get(threadId)?.state || initialAgentStreamState()
   }
 
-  async function send(threadId, content, references = {}) {
-    state.value = { ...initialAgentStreamState(), phase: 'creating_message' }
+  function runningFor(threadId, serverStatus = 'idle') {
+    return registry.isRunning(threadId, serverStatus)
+  }
+
+  function handle(threadId, event, data) {
+    if (!registry.acceptEvent(threadId, data)) return
+    const entry = registry.get(threadId)
+    if (!entry) return
+    entry.state = reduceAgentEvent(entry.state, event, data)
+    entry.phase = ['completed', 'failed', 'stopped'].includes(entry.state.phase)
+      ? 'settling'
+      : entry.state.phase
+    entry.runId = entry.state.runId || entry.runId
+    onEvent?.(threadId, event, data)
+  }
+
+  async function runStream(threadId, operation) {
+    const entry = registry.start(threadId, {
+      phase: 'creating_message',
+      state: { ...initialAgentStreamState(), phase: 'creating_message' },
+    })
     try {
-      await streamAgentMessage(
-        threadId,
-        {
-          content,
-          referenced_message_ids: references.messageIds || [],
-          source_ids: references.sourceIds || [],
-          artifact_ids: references.artifactIds || [],
-        },
-        requestId(),
-        { onEvent: handle },
-      )
+      await operation(entry, (event, data) => handle(threadId, event, data))
+      if (entry.phase === 'settling') {
+        entry.phase = entry.state.phase
+      } else if (registry.isRunning(threadId)) {
+        entry.state = { ...entry.state, phase: 'completed' }
+        entry.phase = 'completed'
+      }
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        entry.state = { ...entry.state, phase: 'stopped' }
+        entry.phase = 'stopped'
+      } else {
+        entry.state = {
+          ...entry.state,
+          phase: 'failed',
+          error: error?.userMessage || error?.message || 'Agent运行失败。',
+        }
+        entry.phase = 'failed'
+        entry.error = entry.state.error
+      }
+      throw error
     } finally {
-      await onSettled?.()
+      entry.controller = null
+      if (!disposed) await onSettled?.(threadId, entry.state)
     }
   }
 
-  async function retry(messageId) {
-    state.value = { ...initialAgentStreamState(), phase: 'creating_message' }
-    try {
-      await retryAgentMessage(messageId, requestId(), { onEvent: handle })
-    } finally {
-      await onSettled?.()
-    }
+  function send(threadId, content, references = {}) {
+    return runStream(threadId, (entry, handleEvent) => streamAgentMessage(
+      threadId,
+      {
+        content,
+        referenced_message_ids: references.messageIds || [],
+        source_ids: references.sourceIds || [],
+        artifact_ids: references.artifactIds || [],
+      },
+      requestId(),
+      { onEvent: handleEvent, signal: entry.controller.signal },
+    ))
   }
 
-  async function stop() {
-    if (state.value.runId) await stopAgentRun(state.value.runId)
+  function retry(threadId, messageId) {
+    return runStream(threadId, (entry, handleEvent) => retryAgentMessage(
+      messageId,
+      requestId(),
+      { onEvent: handleEvent, signal: entry.controller.signal },
+    ))
   }
 
-  return { state, running, send, retry, stop }
+  async function stop(threadId, fallbackRunId = '') {
+    const entry = registry.get(threadId)
+    if (entry?.phase === 'stopping') return
+    const runId = entry?.runId || fallbackRunId
+    if (!runId) return
+    registry.patch(threadId, { phase: 'stopping' })
+    if (entry) entry.state = { ...entry.state, phase: 'stopping' }
+    const result = await stopAgentRun(runId)
+    if (result.status !== 'stopping') registry.abort(threadId)
+    return result
+  }
+
+  function abortAll() {
+    disposed = true
+    registry.abortAll()
+  }
+
+  return {
+    registry,
+    stateFor,
+    runningFor,
+    send,
+    retry,
+    stop,
+    abortAll,
+  }
 }

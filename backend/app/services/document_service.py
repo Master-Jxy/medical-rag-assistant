@@ -82,7 +82,7 @@ class DocumentService:
             # 限流或并发拒绝发生在生命周期启动前，也必须及时关闭上传句柄。
             await upload_file.close()
         return DocumentUploadResponse(
-            **document_to_item(record, can_delete=True).model_dump()
+            **document_to_item(record, can_delete=False).model_dump()
         )
 
     def list_documents(self, user_id: str) -> DocumentListResponse:
@@ -93,7 +93,7 @@ class DocumentService:
         documents = [
             document_to_item(
                 record,
-                can_delete=not record.is_system and record.uploader_id == user_id,
+                can_delete=False,
             )
             for record in records
         ]
@@ -106,10 +106,8 @@ class DocumentService:
             raise DocumentStoreError() from exc
         if record is None:
             raise DocumentNotFoundError()
-        if record.is_system or record.uploader_id != user_id:
-            raise DocumentDeleteForbiddenError()
-        deleted_id = self.lifecycle.delete_document(record)
-        return DocumentDeleteResponse(document_id=deleted_id)
+        # 公共知识资产发布后统一由管理员治理；普通用户只能走 submission 撤回流程。
+        raise DocumentDeleteForbiddenError()
 
     def _load_documents(self, *args, **kwargs):
         """保留解析测试入口；实际实现只存在于共享生命周期。"""

@@ -18,6 +18,8 @@ from app.schemas.conversation import (
     ConversationDeleteResponse,
     ConversationDetail,
     ConversationListResponse,
+    ConversationReadRequest,
+    ConversationReadResponse,
     ConversationSummary,
     ConversationStopResponse,
     ConversationChatResponse,
@@ -84,6 +86,20 @@ def get_conversation(
     session: Session = Depends(get_db_session),
 ) -> ConversationDetail:
     return ConversationService(session).get_detail(current_user.id, conversation_id)
+
+
+@router.post("/{conversation_id}/read", response_model=ConversationReadResponse)
+def mark_conversation_read(
+    conversation_id: str,
+    payload: ConversationReadRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> ConversationReadResponse:
+    return ConversationService(session).mark_read(
+        current_user.id,
+        conversation_id,
+        payload.last_read_sequence,
+    )
 
 
 @router.patch("/{conversation_id}", response_model=ConversationSummary)

@@ -1,10 +1,11 @@
-import { computed, ref } from 'vue'
+import { reactive } from 'vue'
 
 export function createAgentTimelineState() {
   return {
     messages: {},
     pendingUserId: '',
     currentAssistantId: '',
+    pendingEvents: [],
   }
 }
 
@@ -40,6 +41,8 @@ export function reduceAgentTimeline(state, event, data = {}) {
   if (event === 'optimistic_user') {
     const id = data.id
     next.pendingUserId = id
+    next.currentAssistantId = ''
+    next.pendingEvents = []
     next.messages[id] = normalizedMessage({
       id,
       role: 'user',
@@ -53,8 +56,10 @@ export function reduceAgentTimeline(state, event, data = {}) {
   if (event === 'message_created') {
     const pending = next.messages[next.pendingUserId]
     const storedUser = next.messages[data.user_message_id]
+    const storedAssistant = next.messages[data.assistant_message_id]
     if (next.pendingUserId) delete next.messages[next.pendingUserId]
     next.messages[data.user_message_id] = normalizedMessage({
+      ...storedUser,
       id: data.user_message_id,
       role: 'user',
       content: pending?.content || storedUser?.content || '',
@@ -64,21 +69,36 @@ export function reduceAgentTimeline(state, event, data = {}) {
       metadata: {},
     })
     next.messages[data.assistant_message_id] = normalizedMessage({
+      ...storedAssistant,
       id: data.assistant_message_id,
       role: 'assistant',
-      content: '',
-      status: 'streaming',
+      content: storedAssistant?.content || '',
+      status: ['completed', 'failed', 'stopped'].includes(storedAssistant?.status)
+        ? storedAssistant.status
+        : 'streaming',
       sequence_no: data.assistant_sequence_no,
       turn_id: data.turn_id,
       run_id: data.run_id,
-      metadata: {},
-    })
+      metadata: storedAssistant?.metadata || {},
+    }, storedAssistant ? { steps: storedAssistant.parts?.steps || [], artifacts: storedAssistant.parts?.artifacts || [] } : null)
+    if (storedAssistant?.parts) next.messages[data.assistant_message_id].parts = storedAssistant.parts
     next.pendingUserId = ''
     next.currentAssistantId = data.assistant_message_id
-    return next
+    const pendingEvents = next.pendingEvents
+    next.pendingEvents = []
+    return pendingEvents.reduce(
+      (state, item) => reduceAgentTimeline(state, item.event, item.data),
+      next,
+    )
   }
   const message = next.messages[next.currentAssistantId]
-  if (!message) return next
+  if (!message) {
+    if (!['run_started'].includes(event)) next.pendingEvents = [
+      ...next.pendingEvents,
+      { event, data },
+    ]
+    return next
+  }
   const updated = {
     ...message,
     parts: {
@@ -156,26 +176,43 @@ export function reduceAgentTimeline(state, event, data = {}) {
 }
 
 export function useAgentTimeline() {
-  const state = ref(createAgentTimelineState())
-  const messages = computed(() => Object.values(state.value.messages).sort(
+  const states = reactive(new Map())
+
+  function ensure(threadId) {
+    if (!states.has(threadId)) states.set(threadId, createAgentTimelineState())
+    return states.get(threadId)
+  }
+
+  function messagesFor(threadId) {
+    const state = threadId ? ensure(threadId) : createAgentTimelineState()
+    return Object.values(state.messages).sort(
     (left, right) => (
       left.sequence_no - right.sequence_no
       || String(left.id).localeCompare(String(right.id))
     ),
-  ))
-  function hydrate(rows, runDetails) {
-    state.value = hydrateAgentTimeline(state.value, rows, runDetails)
-  }
-  function beginUser(content) {
-    const id = `pending-${Date.now()}`
-    state.value = reduceAgentTimeline(
-      state.value,
-      'optimistic_user',
-      { id, content },
     )
   }
-  function handle(event, data) {
-    state.value = reduceAgentTimeline(state.value, event, data)
+
+  function hydrate(threadId, rows, runDetails) {
+    states.set(threadId, hydrateAgentTimeline(ensure(threadId), rows, runDetails))
   }
-  return { state, messages, hydrate, beginUser, handle }
+
+  function beginUser(threadId, content) {
+    const id = `pending-${Date.now()}`
+    states.set(threadId, reduceAgentTimeline(
+      ensure(threadId),
+      'optimistic_user',
+      { id, content },
+    ))
+  }
+
+  function handle(threadId, event, data) {
+    states.set(threadId, reduceAgentTimeline(ensure(threadId), event, data))
+  }
+
+  function remove(threadId) {
+    states.delete(threadId)
+  }
+
+  return { states, messagesFor, hydrate, beginUser, handle, remove }
 }
