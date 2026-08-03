@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     generation_lock_ttl_seconds: int = Field(default=600, gt=0, le=3600)
     generation_active_run_limit: int = Field(default=2, ge=1, le=4)
     generation_lock_cleanup_grace_seconds: int = Field(default=30, ge=1, le=300)
+    rag_pending_recovery_age_seconds: int = Field(default=900, ge=60, le=86400)
     idempotency_in_progress_ttl_seconds: int = Field(default=600, gt=0, le=3600)
     idempotency_result_ttl_seconds: int = Field(default=86400, gt=0, le=604800)
     auth_rate_limit_fallback_max_keys: int = Field(default=4096, gt=0, le=100000)
@@ -249,6 +250,13 @@ class Settings(BaseSettings):
             raise ValueError(
                 "GENERATION_LOCK_TTL_SECONDS 必须大于 "
                 "AGENT_RUN_TIMEOUT_SECONDS 与收尾余量之和"
+            )
+        if self.rag_pending_recovery_age_seconds <= (
+            self.generation_lock_ttl_seconds
+            + self.generation_lock_cleanup_grace_seconds
+        ):
+            raise ValueError(
+                "RAG_PENDING_RECOVERY_AGE_SECONDS 必须大于生成锁 TTL 与收尾余量之和"
             )
         return self
 

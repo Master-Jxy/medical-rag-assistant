@@ -94,6 +94,7 @@ def create_app(
     application.state.telemetry = telemetry or create_local_telemetry(current_settings)
     application.state.agent_cancellation_service = AgentCancellationService()
     application.state.agent_recovery_complete = False
+    application.state.conversation_recovery_complete = False
 
     @application.middleware("http")
     async def telemetry_middleware(request: Request, call_next):

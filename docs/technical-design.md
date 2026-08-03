@@ -1851,3 +1851,32 @@ MySQL连接拒绝，因此没有虚报本地MySQL往返。生产已在备份后�
 `0026_stage22_runtime_contract`，提交为 `5c02056`，只重建backend/web，MySQL/Redis未重建。
 线上HTTP 308、HTTPS健康200、未授权401、静态资源哈希和核心数据数量不变均已核验。真实
 Qwen、Embedding、Reranker和SMTP调用仍未发生；额度保持shadow，自动记忆提取保持关闭。
+
+## 23. 阶段二十三：运行中断恢复 [本地完成，未部署]
+
+Stage 23 不引入微服务、消息队列、数据库迁移或第二套运行状态。RAG 与 Agent 保持
+独立模块：
+
+RAG conversation API -> ConversationRecoveryService -> stale assistant pending
+-> failed + stable retry message
+
+Agent API -> existing AgentRecoveryService -> AgentRun / AgentStep / AgentMessage recovery
+
+RAG 只在每个后端进程首次访问会话路由时扫描 assistant/pending，并只处理
+created_at 早于 now - RAG_PENDING_RECOVERY_AGE_SECONDS 的记录。默认阈值为
+900 秒，配置校验要求它严格大于生成锁 TTL 加清理收尾窗口。行锁、状态条件和单次
+进程标记共同避免重复收敛。新鲜 pending 不动；completed、failed、stopped
+和用户消息不动。
+
+恢复文案为固定的“RAG进程中断，本轮回答未正常结束，请重新提问。”，不把字符数
+伪装成 Token，不重新调用模型，不删除用户问题、来源或会话。失败提交会回滚，恢复
+标记只有在提交成功后才变为完成。
+
+Agent 的 stopping 仍是取消服务和前端 stream registry 的瞬时状态，不单独持久化。
+进程重启继续由 AgentRecoveryService 将旧的非终态 run、step 和 assistant message
+收敛为 AGENT_PROCESS_RESTARTED。前端 registry 不是数据库真相，晚到的 SSE 事件
+不能把数据库终态改回运行态。
+
+Stage 23 已完成无费用临时 SQLite 和相关后端回归测试，但尚未提交、推送或部署；
+生产开关、数据卷和模型调用保持不变。后续如需后台定时恢复、任务租约或统一跨 worker
+调度，应作为独立阶段设计。

@@ -1,7 +1,7 @@
 """会话创建、列表、详情、改名和删除接口。"""
 
 from typing import Annotated
-from fastapi import APIRouter, Depends, Header, Query, status
+from fastapi import APIRouter, Depends, Header, Query, Request, status
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 from sqlalchemy.orm import Session
@@ -45,6 +45,21 @@ from app.services.stream_cancellation_service import (
     get_stream_cancellation_service,
 )
 from app.services.memory_extraction_runtime import run_memory_extraction_recovery
+from app.services.conversation_recovery import ConversationRecoveryService
+
+
+def ensure_conversation_recovery(
+    request: Request,
+    session: Session = Depends(get_db_session),
+) -> None:
+    """每个后端进程首次访问会话接口时收敛陈旧的 RAG pending 消息。"""
+    if request.app.state.conversation_recovery_complete:
+        return
+    ConversationRecoveryService(
+        session,
+        recovery_age_seconds=request.app.state.settings.rag_pending_recovery_age_seconds,
+    ).recover_interrupted()
+    request.app.state.conversation_recovery_complete = True
 
 router = APIRouter(prefix="/conversations", tags=["历史会话"])
 
@@ -65,6 +80,7 @@ def create_conversation(
     request: ConversationCreate,
     current_user: UserResponse = Depends(get_current_user),
     session: Session = Depends(get_db_session),
+    _recovery: None = Depends(ensure_conversation_recovery),
 ) -> ConversationSummary:
     return ConversationService(session).create(current_user.id, request.title)
 
@@ -75,6 +91,7 @@ def list_conversations(
     offset: int = Query(default=0, ge=0),
     current_user: UserResponse = Depends(get_current_user),
     session: Session = Depends(get_db_session),
+    _recovery: None = Depends(ensure_conversation_recovery),
 ) -> ConversationListResponse:
     return ConversationService(session).list(current_user.id, limit, offset)
 
@@ -84,6 +101,7 @@ def get_conversation(
     conversation_id: str,
     current_user: UserResponse = Depends(get_current_user),
     session: Session = Depends(get_db_session),
+    _recovery: None = Depends(ensure_conversation_recovery),
 ) -> ConversationDetail:
     return ConversationService(session).get_detail(current_user.id, conversation_id)
 
@@ -94,6 +112,7 @@ def mark_conversation_read(
     payload: ConversationReadRequest,
     current_user: UserResponse = Depends(get_current_user),
     session: Session = Depends(get_db_session),
+    _recovery: None = Depends(ensure_conversation_recovery),
 ) -> ConversationReadResponse:
     return ConversationService(session).mark_read(
         current_user.id,
@@ -108,6 +127,7 @@ def update_conversation(
     request: ConversationUpdate,
     current_user: UserResponse = Depends(get_current_user),
     session: Session = Depends(get_db_session),
+    _recovery: None = Depends(ensure_conversation_recovery),
 ) -> ConversationSummary:
     return ConversationService(session).update_title(
         current_user.id, conversation_id, request.title
@@ -119,6 +139,7 @@ def delete_conversation(
     conversation_id: str,
     current_user: UserResponse = Depends(get_current_user),
     session: Session = Depends(get_db_session),
+    _recovery: None = Depends(ensure_conversation_recovery),
 ) -> ConversationDeleteResponse:
     return ConversationService(session).delete(current_user.id, conversation_id)
 
@@ -128,6 +149,7 @@ def chat_in_conversation(
     conversation_id: str,
     request: ChatRequest,
     idempotency_key: IdempotencyKey,
+    http_request: Request,
     current_user: UserResponse = Depends(get_current_user),
     rate_limiter: ChatRateLimitService = Depends(get_chat_rate_limit_service),
     generation_lock: GenerationLockService = Depends(get_generation_lock_service),
@@ -137,6 +159,7 @@ def chat_in_conversation(
 ) -> ConversationChatResponse:
     """保存用户问题和助手回答，具体事务由服务层负责。"""
     rate_limiter.check(current_user.id)
+    ensure_conversation_recovery(http_request, session)
     return ConversationChatService(
         session, rag_service, generation_lock, idempotency
     ).ask(
@@ -179,6 +202,7 @@ async def stream_chat_in_conversation(
     conversation_id: str,
     request: ChatRequest,
     idempotency_key: IdempotencyKey,
+    http_request: Request,
     current_user: UserResponse = Depends(get_current_user),
     rate_limiter: ChatRateLimitService = Depends(get_chat_rate_limit_service),
     generation_lock: GenerationLockService = Depends(get_generation_lock_service),
@@ -191,6 +215,7 @@ async def stream_chat_in_conversation(
 ) -> StreamingResponse:
     request_id = get_request_id()
     rate_limiter.check(current_user.id)
+    ensure_conversation_recovery(http_request, session)
     service_iterator = ConversationChatService(
         session, rag_service, generation_lock, idempotency, cancellation
     ).stream(

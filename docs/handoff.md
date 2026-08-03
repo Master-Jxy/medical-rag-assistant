@@ -77,11 +77,17 @@ Protected auth hash
 - 不读取或提交 `.env`、SMTP 授权码、API Key、上传文件、Chroma 数据、日志或数据库备份。
 - 生产服务器工作区已同步指定提交；`frontend/dist` 是构建输入，不作为源代码提交。
 
-## 5. 已知后续风险
+## 5. Stage 23 本地完成状态
 
-- 后端进程崩溃后，遗留的 RAG `pending` 记录仍需要独立的恢复策略；本阶段通过状态展示和删除保护避免误操作，但没有擅自引入超时清理。
-- Agent 的 `stopping` 主要由当前运行态和前端状态承载；刷新期间的持久化停止提示可作为后续 UX 小任务。
-- 无工具的短 Agent 回复可以由规划调用一次性生成一个 token 事件；它仍符合 SSE 契约，工具型回答保持逐块输出，未为此改变公开事件或隐藏推理边界。
+Stage 23 已完成本地实现和无费用验证：
+
+- 新增 ConversationRecoveryService，只将超过 900 秒的 RAG assistant/pending 消息收敛为 failed。
+- 新鲜 pending、completed、failed、stopped 和用户消息保持不变；恢复后会话为 idle、最后消息为 failed，并保持未读。
+- 会话 API 首次访问时执行一次恢复；没有后台定时器、没有数据库迁移、没有删除文件或向量。
+- 配置校验保证恢复阈值大于生成锁 TTL 与清理收尾窗口，Compose 和 .env 示例已同步。
+- Agent 继续使用既有 AgentRecoveryService；stopping 仍不单独持久化。
+- 新增 5 项临时 SQLite 测试通过；全量后端回归基线 473 项通过，加上本阶段入口测试为 474 项，会话 CRUD/问答/SSE、停止/幂等、生成锁和模型重试回归通过。
+- 本地未调用 Qwen、Embedding、Reranker、SMTP 或真实 MySQL；没有部署、提交或推送。
 
 ## 6. 新任务阅读范围
 
@@ -90,8 +96,7 @@ Protected auth hash
 
 ## 7. 唯一下一任务
 
-**评估并单独设计 Stage 23：运行中断恢复策略。**
+**用户确认后，单独安排 Stage 23 的发布前审计和线上部署。**
 
-只做方案和影响评估，重点比较 RAG stale `pending` 的超时收敛、Agent `stopping` 刷新恢复、
-数据库状态与前端 stream registry 的一致性；先不启用自动清理、不改变生产开关、不调用真实
-模型，确认回滚和数据保护边界后再拆成实现任务。
+发布前需要重新核对 diff、提交边界、生产配置是否保持 900 秒默认值、备份和回滚点；
+得到当次明确部署授权后，才同步 GitHub/服务器并做无模型健康、认证、会话恢复验收。

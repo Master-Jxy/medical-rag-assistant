@@ -756,6 +756,20 @@
 
 这些功能只有在核心阶段稳定后再考虑，不是当前求职展示的必要条件。
 
+## 23. 阶段二十三：运行中断恢复 [本地完成，未部署]
+
+完整设计见 docs/stage23-runtime-recovery-design.md。
+
+1. **23.1 [已完成]**：确认 RAG pending、Agent stopping、数据库状态和前端
+   stream registry 的边界；不新增 Agent stopping 数据库状态。
+2. **23.2 [已完成]**：新增 ConversationRecoveryService，以 900 秒默认阈值
+   收敛陈旧 RAG assistant/pending，保留新鲜运行，不调用模型、不删除正文数据。
+3. **23.3 [已完成]**：会话 API 首次访问恢复依赖、配置约束和 Compose/.env 示例；
+   recovery age 必须晚于生成锁 TTL 与收尾窗口。
+4. **23.4 [已完成]**：临时 SQLite、配置、会话 CRUD、问答、SSE、停止、幂等、
+   生成锁和模型重试回归通过。
+5. **23.5 [已完成]**：更新设计文档和交接；本次没有真实模型调用、没有生产部署。
+
 ## 21. 每个任务的完成模板
 
 任务只有满足以下条件才能标记完成：
