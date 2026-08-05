@@ -5,6 +5,11 @@
 
 ## 1. 当前真实状态
 
+Stage 24.0 稳定性收尾已经完成本地无模型复核，未修改业务代码，未实现 24.1 及之后的
+解析能力。复核范围只覆盖 RAG/Agent 跨页面流式继续、后台未读与重新打开已读、陈旧
+pending 恢复、明确停止、退出/401 清理、构建输出和测试控制台错误。现有覆盖充分，
+未发现需要为了“有产出”而修代码的缺陷。
+
 Stage 23 运行中断恢复已经完成并发布，生产代码提交为 684e4c1。发布前完整备份、
 指定提交同步、backend 单服务重建和无费用线上验收均通过，未调用真实模型。
 
@@ -47,8 +52,14 @@ Stage 22 的 22.1～22.8 已完成并发布，功能提交为 `5c02056`，随后
 backend\.venv\Scripts\python.exe -m pytest -q backend/tests
 477 passed, 113 warnings
 
+backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_conversation_recovery.py backend\tests\test_conversations_api.py backend\tests\test_conversation_stream_chat.py backend\tests\test_agent_conversation_api.py
+23 passed, 2 warnings
+
 D:\Nodejs\npm.cmd --prefix frontend test
 18 files / 72 tests passed
+
+D:\Nodejs\npm.cmd --prefix frontend test -- ChatView.test.js AgentView.test.js ConversationStreamRegistry.test.js ApiAuth.test.js
+4 files / 33 tests passed
 
 D:\Nodejs\npm.cmd --prefix frontend run test:stream
 SSE parser test passed
@@ -66,6 +77,10 @@ passed; only expected Windows line-ending notices
 Protected auth hash
 9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0
 ```
+
+Stage 24.0 未做生产数据写入或线上生成验证。当前仓库没有安全、明确的真实公网 IP/SSH
+目标可用于本任务的只读生产连接，因此生产健康、容器、迁移、静态资源和错误计数检查
+本轮跳过；禁止猜测连接信息。未调用 Qwen、Embedding、Reranker、OCR、视觉或 SMTP。
 
 浏览器无模型/无持久化 stub 验收通过：桌面和 390px 移动端均完成 RAG/Agent 并发、独立
 停止、后台未读、重新打开清除未读、运行中删除禁用、四种 Agent 模式、固定输入器和溢出
@@ -125,22 +140,20 @@ Stage 23 已完成实现、无费用验证和生产发布：
 
 ## 6. 新任务阅读范围
 
-新开发窗口先完整阅读 `AGENTS.md` 和本文件，再按任务定向读取对应源码、测试和设计文档。
-不要读取历史 RAG 评估 JSON，不调用真实模型，不读取真实密钥，不修改受保护 auth Service。
+新开发窗口先完整阅读 `AGENTS.md` 和本文件。若执行 24.1，只读
+`docs/stage24-document-intelligence-and-stability-design.md` 的 1、2、3、4、9、10、11 节，
+再定向读取解析、资料提交、审核发布相关源码和测试。不要读取历史 RAG 评估 JSON，
+不调用真实模型，不读取真实密钥，不修改受保护 auth Service。
 
 ## 7. 唯一下一任务
 
-**执行 Stage 24.0 稳定性收尾，不实现新的解析格式。**
+**执行 Stage 24.1 解析契约，只建立统一解析结果与兼容适配，不新增 DOCX/网页/OCR/视觉实现。**
 
-先阅读 `docs/stage24-document-intelligence-and-stability-design.md` 的第 1、2、9、10 节。
-使用 Fake/stub 和现有测试复核 RAG/Agent 跨页面流式继续、后台完成未读、重新打开已读、
-陈旧 pending 恢复、明确停止和退出清理。生产仅允许读取健康、容器、迁移、静态资源和
-错误计数，不创建测试消息、不调用 Qwen/Embedding/Reranker/OCR/视觉/SMTP、不部署。
+先在 `knowledge` 解析边界新增 normalized document/element/asset/quality 契约和
+ParserRegistry，再为现有 LocalDocumentParser 增加兼容适配器，保持 PDF/TXT 上传、审核、
+发布和 Chroma 写入的外部行为不变。只跑解析与资料提交相关测试，加一项审核入口回归；
+禁止真实 Qwen、Embedding、Reranker、OCR、视觉或 SMTP，禁止改动生产配置或部署。
 
-工作区中的 `backend/app/modules/auth/service.py` 是受保护的用户改动，哈希仍应为
+工作区中的 `backend/app/modules/auth/service.py` 仍是受保护的用户改动，哈希应保持为
 `9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。禁止修改、
-格式化、暂存、提交、回退或覆盖；只可通过 Git 元数据说明它不属于 Stage 24。
-
-24.0 完成后更新本文件，并把唯一下一任务改为 24.1 解析契约。完整 Stage 24 路线和
-高星开源依据见 `docs/stage24-document-intelligence-and-stability-design.md` 与
-`docs/stage24-open-source-benchmark.md`。
+格式化、暂存、提交、回退或覆盖；如需判断来源，只使用 Git 元数据，不读取正文。

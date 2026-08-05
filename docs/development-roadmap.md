@@ -779,9 +779,9 @@
 开源项目、具体参考路径和许可边界见
 [`docs/stage24-open-source-benchmark.md`](stage24-open-source-benchmark.md)。
 
-1. **24.0 `[下一任务]`**：复核跨页面流式恢复、后台未读、陈旧 pending 和日志；只做
+1. **24.0 `[已完成]`**：复核跨页面流式恢复、后台未读、陈旧 pending 和日志；只做
    无费用本地/浏览器及生产只读检查，不修改受保护 auth 文件。
-2. **24.1 `[待开始]`**：建立 `DocumentParserPort`、统一 element/asset/quality 契约、
+2. **24.1 `[下一任务]`**：建立 `DocumentParserPort`、统一 element/asset/quality 契约、
    ParserRegistry 和现有 PDF/TXT 兼容层。
 3. **24.2 `[待开始]`**：增加 DOCX、Markdown、HTML 和带 SSRF 防护的网页快照导入。
 4. **24.3 `[待开始]`**：实现复杂 PDF 的 Docling 候选、表格/页码/图片资产输出与固定集
