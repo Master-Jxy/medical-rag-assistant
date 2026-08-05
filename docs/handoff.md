@@ -15,7 +15,8 @@ Stage 24.5 元数据治理已完成主实现，并正在进行独立 follow-up �
 - accept/reject 只能操作已存在 suggestion；不存在返回稳定 404。状态迁移使用 `status='suggested' + expected_revision` 原子匹配，新 revision 使用 expected revision + 1，避免 stale ORM 值。
 - `metadata_suggestion_mode` 只允许 `disabled` 或 `fake`；未知 mode 在配置/工厂边界失败。`suggestion_source` 只允许受控集合，未知 provider source 归一为安全的 `disabled`。
 - generate/accept/reject 的 audit 或 commit 失败必须 rollback，不留下半条 suggestion、状态迁移、正式元数据或 audit 半成品。
-- 管理员审核 UI 在 suggestion 为空时显示紧凑空态和 Generate 按钮；已有 suggestion 才显示建议值、确认值、证据、置信度、warning 以及接受/编辑/拒绝动作。
+- 管理员审核 UI 保持中文审核中心文案；suggestion 为空时显示紧凑空态和“生成建议”按钮；已有 suggestion 才显示建议值、确认值、证据、置信度、warning 以及接受/编辑/拒绝动作。
+- `MetadataSuggestionService` 只保留明确读写边界：`get_existing_for_submission(s)` 只读，`generate_for_submission` / `generate` 写入；已删除名称暗示隐式写入的 `get_or_create_for_submission`。审核列表使用 submission_id batch 查询已有 suggestion，避免逐条 N+1。
 
 24.1-24.4 状态保持不变：24.1 解析契约、24.2a 本地 DOCX/Markdown/HTML、24.2b 受控网页快照、24.3 未晋级 Docling 候选、24.4 OCR/Vision Port+Fake+资产生命周期仍按各自默认关闭/无真实供应商边界运行。
 
@@ -57,6 +58,31 @@ upgrade head -> downgrade 0027_web_snapshot_submissions -> upgrade head passed
 Protected auth hash
 9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0
 ```
+
+本轮 follow-up 独立验收补丁已通过：
+
+```text
+backend\.venv\Scripts\python.exe -m py_compile backend\app\modules\knowledge\metadata_suggestions.py backend\app\modules\knowledge\review_service.py backend\tests\test_metadata_suggestions.py
+passed
+
+backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_metadata_suggestions.py backend\tests\test_admin_reviews_api.py
+22 passed, 2 warnings
+
+D:\Nodejs\npm.cmd --prefix frontend test -- AdminReviewsView.test.js
+1 file / 3 tests passed
+
+D:\Nodejs\npm.cmd --prefix frontend test
+19 files / 77 tests passed
+
+D:\Nodejs\npm.cmd --prefix frontend run build
+Vite production build passed
+assets: index-B9neMpJ8.css / index-CnPOegrw.js
+
+Protected auth hash
+9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0
+```
+
+本轮未重复完整 backend 581 项：后端变更仅删除无调用兼容方法、将审核列表 suggestion 查询改为 batch，并由聚焦 API/service 测试覆盖读写边界和列表行为。
 
 未执行项：未做生产健康/容器/迁移/静态资源/错误计数检查；本阶段不做生产操作。
 

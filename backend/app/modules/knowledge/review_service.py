@@ -90,11 +90,13 @@ class KnowledgeReviewService:
             .offset(offset)
             .limit(limit)
         ).all()
-        items = [
-            self._to_item(
-                record,
-                self.metadata_suggestions.get_existing_for_submission(record.id),
+        suggestions_by_submission = (
+            self.metadata_suggestions.get_existing_for_submissions(
+                [record.id for record in records]
             )
+        )
+        items = [
+            self._to_item(record, suggestions_by_submission.get(record.id))
             for record in records
         ]
         return ReviewListResponse(

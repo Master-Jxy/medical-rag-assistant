@@ -227,18 +227,6 @@ class MetadataSuggestionService:
         self.audit = audit
         self.port = port or DisabledMetadataSuggestionPort()
 
-    def get_or_create_for_submission(
-        self,
-        submission: KnowledgeSubmission,
-        *,
-        actor_user_id: str | None,
-    ) -> MetadataSuggestion:
-        return self.generate_for_submission(
-            submission,
-            actor_user_id=actor_user_id,
-            request_id=None,
-        )
-
     def get_existing_for_submission(
         self, submission_id: str
     ) -> MetadataSuggestion | None:
@@ -247,6 +235,18 @@ class MetadataSuggestionService:
                 MetadataSuggestion.submission_id == submission_id
             )
         )
+
+    def get_existing_for_submissions(
+        self, submission_ids: list[str]
+    ) -> dict[str, MetadataSuggestion]:
+        if not submission_ids:
+            return {}
+        records = self.session.scalars(
+            select(MetadataSuggestion).where(
+                MetadataSuggestion.submission_id.in_(submission_ids)
+            )
+        ).all()
+        return {record.submission_id: record for record in records}
 
     def generate_for_submission(
         self,

@@ -214,6 +214,56 @@ def test_get_reviews_is_read_only_and_generate_is_explicit_idempotent(tmp_path):
         teardown(engine)
 
 
+def test_review_list_batches_existing_metadata_suggestions(tmp_path):
+    engine, factory, settings, vectors, submitter, admin, _normal = build_client(tmp_path)
+    first_id = add_submission(factory, settings, submitter.id, "m")
+    second_id = add_submission(factory, settings, submitter.id, "n")
+    try:
+        with factory() as session:
+            audit = SqlAlchemyAuditRecorder(session)
+            metadata_service = MetadataSuggestionService(session, audit)
+            first = session.get(KnowledgeSubmission, first_id)
+            metadata_service.generate_for_submission(
+                first,
+                actor_user_id=admin.id,
+                request_id="test-request",
+            )
+            batch_calls = []
+            original_batch = metadata_service.get_existing_for_submissions
+
+            def counting_batch(submission_ids):
+                batch_calls.append(list(submission_ids))
+                return original_batch(submission_ids)
+
+            def forbidden_single(_submission_id):
+                raise AssertionError("list_reviews must use the batch suggestion query")
+
+            metadata_service.get_existing_for_submissions = counting_batch
+            metadata_service.get_existing_for_submission = forbidden_single
+            service = KnowledgeReviewService(
+                session,
+                settings,
+                DocumentLifecycleService(session, settings, vectors),
+                audit,
+                SqlAlchemyJobService(session),
+                metadata_suggestions=metadata_service,
+            )
+
+            response = service.list_reviews(
+                status="pending_review",
+                offset=0,
+                limit=20,
+            )
+
+        assert len(batch_calls) == 1
+        assert set(batch_calls[0]) == {first_id, second_id}
+        by_id = {item.submission_id: item for item in response.items}
+        assert by_id[first_id].metadata_suggestion is not None
+        assert by_id[second_id].metadata_suggestion is None
+    finally:
+        teardown(engine)
+
+
 def test_admin_can_edit_accept_and_publish_confirmed_metadata(tmp_path):
     engine, factory, settings, vectors, submitter, admin, _normal = build_client(tmp_path)
     submission_id = add_submission(factory, settings, submitter.id, "n")

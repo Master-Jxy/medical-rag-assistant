@@ -81,7 +81,7 @@ describe('AdminReviewsView metadata governance', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Metadata suggestion')
+    expect(wrapper.text()).toContain('元数据建议')
     expect(wrapper.text()).toContain('heart failure')
 
     const inputs = wrapper.findAll('.metadata-grid input')
@@ -142,8 +142,9 @@ describe('AdminReviewsView metadata governance', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('empty')
+    expect(wrapper.text()).toContain('尚未生成元数据建议')
     const button = wrapper.get('.metadata-empty .primary-action')
+    expect(button.text()).toBe('生成建议')
     await button.trigger('click')
     await button.trigger('click')
     expect(platformApi.generateMetadataSuggestion).toHaveBeenCalledTimes(1)
