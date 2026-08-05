@@ -12,6 +12,7 @@ from app.db.base import Base
 from app.db.session import build_engine, get_db_session
 from app.main import app
 from app.models import AuditEvent, DocumentVersion, KnowledgeDocument
+from app.modules.knowledge.deduplication import DuplicatePolicy
 from app.modules.audit.repository import SqlAlchemyAuditRecorder
 from app.modules.auth.tokens import get_token_service
 from app.modules.knowledge.asset_service import KnowledgeAssetService
@@ -30,6 +31,7 @@ def add_asset(factory, settings, vectors, suffix):
         f"知识资产{suffix}", encoding="utf-8"
     )
     chunk_id = f"{document_id}:0"
+    fingerprint = DuplicatePolicy.fingerprint_text(f"知识资产{suffix}")
     with factory() as session:
         session.add(
             KnowledgeDocument(
@@ -52,6 +54,12 @@ def add_asset(factory, settings, vectors, suffix):
                 version=1,
                 source="system",
                 tags=[],
+                parser_version="knowledge_parser_v1",
+                corpus_version="live_v1",
+                normalized_text_hash=fingerprint.normalized_text_hash,
+                normalized_text_hash_version=fingerprint.normalized_text_hash_version,
+                near_duplicate_fingerprint=fingerprint.near_duplicate_fingerprint,
+                near_duplicate_fingerprint_version=fingerprint.near_duplicate_fingerprint_version,
             )
         )
         session.commit()
@@ -138,6 +146,7 @@ def test_asset_metadata_archive_republish_and_replace(tmp_path) -> None:
             )
             assert scan.status_code == 200
             assert scan.json()["count"] == 1
+            assert scan.json()["duplicate_scan"]["updated"] == 0
             in_review = client.get(
                 "/api/v1/admin/knowledge-assets?review_status=in_review",
                 headers=auth_headers(admin.id),
@@ -165,11 +174,47 @@ def test_asset_metadata_archive_republish_and_replace(tmp_path) -> None:
             )
             assert reviewed.status_code == 200
             assert reviewed.json()["review_status"] == "current"
+            due = client.get(
+                "/api/v1/admin/knowledge-assets?review_status=due",
+                headers=auth_headers(admin.id),
+            )
+            assert due.json()["total"] == 0
             filtered = client.get(
                 "/api/v1/admin/knowledge-assets?tag=心血管",
                 headers=auth_headers(admin.id),
             )
             assert filtered.json()["total"] == 1
+
+            expired_mark = client.post(
+                f"/api/v1/admin/knowledge-assets/{first_id}/expire",
+                json={"reason": "资料来源已失效"},
+                headers=auth_headers(admin.id),
+            )
+            assert expired_mark.status_code == 200
+            assert expired_mark.json()["governance_status"] == "expired"
+            restored = client.post(
+                f"/api/v1/admin/knowledge-assets/{first_id}/restore",
+                json={
+                    "next_review_due_at": (
+                        datetime.now(timezone.utc) + timedelta(days=90)
+                    ).isoformat(),
+                    "note": "已确认仍可使用",
+                },
+                headers=auth_headers(admin.id),
+            )
+            assert restored.status_code == 200
+            assert restored.json()["governance_status"] == "current"
+            deferred = client.post(
+                f"/api/v1/admin/knowledge-assets/{first_id}/review/defer",
+                json={
+                    "next_review_due_at": (
+                        datetime.now(timezone.utc) + timedelta(days=120)
+                    ).isoformat(),
+                    "note": "延后复核",
+                },
+                headers=auth_headers(admin.id),
+            )
+            assert deferred.status_code == 200
 
             archived = client.post(
                 f"/api/v1/admin/knowledge-assets/{first_id}/archive",
@@ -206,6 +251,9 @@ def test_asset_metadata_archive_republish_and_replace(tmp_path) -> None:
                 "knowledge_asset.republished",
                 "knowledge_asset.replaced",
                 "knowledge_asset.reviewed",
+                "knowledge_asset.expired_marked",
+                "knowledge_asset.restored_current",
+                "knowledge_asset.review_deferred",
             } <= actions
             review_job = session.scalar(
                 select(ProcessingJob).where(
@@ -215,6 +263,81 @@ def test_asset_metadata_archive_republish_and_replace(tmp_path) -> None:
             )
             assert review_job is not None
             assert review_job.status == "completed"
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def test_asset_duplicate_candidates_and_fingerprint_scan_are_visible(tmp_path) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'assets-dedup.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    admin = create_test_user(factory, "asset-dedup-admin", role="admin")
+    settings = Settings(
+        _env_file=None,
+        upload_dir=tmp_path / "published",
+        chunk_size=30,
+        chunk_overlap=5,
+    )
+    vectors = FakeVectorStore()
+    first_id = add_asset(factory, settings, vectors, "x")
+    second_id = add_asset(factory, settings, vectors, "y")
+    with factory() as session:
+        first_version = session.scalar(
+            select(DocumentVersion).where(DocumentVersion.document_id == first_id)
+        )
+        second_version = session.scalar(
+            select(DocumentVersion).where(DocumentVersion.document_id == second_id)
+        )
+        second_version.normalized_text_hash = first_version.normalized_text_hash
+        second_version.normalized_text_hash_version = first_version.normalized_text_hash_version
+        second_version.near_duplicate_fingerprint = first_version.near_duplicate_fingerprint
+        second_version.near_duplicate_fingerprint_version = (
+            first_version.near_duplicate_fingerprint_version
+        )
+        first_version.normalized_text_hash = None
+        first_version.normalized_text_hash_version = None
+        session.commit()
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    def override_asset_service():
+        with factory() as session:
+            yield KnowledgeAssetService(
+                session,
+                DocumentLifecycleService(session, settings, vectors),
+                SqlAlchemyAuditRecorder(session),
+                SqlAlchemyJobService(session),
+            )
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
+    app.dependency_overrides[get_asset_service] = override_asset_service
+    try:
+        with TestClient(app) as client:
+            scan = client.post(
+                "/api/v1/admin/knowledge-assets/governance/scan",
+                headers=auth_headers(admin.id),
+            )
+            assert scan.status_code == 200
+            assert scan.json()["duplicate_scan"]["updated"] == 1
+
+            listed = client.get(
+                "/api/v1/admin/knowledge-assets",
+                headers=auth_headers(admin.id),
+            )
+            assert listed.status_code == 200
+            candidates = [
+                candidate
+                for item in listed.json()["items"]
+                for candidate in item["duplicate_candidates"]
+            ]
+            assert any(
+                candidate["duplicate_type"] == "normalized"
+                for candidate in candidates
+            )
     finally:
         app.dependency_overrides.clear()
         engine.dispose()

@@ -30,6 +30,7 @@ from app.modules.knowledge.asset_storage import (
     ControlledDocumentAssetStore,
     StagedAssetDeletion,
 )
+from app.modules.knowledge.deduplication import DuplicatePolicy, TextFingerprint
 from app.modules.knowledge.ingestion import (
     FileTypePolicy,
     ParseRequest,
@@ -57,6 +58,7 @@ class PreparedDocument:
     final_path: Path
     chunk_ids: list[str]
     vectors_added: bool = True
+    fingerprint: TextFingerprint | None = None
 
 
 class DocumentLifecycleService:
@@ -244,6 +246,7 @@ class DocumentLifecycleService:
                 self._build_replacement_version(
                     prepared.record,
                     old_version_values,
+                    old_document_id=old_copy.id,
                 )
             )
             for submission in linked_submissions:
@@ -485,6 +488,7 @@ class DocumentLifecycleService:
             if self.repository.get_by_hash(file_hash) is not None:
                 raise DuplicateDocumentError()
             documents = self._load_documents(temporary_path, file_type.suffix)
+            fingerprint = self._fingerprint_documents(documents)
             chunks = self._split_documents(
                 documents, document_id, original_name, file_hash
             )
@@ -507,7 +511,8 @@ class DocumentLifecycleService:
                 status="published",
                 created_at=datetime.now(timezone.utc),
             )
-            return PreparedDocument(record, final_path, chunk_ids, vectors_added)
+            setattr(record, "_text_fingerprint", fingerprint)
+            return PreparedDocument(record, final_path, chunk_ids, vectors_added, fingerprint)
         except Exception:
             if vectors_added:
                 try:
@@ -554,6 +559,15 @@ class DocumentLifecycleService:
                 pass
             raise DocumentStoreError() from exc
         return chunk_ids
+
+    def fingerprint_existing_document(self, record: KnowledgeDocument) -> TextFingerprint:
+        path = self.settings.upload_dir / record.stored_name
+        suffix = path.suffix.lower()
+        if not path.is_file():
+            raise DocumentStoreError()
+        file_type = FileTypePolicy.validate_path(path, suffix)
+        documents = self._load_documents(path, file_type.suffix)
+        return self._fingerprint_documents(documents)
 
     def _restore_delete(
         self,
@@ -661,6 +675,14 @@ class DocumentLifecycleService:
             "id": version.id,
             "version": version.version,
             "replaces_document_id": version.replaces_document_id,
+            "supersedes_document_id": version.supersedes_document_id,
+            "change_reason": version.change_reason,
+            "parser_version": version.parser_version,
+            "corpus_version": version.corpus_version,
+            "normalized_text_hash": version.normalized_text_hash,
+            "normalized_text_hash_version": version.normalized_text_hash_version,
+            "near_duplicate_fingerprint": version.near_duplicate_fingerprint,
+            "near_duplicate_fingerprint_version": version.near_duplicate_fingerprint_version,
             "source": version.source,
             "tags": list(version.tags or []),
             "category": version.category,
@@ -698,16 +720,37 @@ class DocumentLifecycleService:
         submission.status = "published"
         submission.document_id = record.id
 
-    @staticmethod
     def _build_replacement_version(
-        record: KnowledgeDocument, old_values: dict | None
+        self,
+        record: KnowledgeDocument,
+        old_values: dict | None,
+        *,
+        old_document_id: str,
     ) -> DocumentVersion:
         values = old_values or {}
+        fingerprint = getattr(record, "_text_fingerprint", None)
         return DocumentVersion(
             id=str(uuid4()),
             document_id=record.id,
             version=int(values.get("version") or 0) + 1,
-            replaces_document_id=values.get("replaces_document_id"),
+            replaces_document_id=old_document_id,
+            supersedes_document_id=old_document_id,
+            change_reason=values.get("change_reason") or "管理员整份替换",
+            parser_version=values.get("parser_version") or "knowledge_parser_v1",
+            corpus_version=values.get("corpus_version")
+            or self.settings.knowledge_base_version,
+            normalized_text_hash=(
+                fingerprint.normalized_text_hash if fingerprint else values.get("normalized_text_hash")
+            ),
+            normalized_text_hash_version=(
+                fingerprint.normalized_text_hash_version if fingerprint else values.get("normalized_text_hash_version")
+            ),
+            near_duplicate_fingerprint=(
+                fingerprint.near_duplicate_fingerprint if fingerprint else values.get("near_duplicate_fingerprint")
+            ),
+            near_duplicate_fingerprint_version=(
+                fingerprint.near_duplicate_fingerprint_version if fingerprint else values.get("near_duplicate_fingerprint_version")
+            ),
             source=values.get("source")
             or ("system" if record.is_system else "user_submission"),
             tags=list(values.get("tags") or []),
@@ -836,6 +879,12 @@ class DocumentLifecycleService:
         if not chunks:
             raise DocumentParseError()
         return chunks
+
+    @staticmethod
+    def _fingerprint_documents(documents: list[Document]) -> TextFingerprint:
+        return DuplicatePolicy.fingerprint_text(
+            "\n\n".join(document.page_content for document in documents)
+        )
 
     def _split_table_document(self, document: Document) -> list[Document]:
         rows = [row.strip() for row in document.page_content.splitlines() if row.strip()]

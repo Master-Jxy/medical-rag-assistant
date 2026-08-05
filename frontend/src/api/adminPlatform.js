@@ -8,6 +8,10 @@ export async function approveReview(id) {
   return (await http.post(`/admin/reviews/${id}/approve`)).data
 }
 
+export async function approveReviewAsVersion(id, payload) {
+  return (await http.post(`/admin/reviews/${id}/approve-as-version`, payload)).data
+}
+
 export async function rejectReview(id, reason) {
   return (await http.post(`/admin/reviews/${id}/reject`, { reason })).data
 }
@@ -46,6 +50,18 @@ export async function scanKnowledgeGovernance() {
 
 export async function reviewKnowledgeAsset(id, payload) {
   return (await http.post(`/admin/knowledge-assets/${id}/review`, payload)).data
+}
+
+export async function deferKnowledgeAssetReview(id, payload) {
+  return (await http.post(`/admin/knowledge-assets/${id}/review/defer`, payload)).data
+}
+
+export async function expireKnowledgeAsset(id, payload) {
+  return (await http.post(`/admin/knowledge-assets/${id}/expire`, payload)).data
+}
+
+export async function restoreKnowledgeAsset(id, payload) {
+  return (await http.post(`/admin/knowledge-assets/${id}/restore`, payload)).data
 }
 
 export async function getJobs(params = {}) {

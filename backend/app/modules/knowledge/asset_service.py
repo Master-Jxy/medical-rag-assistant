@@ -12,9 +12,15 @@ from app.modules.knowledge.asset_schemas import (
     KnowledgeAssetItem,
     KnowledgeAssetListResponse,
 )
+from app.modules.knowledge.deduplication import (
+    DuplicateCandidate,
+    DuplicateCandidateService,
+    DuplicatePolicy,
+)
 from app.modules.knowledge.lifecycle import DocumentLifecycleService
 from app.modules.knowledge.models import DocumentVersion, KnowledgeDocument
 from app.modules.knowledge.repository import DocumentLockConflictError
+from app.modules.knowledge.review_schemas import DuplicateCandidateItem
 from app.modules.jobs.ports import JobPort
 
 
@@ -67,7 +73,8 @@ class KnowledgeAssetService:
             conditions.append(KnowledgeDocument.status == status)
         if source:
             conditions.append(DocumentVersion.source == source)
-        if review_status:
+        computed_review_filter = review_status in {"current", "due", "expired"}
+        if review_status and not computed_review_filter:
             conditions.append(DocumentVersion.review_status == review_status)
         if expired:
             conditions.extend(
@@ -89,7 +96,15 @@ class KnowledgeAssetService:
         ).all()
         if tag:
             rows = [row for row in rows if row[1] and tag in (row[1].tags or [])]
+        if computed_review_filter and review_status:
+            rows = [
+                row
+                for row in rows
+                if DuplicatePolicy.governance_status(row[1]) == review_status
+            ]
         total = len(rows) if tag else (self.session.scalar(count_statement) or 0)
+        if computed_review_filter:
+            total = len(rows)
         page = rows[offset : offset + limit] if tag else rows[offset : offset + limit]
         return KnowledgeAssetListResponse(
             items=[self._to_item(document, version) for document, version in page],
@@ -97,6 +112,63 @@ class KnowledgeAssetService:
             offset=offset,
             limit=limit,
         )
+
+    def scan_duplicate_fingerprints(self) -> dict:
+        if self.jobs is None:
+            return {"job_id": None, "scanned": 0, "updated": 0, "failed": 0}
+        rows = self.session.execute(
+            select(KnowledgeDocument, DocumentVersion)
+            .join(DocumentVersion, DocumentVersion.document_id == KnowledgeDocument.id)
+            .where(
+                KnowledgeDocument.status.in_(("published", "ready", "archived")),
+                DocumentVersion.normalized_text_hash.is_(None),
+            )
+            .order_by(KnowledgeDocument.created_at.asc(), KnowledgeDocument.id.asc())
+        ).all()
+        if not rows:
+            return {"job_id": None, "scanned": 0, "updated": 0, "failed": 0}
+        job = self.jobs.start(
+            job_type="knowledge_duplicate_scan",
+            object_type="knowledge_corpus",
+            object_id="public",
+            initial_progress=0,
+        )
+        updated = 0
+        failed = 0
+        try:
+            for document, version in rows:
+                try:
+                    fingerprint = self.lifecycle.fingerprint_existing_document(document)
+                except Exception:
+                    failed += 1
+                    continue
+                version.normalized_text_hash = fingerprint.normalized_text_hash
+                version.normalized_text_hash_version = (
+                    fingerprint.normalized_text_hash_version
+                )
+                version.near_duplicate_fingerprint = (
+                    fingerprint.near_duplicate_fingerprint
+                )
+                version.near_duplicate_fingerprint_version = (
+                    fingerprint.near_duplicate_fingerprint_version
+                )
+                version.parser_version = version.parser_version or "knowledge_parser_v1"
+                version.corpus_version = version.corpus_version or "live_v1"
+                updated += 1
+            if failed:
+                self.jobs.fail(job.id, "DUPLICATE_SCAN_PARTIAL_FAILURE")
+            else:
+                self.jobs.complete(job.id)
+            self.session.commit()
+            return {
+                "job_id": job.id,
+                "scanned": len(rows),
+                "updated": updated,
+                "failed": failed,
+            }
+        except Exception:
+            self.session.rollback()
+            raise
 
     def update_metadata(
         self,
@@ -119,6 +191,7 @@ class KnowledgeAssetService:
         version.department = department.strip() if department and department.strip() else None
         version.expires_at = expires_at
         version.review_due_at = review_due_at
+        version.review_status = DuplicatePolicy.governance_status(version)
         self._audit(
             "knowledge_asset.metadata_updated",
             document_id,
@@ -153,6 +226,86 @@ class KnowledgeAssetService:
                 object_id=document_id,
             )
         self._audit("knowledge_asset.reviewed", document_id, actor_user_id, request_id, {"note": note, "next_review_due_at": next_review_due_at.isoformat()})
+        self.session.commit()
+        return self._to_item(document, version)
+
+    def defer_review(
+        self,
+        document_id: str,
+        *,
+        next_review_due_at: datetime,
+        note: str,
+        actor_user_id: str,
+        request_id: str | None,
+    ) -> KnowledgeAssetItem:
+        document = self._get_document(document_id)
+        version = self._get_or_create_version(document)
+        now = datetime.now(next_review_due_at.tzinfo or timezone.utc)
+        if next_review_due_at <= now:
+            raise AssetStateConflictError()
+        version.review_due_at = next_review_due_at
+        version.review_status = "current"
+        self._audit(
+            "knowledge_asset.review_deferred",
+            document_id,
+            actor_user_id,
+            request_id,
+            {"note": note, "next_review_due_at": next_review_due_at.isoformat()},
+        )
+        self.session.commit()
+        return self._to_item(document, version)
+
+    def mark_expired(
+        self,
+        document_id: str,
+        *,
+        reason: str,
+        actor_user_id: str,
+        request_id: str | None,
+    ) -> KnowledgeAssetItem:
+        document = self._get_document(document_id)
+        version = self._get_or_create_version(document)
+        version.review_status = "expired"
+        if version.expires_at is None:
+            version.expires_at = datetime.now(timezone.utc)
+        self._audit(
+            "knowledge_asset.expired_marked",
+            document_id,
+            actor_user_id,
+            request_id,
+            {"reason": reason},
+        )
+        self.session.commit()
+        return self._to_item(document, version)
+
+    def restore_current(
+        self,
+        document_id: str,
+        *,
+        next_review_due_at: datetime | None,
+        note: str,
+        actor_user_id: str,
+        request_id: str | None,
+    ) -> KnowledgeAssetItem:
+        document = self._get_document(document_id)
+        version = self._get_or_create_version(document)
+        now = datetime.now(timezone.utc)
+        version.expires_at = None
+        version.last_reviewed_at = now
+        version.review_due_at = next_review_due_at
+        version.review_status = "current"
+        self._audit(
+            "knowledge_asset.restored_current",
+            document_id,
+            actor_user_id,
+            request_id,
+            {
+                "note": note,
+                "next_review_due_at": (
+                    next_review_due_at.isoformat() if next_review_due_at else None
+                ),
+            },
+        )
         self.session.commit()
         return self._to_item(document, version)
 
@@ -256,7 +409,16 @@ class KnowledgeAssetService:
             self.lifecycle.vector_store.delete_documents(old.chunk_ids)
             old.status = "archived"
             new_version.replaces_document_id = old.id
+            new_version.supersedes_document_id = old.id
             new_version.version = old_version.version + 1
+            new_version.change_reason = "管理员关联替换"
+            new_version.parser_version = (
+                new_version.parser_version or "knowledge_parser_v1"
+            )
+            new_version.corpus_version = (
+                new_version.corpus_version
+                or self.lifecycle.settings.knowledge_base_version
+            )
             self._audit(
                 "knowledge_asset.replaced",
                 old.id,
@@ -291,6 +453,8 @@ class KnowledgeAssetService:
                 version=1,
                 source="system" if document.is_system else "legacy_upload",
                 tags=[],
+                parser_version="knowledge_parser_v1",
+                corpus_version=self.lifecycle.settings.knowledge_base_version,
             )
             self.session.add(version)
             self.session.flush()
@@ -315,10 +479,13 @@ class KnowledgeAssetService:
             )
         )
 
-    @staticmethod
     def _to_item(
-        document: KnowledgeDocument, version: DocumentVersion | None
+        self, document: KnowledgeDocument, version: DocumentVersion | None
     ) -> KnowledgeAssetItem:
+        duplicate_candidates = DuplicateCandidateService(self.session).for_document(
+            document, version
+        )
+        governance_status = DuplicatePolicy.governance_status(version)
         return KnowledgeAssetItem(
             document_id=document.id,
             file_name=document.original_name,
@@ -339,16 +506,35 @@ class KnowledgeAssetService:
             review_due_at=version.review_due_at if version else None,
             last_reviewed_at=version.last_reviewed_at if version else None,
             review_status=(version.review_status or "current") if version else "current",
-            is_expired=KnowledgeAssetService._is_expired(
-                version.expires_at if version else None
+            governance_status=governance_status,
+            is_expired=governance_status == "expired",
+            supersedes_document_id=version.supersedes_document_id if version else None,
+            change_reason=version.change_reason if version else None,
+            parser_version=version.parser_version if version else None,
+            corpus_version=version.corpus_version if version else None,
+            normalized_text_hash_version=(
+                version.normalized_text_hash_version if version else None
             ),
+            near_duplicate_fingerprint_version=(
+                version.near_duplicate_fingerprint_version if version else None
+            ),
+            duplicate_candidates=[
+                self._duplicate_candidate_to_item(candidate)
+                for candidate in duplicate_candidates
+            ],
         )
 
     @staticmethod
-    def _is_expired(expires_at: datetime | None) -> bool:
-        if expires_at is None:
-            return False
-        now = datetime.now(timezone.utc)
-        if expires_at.tzinfo is None:
-            now = now.replace(tzinfo=None)
-        return expires_at <= now
+    def _duplicate_candidate_to_item(
+        candidate: DuplicateCandidate,
+    ) -> DuplicateCandidateItem:
+        return DuplicateCandidateItem(
+            duplicate_type=candidate.duplicate_type,
+            candidate_document_id=candidate.candidate_document_id,
+            candidate_file_name=candidate.candidate_file_name,
+            candidate_version=candidate.candidate_version,
+            score=candidate.score,
+            distance=candidate.distance,
+            threshold=candidate.threshold,
+            reason=candidate.reason,
+        )

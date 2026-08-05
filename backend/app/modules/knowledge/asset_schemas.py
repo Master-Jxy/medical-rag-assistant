@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.modules.knowledge.review_schemas import DuplicateCandidateItem
+
 
 class KnowledgeAssetItem(BaseModel):
     document_id: str
@@ -25,7 +27,15 @@ class KnowledgeAssetItem(BaseModel):
     review_due_at: datetime | None = None
     last_reviewed_at: datetime | None = None
     review_status: str = "current"
+    governance_status: str = "current"
     is_expired: bool = False
+    supersedes_document_id: str | None = None
+    change_reason: str | None = None
+    parser_version: str | None = None
+    corpus_version: str | None = None
+    normalized_text_hash_version: str | None = None
+    near_duplicate_fingerprint_version: str | None = None
+    duplicate_candidates: list[DuplicateCandidateItem] = Field(default_factory=list)
 
 
 class KnowledgeAssetListResponse(BaseModel):
@@ -62,4 +72,18 @@ class ReplacementRequest(BaseModel):
 
 class AssetReviewRequest(BaseModel):
     next_review_due_at: datetime
+    note: str = Field(min_length=1, max_length=500)
+
+
+class AssetReviewDeferRequest(BaseModel):
+    next_review_due_at: datetime
+    note: str = Field(min_length=1, max_length=500)
+
+
+class AssetExpireRequest(BaseModel):
+    reason: str = Field(min_length=2, max_length=500)
+
+
+class AssetRestoreRequest(BaseModel):
+    next_review_due_at: datetime | None = None
     note: str = Field(min_length=1, max_length=500)

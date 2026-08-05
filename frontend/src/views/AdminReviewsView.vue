@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, ChevronDown, FileSearch, RefreshCw, XCircl
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import ModalDialog from '../components/ModalDialog.vue'
 import {
+  approveReviewAsVersion,
   acceptMetadataSuggestion,
   approveReview,
   generateMetadataSuggestion,
@@ -82,6 +83,13 @@ function suggestionConfidence(suggestion, field) {
   return `${Math.round(value * 100)}%`
 }
 
+function duplicateTypeLabel(type) {
+  if (type === 'exact') return '文件完全重复'
+  if (type === 'normalized') return '正文重复'
+  if (type === 'near') return '近重复'
+  return type || '重复提示'
+}
+
 async function generateSuggestion(item) {
   if (!item || metadataActionId.value) return
   metadataActionId.value = item.submission_id
@@ -94,6 +102,24 @@ async function generateSuggestion(item) {
     errorMessage.value = getApiErrorMessage(error)
   } finally {
     metadataActionId.value = ''
+  }
+}
+
+async function approveAsVersion(item, candidate) {
+  if (!item || !candidate || actingId.value) return
+  actingId.value = item.submission_id
+  errorMessage.value = ''
+  try {
+    await approveReviewAsVersion(item.submission_id, {
+      supersedes_document_id: candidate.candidate_document_id,
+      change_reason: `${duplicateTypeLabel(candidate.duplicate_type)}：${candidate.reason}`,
+    })
+    successMessage.value = '资料已作为新版本发布，旧版本已转入归档。'
+    await load()
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+  } finally {
+    actingId.value = ''
   }
 }
 
@@ -238,6 +264,22 @@ onMounted(load)
           <AlertTriangle :size="14" />{{ warning }}
         </p>
 
+        <section v-if="item.duplicate_candidates?.length" class="duplicate-panel">
+          <div class="metadata-heading">
+            <div><small>DUPLICATE</small><strong>重复候选提示</strong></div>
+            <span class="status-badge" data-status="warning">{{ item.duplicate_candidates.length }} 条</span>
+          </div>
+          <p>重复信号仅供治理判断。除文件完全重复外，系统不会自动删除、覆盖或发布。</p>
+          <div class="duplicate-list">
+            <article v-for="candidate in item.duplicate_candidates" :key="`${candidate.duplicate_type}-${candidate.candidate_document_id}`">
+              <strong>{{ duplicateTypeLabel(candidate.duplicate_type) }}</strong>
+              <span>{{ candidate.candidate_file_name }} · v{{ candidate.candidate_version }}</span>
+              <small>{{ candidate.reason }}<template v-if="candidate.distance !== null && candidate.distance !== undefined"> · 距离 {{ candidate.distance }}/{{ candidate.threshold }}</template><template v-else-if="candidate.score"> · 分数 {{ Math.round(candidate.score * 100) }}%</template></small>
+              <button class="secondary-action" type="button" :disabled="Boolean(actingId)" @click="approveAsVersion(item, candidate)">作为新版本发布</button>
+            </article>
+          </div>
+        </section>
+
         <section v-if="!item.metadata_suggestion" class="metadata-governance metadata-empty">
           <div class="metadata-heading">
             <div><small>METADATA</small><strong>元数据建议</strong></div>
@@ -347,6 +389,12 @@ onMounted(load)
 .page-quality p { margin: 5px 0; color: var(--text-muted); font-size: 10px; }
 .parse-warning { display: flex; align-items: flex-start; gap: 6px; margin: 9px 0 0; color: #805914; font-size: 11px; }
 .metadata-governance { margin-top: 14px; padding: 12px; border: 1px solid var(--border-default); border-radius: 6px; background: var(--bg-subtle); }
+.duplicate-panel { margin-top: 14px; padding: 12px; border: 1px solid rgba(217,137,43,.22); border-radius: 6px; background: #fffaf0; }
+.duplicate-panel > p { margin: 0 0 10px; color: #805914; font-size: 11px; line-height: 1.6; }
+.duplicate-list { display: grid; gap: 8px; }
+.duplicate-list article { display: grid; grid-template-columns: 100px minmax(0,1fr) minmax(0,1.2fr) auto; align-items: center; gap: 8px; padding: 8px; border: 1px solid rgba(217,137,43,.16); border-radius: 6px; background: rgba(255,255,255,.72); }
+.duplicate-list strong { color: #805914; font-size: 11px; }
+.duplicate-list span, .duplicate-list small { min-width: 0; overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .metadata-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .metadata-heading small { display: block; color: var(--text-muted); font-size: 10px; font-weight: 700; }
 .metadata-heading strong { color: var(--text-strong); font-size: 13px; }
@@ -371,5 +419,6 @@ onMounted(load)
 .reason-field textarea:focus { border-color: var(--action); box-shadow: 0 0 0 3px rgba(37,99,235,.09); }
 .reason-field small { color: var(--text-muted); font-size: 10px; font-weight: 400; }
 @media (max-width: 900px) { .metadata-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .duplicate-list article { grid-template-columns: 1fr; align-items: stretch; } .duplicate-list article .secondary-action { justify-self: start; } }
 @media (max-width: 640px) { .metadata-grid { grid-template-columns: 1fr; } .metadata-heading { align-items: flex-start; flex-direction: column; } .review-card footer { align-items: stretch; flex-direction: column; } .review-card footer > small { max-width: 100%; } .review-card footer > div { justify-content: flex-end; } }
 </style>

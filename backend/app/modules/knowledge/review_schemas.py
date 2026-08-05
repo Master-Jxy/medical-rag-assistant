@@ -7,6 +7,17 @@ from pydantic import BaseModel, Field
 from app.modules.knowledge.metadata_suggestions import MetadataSuggestionItem
 
 
+class DuplicateCandidateItem(BaseModel):
+    duplicate_type: str
+    candidate_document_id: str
+    candidate_file_name: str
+    candidate_version: int
+    score: float | None = None
+    distance: int | None = None
+    threshold: int | None = None
+    reason: str
+
+
 class ReviewItem(BaseModel):
     submission_id: str
     submitter_id: str | None
@@ -22,6 +33,11 @@ class ReviewItem(BaseModel):
     failure_reason: str | None
     document_id: str | None
     metadata_suggestion: MetadataSuggestionItem | None = None
+    duplicate_candidates: list[DuplicateCandidateItem] = Field(default_factory=list)
+    duplicate_decision: str | None = None
+    duplicate_target_document_id: str | None = None
+    normalized_text_hash_version: str | None = None
+    near_duplicate_fingerprint_version: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -35,6 +51,11 @@ class ReviewListResponse(BaseModel):
 
 class RejectSubmissionRequest(BaseModel):
     reason: str = Field(min_length=2, max_length=500)
+
+
+class ApproveAsVersionRequest(BaseModel):
+    supersedes_document_id: str = Field(min_length=1, max_length=36)
+    change_reason: str = Field(min_length=2, max_length=500)
 
 
 class ApprovalResponse(BaseModel):

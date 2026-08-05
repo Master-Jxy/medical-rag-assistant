@@ -847,6 +847,135 @@ def test_stage24_metadata_suggestions_migrate_and_downgrade(tmp_path) -> None:
         ) == 1
 
 
+def test_stage24_dedup_version_governance_migrates_and_downgrades(tmp_path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'stage24-dedup.db'}"
+    config = build_alembic_config(database_url)
+    command.upgrade(config, "0028_metadata_suggestions")
+    engine = build_engine(database_url)
+    now = datetime.now(timezone.utc)
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users "
+                "(id, email, password_hash, is_active, role, token_version, "
+                "created_at, updated_at) VALUES "
+                "('dedup-user', 'dedup@example.com', 'hash', 1, 'user', 0, "
+                ":now, :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO documents "
+                "(id, original_name, stored_name, content_hash, size_bytes, "
+                "chunk_count, chunk_ids, uploader_id, is_system, status, created_at) "
+                "VALUES ('dedup-doc', 'old.txt', 'old.txt', :hash, 10, 1, "
+                "'[]', 'dedup-user', 0, 'published', :now)"
+            ),
+            {"hash": "c" * 64, "now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO document_versions "
+                "(id, document_id, version, replaces_document_id, source, tags, "
+                "category, department, disease_topics, document_type, published_year, "
+                "expires_at, review_due_at, last_reviewed_at, review_status, "
+                "created_at) VALUES "
+                "('dedup-version', 'dedup-doc', 1, NULL, 'legacy', '[]', "
+                "NULL, NULL, '[]', NULL, NULL, NULL, NULL, NULL, 'current', :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO knowledge_submissions "
+                "(id, submitter_id, original_name, stored_name, content_hash, "
+                "size_bytes, status, preview_text, preview_pages, parse_warnings, "
+                "parse_quality, rejection_reason, failure_reason, document_id, "
+                "snapshot_original_url, snapshot_final_url, snapshot_fetched_at, "
+                "snapshot_response_mime, snapshot_content_sha256, created_at, "
+                "updated_at) VALUES "
+                "('dedup-submission', 'dedup-user', 'new.txt', 'new.txt', "
+                ":hash, 10, 'pending_review', '正文', 1, '[]', '{}', NULL, "
+                "NULL, NULL, NULL, NULL, NULL, NULL, NULL, :now, :now)"
+            ),
+            {"hash": "d" * 64, "now": now},
+        )
+
+    command.upgrade(config, "head")
+    inspector = inspect(engine)
+    document_version_columns = {
+        column["name"] for column in inspector.get_columns("document_versions")
+    }
+    assert {
+        "supersedes_document_id",
+        "change_reason",
+        "parser_version",
+        "corpus_version",
+        "normalized_text_hash",
+        "near_duplicate_fingerprint",
+    } <= document_version_columns
+    submission_columns = {
+        column["name"] for column in inspector.get_columns("knowledge_submissions")
+    }
+    assert {
+        "normalized_text_hash",
+        "near_duplicate_fingerprint",
+        "duplicate_decision",
+        "duplicate_target_document_id",
+    } <= submission_columns
+    version_fks = inspector.get_foreign_keys("document_versions")
+    assert any(
+        foreign_key["constrained_columns"] == ["supersedes_document_id"]
+        and foreign_key["referred_table"] == "documents"
+        and foreign_key.get("options", {}).get("ondelete") == "SET NULL"
+        for foreign_key in version_fks
+    )
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE document_versions SET review_status = 'expired', "
+                "supersedes_document_id = 'dedup-doc', version = 2, "
+                "normalized_text_hash = :hash, normalized_text_hash_version = :hv, "
+                "near_duplicate_fingerprint = :fp, near_duplicate_fingerprint_version = :fv "
+                "WHERE id = 'dedup-version'"
+            ),
+            {
+                "hash": "e" * 64,
+                "hv": "normalized_text_sha256_v1",
+                "fp": "0" * 16,
+                "fv": "simhash64_v1",
+            },
+        )
+        connection.execute(
+            text(
+                "UPDATE knowledge_submissions SET duplicate_decision = 'version', "
+                "duplicate_target_document_id = 'dedup-doc' "
+                "WHERE id = 'dedup-submission'"
+            )
+        )
+
+    command.downgrade(config, "0028_metadata_suggestions")
+    inspector = inspect(engine)
+    assert "supersedes_document_id" not in {
+        column["name"] for column in inspector.get_columns("document_versions")
+    }
+    assert "duplicate_decision" not in {
+        column["name"] for column in inspector.get_columns("knowledge_submissions")
+    }
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text("SELECT COUNT(*) FROM document_versions WHERE id = 'dedup-version'")
+        ) == 1
+        assert connection.scalar(
+            text(
+                "SELECT COUNT(*) FROM knowledge_submissions "
+                "WHERE id = 'dedup-submission'"
+            )
+        ) == 1
+
+
 def test_stage9_upgrade_registers_legacy_documents_without_duplicate_publication(
     tmp_path,
 ) -> None:

@@ -21,8 +21,11 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import ModalDialog from '../components/ModalDialog.vue'
 import {
   archiveAsset,
+  deferKnowledgeAssetReview,
+  expireKnowledgeAsset,
   getAssets,
   republishAsset,
+  restoreKnowledgeAsset,
   reviewKnowledgeAsset,
   scanKnowledgeGovernance,
   updateAsset,
@@ -125,8 +128,16 @@ function statusLabel(value) {
 }
 
 function governanceLabel(item) {
-  if (item.is_expired) return '资料已失效'
+  if (item.governance_status === 'expired' || item.is_expired) return '资料已失效'
+  if (item.governance_status === 'due') return '复核到期'
   return GOVERNANCE_OPTIONS.find((option) => option.value === item.review_status)?.label || '复核有效'
+}
+
+function duplicateTypeLabel(type) {
+  if (type === 'exact') return '文件重复'
+  if (type === 'normalized') return '正文重复'
+  if (type === 'near') return '近重复'
+  return type || '重复提示'
 }
 
 function dateOnly(value) {
@@ -200,6 +211,24 @@ async function saveReview() {
   }
 }
 
+async function deferReview(item) {
+  if (!item || actingId.value) return
+  actingId.value = item.document_id
+  const next = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()
+  try {
+    await deferKnowledgeAssetReview(item.document_id, {
+      next_review_due_at: next,
+      note: '管理员延后复核',
+    })
+    successMessage.value = '复核日期已延后。'
+    await load()
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+  } finally {
+    actingId.value = ''
+  }
+}
+
 function requestAction(item, action) {
   actionTarget.value = item
   actionType.value = action
@@ -212,10 +241,18 @@ async function confirmAction() {
   try {
     if (actionType.value === 'archive') await archiveAsset(item.document_id)
     else if (actionType.value === 'republish') await republishAsset(item.document_id)
+    else if (actionType.value === 'expire') await expireKnowledgeAsset(item.document_id, { reason: '管理员标记失效' })
+    else if (actionType.value === 'restore') await restoreKnowledgeAsset(item.document_id, { note: '管理员恢复有效' })
     else await deleteAdminDocument(item.document_id)
     successMessage.value = actionType.value === 'archive'
       ? '资产已下线。'
-      : actionType.value === 'republish' ? '资产已重新发布。' : '知识资产及其文件、向量片段已永久删除。'
+      : actionType.value === 'republish'
+        ? '资产已重新发布。'
+        : actionType.value === 'expire'
+          ? '资产已标记失效。'
+          : actionType.value === 'restore'
+            ? '资产已恢复为有效。'
+            : '知识资产及其文件、向量片段已永久删除。'
     actionTarget.value = null
     await load()
   } catch (error) {
@@ -291,6 +328,8 @@ const actionDialog = computed(() => {
     confirm: '确认删除',
   }
   if (actionType.value === 'archive') return { title: '下线知识资产？', description: '下线后将从公共检索中移除，但保留治理记录。', confirm: '确认下线' }
+  if (actionType.value === 'expire') return { title: '标记资料失效？', description: '该资料会保留记录并进入失效治理筛选，不会自动删除。', confirm: '标记失效' }
+  if (actionType.value === 'restore') return { title: '恢复资料有效？', description: '系统会清除失效标记，保留版本和审计记录。', confirm: '恢复有效' }
   return { title: '重新发布知识资产？', description: '系统将重新建立向量索引并恢复公共检索。', confirm: '确认发布' }
 })
 
@@ -337,13 +376,16 @@ onMounted(load)
     <section v-else class="asset-table" aria-label="知识资产清单">
       <header><span>文件</span><span>来源 / 状态</span><span>标签与分类</span><span>治理信息</span><span>操作</span></header>
       <article v-for="item in items" :key="item.document_id">
-        <div class="asset-file"><span><Database v-if="item.is_system" :size="16" /><FileText v-else :size="16" /></span><div><strong :title="item.file_name">{{ item.file_name }}</strong><small>v{{ item.version }} · {{ item.chunk_count }} 个片段</small></div></div>
+        <div class="asset-file"><span><Database v-if="item.is_system" :size="16" /><FileText v-else :size="16" /></span><div><strong :title="item.file_name">{{ item.file_name }}</strong><small>v{{ item.version }} · {{ item.chunk_count }} 个片段<template v-if="item.supersedes_document_id"> · 继承旧版</template></small></div></div>
         <div class="source-status"><strong>{{ sourceLabel(item.source) }}</strong><span class="status-badge" :data-status="item.status">{{ statusLabel(item.status) }}</span></div>
         <div class="asset-taxonomy"><div><span v-for="tag in item.tags" :key="tag">{{ tag }}</span><small v-if="!item.tags.length">无标签</small></div><small>{{ item.category || '未分类' }} · {{ item.department || '未指定科室' }}</small></div>
-        <div class="governance"><strong :class="{ warning: item.is_expired || item.review_status !== 'current' }">{{ governanceLabel(item) }}</strong><small>失效 {{ dateOnly(item.expires_at) }}<br />复核 {{ dateOnly(item.review_due_at) }}</small></div>
+        <div class="governance"><strong :class="{ warning: item.is_expired || item.governance_status !== 'current' }">{{ governanceLabel(item) }}</strong><small>失效 {{ dateOnly(item.expires_at) }}<br />复核 {{ dateOnly(item.review_due_at) }}<template v-if="item.parser_version"><br />{{ item.parser_version }} · {{ item.corpus_version || '未设置语料版本' }}</template></small><div v-if="item.duplicate_candidates?.length" class="asset-duplicates"><span v-for="candidate in item.duplicate_candidates.slice(0, 2)" :key="`${candidate.duplicate_type}-${candidate.candidate_document_id}`">{{ duplicateTypeLabel(candidate.duplicate_type) }}：{{ candidate.candidate_file_name }}</span></div></div>
         <div class="asset-actions">
           <button class="icon-action" type="button" title="编辑治理信息" @click="openEdit(item)"><Pencil :size="15" /></button>
           <button v-if="item.review_status === 'in_review'" class="icon-action success" type="button" title="完成复核" @click="openReview(item)"><CalendarCheck :size="15" /></button>
+          <button v-if="item.governance_status === 'due' || item.review_status === 'in_review'" class="icon-action" type="button" title="延后复核" @click="deferReview(item)"><CalendarCheck :size="15" /></button>
+          <button v-if="item.governance_status !== 'expired'" class="icon-action danger" type="button" title="标记失效" @click="requestAction(item, 'expire')"><X :size="15" /></button>
+          <button v-else class="icon-action success" type="button" title="恢复有效" @click="requestAction(item, 'restore')"><RotateCcw :size="15" /></button>
           <label class="icon-action file-action" title="整体替换"><input type="file" :accept="ACCEPTED_DOCUMENT_FORMATS" :disabled="Boolean(replacingId)" @change="replaceDocument(item, $event)" /><Replace :size="15" /></label>
           <button v-if="item.status === 'published'" class="icon-action" type="button" title="下线资产" @click="requestAction(item, 'archive')"><Archive :size="15" /></button>
           <button v-else-if="item.status === 'archived'" class="icon-action" type="button" title="重新发布" @click="requestAction(item, 'republish')"><RotateCcw :size="15" /></button>
@@ -416,6 +458,8 @@ onMounted(load)
 .asset-taxonomy > div small { color: var(--muted); font-size: 10px; }
 .governance strong { color: #287157; font-size: 11px; }
 .governance strong.warning { color: #a16527; }
+.asset-duplicates { display: grid; gap: 3px; margin-top: 5px; }
+.asset-duplicates span { overflow: hidden; color: #805914; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .asset-actions { display: flex; justify-content: flex-end; gap: 5px; }
 .icon-action { position: relative; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(92,108,158,.14); border-radius: 8px; color: #5c6d8d; background: rgba(255,255,255,.68); cursor: pointer; }
 .icon-action:hover { color: #3658d3; border-color: rgba(94,123,255,.3); transform: translateY(-1px); }

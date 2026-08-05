@@ -10,6 +10,7 @@ from app.infrastructure.knowledge_parser_factory import create_knowledge_documen
 from app.infrastructure.vector_store import VectorStoreService
 from app.modules.audit.ports import AuditPort, AuditRecord
 from app.modules.audit.repository import SqlAlchemyAuditRecorder
+from app.modules.knowledge.deduplication import DuplicatePolicy
 from app.modules.knowledge.lifecycle import DocumentLifecycleService
 from app.modules.knowledge.models import DocumentVersion
 from app.modules.knowledge.repository import DocumentRepository
@@ -69,6 +70,12 @@ class AdminDocumentService:
             )
         finally:
             await upload_file.close()
+        fingerprint_existing = getattr(self.lifecycle, "fingerprint_existing_document", None)
+        fingerprint = (
+            fingerprint_existing(record)
+            if fingerprint_existing is not None
+            else getattr(record, "_text_fingerprint", DuplicatePolicy.fingerprint_text(""))
+        )
         self.session.add(
             DocumentVersion(
                 id=str(uuid4()),
@@ -76,6 +83,14 @@ class AdminDocumentService:
                 version=1,
                 source="system",
                 tags=[],
+                parser_version="knowledge_parser_v1",
+                corpus_version=self.settings.knowledge_base_version,
+                normalized_text_hash=fingerprint.normalized_text_hash,
+                normalized_text_hash_version=fingerprint.normalized_text_hash_version,
+                near_duplicate_fingerprint=fingerprint.near_duplicate_fingerprint,
+                near_duplicate_fingerprint_version=(
+                    fingerprint.near_duplicate_fingerprint_version
+                ),
             )
         )
         if actor_user_id is not None:

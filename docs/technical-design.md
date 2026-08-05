@@ -2122,3 +2122,54 @@ services; Vue components collect form state and call the admin API only. The
 implementation references Docling/RAGFlow/Unstructured/Dify/Haystack boundary
 ideas around separated parse products, processing status, and human-confirmed
 governance, without copying third-party source.
+
+## Stage 24.6 Duplicate, Version, and Expiry Governance Boundary (2026-08-06)
+
+Stage 24.6 keeps duplicate detection as three separate signals. Exact duplicate
+remains the raw file bytes SHA-256 and continues to block obvious repeated
+uploads through existing submission/document hash checks. Normalized duplicate
+uses `normalized_text_sha256_v1`: text is NFKC-normalized, lowercased, whitespace
+collapsed, NUL-stripped, and capped at 250,000 characters before SHA-256.
+Near duplicate uses `simhash64_v1` with deterministic lightweight tokens and a
+Hamming-distance threshold of 8. The signals are returned as distinct
+`exact`/`normalized`/`near` candidates with score or distance and reason; they
+are never collapsed into a single boolean, and normalized/near candidates only
+prompt administrators.
+
+`knowledge_submissions` stores submission-time normalized hash, SimHash
+fingerprint, algorithm versions, and an explicit duplicate decision (`new`,
+`version`, or `rejected`) plus optional target document. Administrators may
+continue with the ordinary approve action as a new document, reject the
+submission, or call `POST /admin/reviews/{id}/approve-as-version` with a target
+document and change reason. The version action publishes through the existing
+lifecycle, archives the superseded document's vectors, and writes lineage;
+failures restore vectors and clean the newly prepared document through existing
+compensation paths.
+
+`document_versions` records `supersedes_document_id`, `replaces_document_id`,
+version number, change reason, parser version, corpus version, normalized hash,
+and near-duplicate fingerprint. A unique `(supersedes_document_id, version)`
+constraint prevents two concurrent successors from claiming the same version
+number. Existing replacement flows set both replaces/supersedes for lineage
+compatibility. No automatic merge, delete, overwrite, or publish is performed
+from duplicate signals.
+
+Expiry governance is centralized in `DuplicatePolicy.governance_status()`.
+It computes `current`, `due`, `in_review`, or `expired` from `expires_at`,
+`review_due_at`, `last_reviewed_at`, and stored `review_status`. Asset list
+filters use that policy for due/expired/current semantics. Admin actions cover
+review confirmation, review deferral, explicit expiry marking, and
+restore-to-current, each writing audit. The existing governance scan action
+still uses `JobPort`; it creates due review jobs and also performs an
+idempotent local fingerprint backfill job for published/archived versions
+missing normalized hashes. No scheduler, Celery, model call, Embedding, OCR,
+Vision, Docling run, or production data access is introduced.
+
+The administrator review UI shows duplicate candidates inside existing review
+cards and exposes the explicit "作为新版本发布" action. The knowledge asset UI
+shows compact version/fingerprint/governance status, duplicate hints,
+due/expired filters, and review/expiry actions without creating a new large
+page. Stage 24.6 references RAGFlow/Dify document governance status,
+Unstructured normalized element boundaries, Docling provenance/version thinking,
+and Haystack component separation, without copying third-party source or adding
+dependencies.

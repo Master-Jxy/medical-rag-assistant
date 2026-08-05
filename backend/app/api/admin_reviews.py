@@ -14,6 +14,7 @@ from app.modules.jobs.service import SqlAlchemyJobService
 from app.modules.knowledge.lifecycle import DocumentLifecycleService
 from app.modules.knowledge.review_schemas import (
     ApprovalResponse,
+    ApproveAsVersionRequest,
     RejectSubmissionRequest,
     ReviewItem,
     ReviewListResponse,
@@ -146,6 +147,22 @@ async def approve_review(
 ) -> ApprovalResponse:
     return await service.approve(
         submission_id,
+        actor_user_id=admin.id,
+        request_id=getattr(request.state, "request_id", None),
+    )
+
+
+@router.post("/{submission_id}/approve-as-version", response_model=ApprovalResponse)
+async def approve_review_as_version(
+    submission_id: str,
+    payload: ApproveAsVersionRequest,
+    request: Request,
+    admin: UserResponse = Depends(require_admin),
+    service: KnowledgeReviewService = Depends(get_review_service),
+) -> ApprovalResponse:
+    return await service.approve_as_version(
+        submission_id,
+        payload,
         actor_user_id=admin.id,
         request_id=getattr(request.state, "request_id", None),
     )

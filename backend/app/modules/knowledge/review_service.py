@@ -15,6 +15,11 @@ from app.modules.knowledge.asset_storage import (
     ControlledDocumentAssetStore,
     StagedAssetDeletion,
 )
+from app.modules.knowledge.deduplication import (
+    DuplicateCandidate,
+    DuplicateCandidateService,
+    DuplicatePolicy,
+)
 from app.modules.knowledge.lifecycle import DocumentLifecycleService
 from app.modules.knowledge.models import (
     DocumentVersion,
@@ -25,6 +30,8 @@ from app.modules.knowledge.metadata_suggestions import MetadataSuggestionService
 from app.modules.knowledge.repository import SubmissionReviewRepository
 from app.modules.knowledge.review_schemas import (
     ApprovalResponse,
+    ApproveAsVersionRequest,
+    DuplicateCandidateItem,
     ReviewItem,
     ReviewListResponse,
 )
@@ -163,6 +170,26 @@ class KnowledgeReviewService:
             expected_status="pending_review",
             actor_user_id=actor_user_id,
             request_id=request_id,
+            duplicate_decision="new",
+            change_reason="管理员批准发布",
+        )
+
+    async def approve_as_version(
+        self,
+        submission_id: str,
+        payload: ApproveAsVersionRequest,
+        *,
+        actor_user_id: str,
+        request_id: str | None,
+    ) -> ApprovalResponse:
+        return await self._publish(
+            submission_id,
+            expected_status="pending_review",
+            actor_user_id=actor_user_id,
+            request_id=request_id,
+            duplicate_decision="version",
+            supersedes_document_id=payload.supersedes_document_id,
+            change_reason=payload.change_reason.strip(),
         )
 
     async def _publish(
@@ -172,8 +199,33 @@ class KnowledgeReviewService:
         expected_status: str,
         actor_user_id: str,
         request_id: str | None,
+        duplicate_decision: str,
+        supersedes_document_id: str | None = None,
+        change_reason: str = "管理员批准发布",
     ) -> ApprovalResponse:
         record = self._get(submission_id)
+        superseded: KnowledgeDocument | None = None
+        superseded_version: DocumentVersion | None = None
+        superseded_snapshot: dict | None = None
+        superseded_vectors_deleted = False
+        if supersedes_document_id is not None:
+            if supersedes_document_id == record.document_id:
+                raise ReviewStateConflictError()
+            try:
+                superseded = self.lifecycle.repository.get_by_id_for_update(
+                    supersedes_document_id
+                )
+            except Exception as exc:
+                self.session.rollback()
+                raise ReviewStateConflictError() from exc
+            if superseded is None or superseded.status not in {"published", "ready"}:
+                self.session.rollback()
+                raise ReviewStateConflictError()
+            superseded_version = self.session.scalar(
+                select(DocumentVersion).where(
+                    DocumentVersion.document_id == superseded.id
+                )
+            )
         if not self.repository.claim_for_indexing(submission_id, expected_status):
             self.session.rollback()
             raise ReviewStateConflictError()
@@ -201,14 +253,46 @@ class KnowledgeReviewService:
             record = self._get(submission_id)
             record.status = "published"
             record.document_id = document.id
+            record.duplicate_decision = duplicate_decision
+            record.duplicate_target_document_id = supersedes_document_id
+            record.duplicate_decision_reason = change_reason
             record.failure_reason = None
             self.jobs.complete(job.id)
+            if record.normalized_text_hash is None:
+                DuplicatePolicy.assign_to_submission(record)
+            if superseded is not None:
+                superseded_snapshot = self.lifecycle.vector_store.snapshot_documents(
+                    superseded.chunk_ids
+                )
+                if set(superseded_snapshot.get("ids") or []) != set(
+                    superseded.chunk_ids
+                ):
+                    raise DocumentStoreError()
+                self.lifecycle.vector_store.delete_documents(superseded.chunk_ids)
+                superseded_vectors_deleted = True
+                superseded.status = "archived"
             version = DocumentVersion(
                 id=str(uuid4()),
                 document_id=document.id,
-                version=1,
+                version=(
+                    (superseded_version.version if superseded_version else 1) + 1
+                    if superseded is not None
+                    else 1
+                ),
+                replaces_document_id=superseded.id if superseded else None,
+                supersedes_document_id=superseded.id if superseded else None,
+                change_reason=change_reason,
+                parser_version="knowledge_parser_v1",
+                corpus_version=self.settings.knowledge_base_version,
                 source="user_submission",
                 tags=[],
+            )
+            DuplicatePolicy.apply_to_version_from_submission(
+                record,
+                version,
+                parser_version="knowledge_parser_v1",
+                corpus_version=self.settings.knowledge_base_version,
+                change_reason=change_reason,
             )
             self.metadata_suggestions.apply_confirmed_to_version(record, version)
             self.session.add(version)
@@ -219,7 +303,12 @@ class KnowledgeReviewService:
                     object_type="knowledge_submission",
                     object_id=record.id,
                     request_id=request_id,
-                    details={"document_id": document.id, "job_id": job.id},
+                    details={
+                        "document_id": document.id,
+                        "job_id": job.id,
+                        "duplicate_decision": duplicate_decision,
+                        "supersedes_document_id": supersedes_document_id,
+                    },
                 )
             )
             self.session.commit()
@@ -227,6 +316,11 @@ class KnowledgeReviewService:
         except Exception as exc:
             self.session.rollback()
             cleanup_failed = False
+            if superseded_vectors_deleted and superseded_snapshot is not None:
+                try:
+                    self.lifecycle.vector_store.restore_documents(superseded_snapshot)
+                except Exception:
+                    cleanup_failed = True
             if document is not None:
                 try:
                     current = self.lifecycle.repository.get_by_id(document.id)
@@ -264,6 +358,8 @@ class KnowledgeReviewService:
             expected_status="failed",
             actor_user_id=actor_user_id,
             request_id=request_id,
+            duplicate_decision="new",
+            change_reason="管理员重试发布",
         )
 
     def _cleanup_isolated_after_publication(
@@ -364,6 +460,9 @@ class KnowledgeReviewService:
         return record
 
     def _to_item(self, record: KnowledgeSubmission, suggestion=None) -> ReviewItem:
+        duplicate_candidates = DuplicateCandidateService(self.session).for_submission(
+            record
+        )
         return ReviewItem(
             submission_id=record.id,
             submitter_id=record.submitter_id,
@@ -381,6 +480,29 @@ class KnowledgeReviewService:
             metadata_suggestion=(
                 self.metadata_suggestions.to_item(suggestion) if suggestion else None
             ),
+            duplicate_candidates=[
+                self._duplicate_candidate_to_item(candidate)
+                for candidate in duplicate_candidates
+            ],
+            duplicate_decision=record.duplicate_decision,
+            duplicate_target_document_id=record.duplicate_target_document_id,
+            normalized_text_hash_version=record.normalized_text_hash_version,
+            near_duplicate_fingerprint_version=record.near_duplicate_fingerprint_version,
             created_at=record.created_at,
             updated_at=record.updated_at,
+        )
+
+    @staticmethod
+    def _duplicate_candidate_to_item(
+        candidate: DuplicateCandidate,
+    ) -> DuplicateCandidateItem:
+        return DuplicateCandidateItem(
+            duplicate_type=candidate.duplicate_type,
+            candidate_document_id=candidate.candidate_document_id,
+            candidate_file_name=candidate.candidate_file_name,
+            candidate_version=candidate.candidate_version,
+            score=candidate.score,
+            distance=candidate.distance,
+            threshold=candidate.threshold,
+            reason=candidate.reason,
         )

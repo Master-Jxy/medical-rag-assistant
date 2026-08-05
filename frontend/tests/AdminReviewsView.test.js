@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const platformApi = vi.hoisted(() => ({
   acceptMetadataSuggestion: vi.fn(),
+  approveReviewAsVersion: vi.fn(),
   approveReview: vi.fn(),
   generateMetadataSuggestion: vi.fn(),
   getReviews: vi.fn(),
@@ -56,11 +57,29 @@ const reviewItem = {
     updated_at: '2026-08-06T00:00:00Z',
     reviewed_at: null,
   },
+  duplicate_candidates: [{
+    duplicate_type: 'normalized',
+    candidate_document_id: 'document-old',
+    candidate_file_name: '旧版指南.txt',
+    candidate_version: 1,
+    score: 1,
+    distance: 0,
+    threshold: 0,
+    reason: '规范化正文 SHA-256 完全相同',
+  }],
+  duplicate_decision: null,
+  duplicate_target_document_id: null,
+  normalized_text_hash_version: 'normalized_text_sha256_v1',
+  near_duplicate_fingerprint_version: 'simhash64_v1',
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
   platformApi.getReviews.mockResolvedValue({ items: [reviewItem], total: 1 })
+  platformApi.approveReviewAsVersion.mockResolvedValue({
+    submission: { ...reviewItem, duplicate_decision: 'version' },
+    job_id: 'job-1',
+  })
   platformApi.acceptMetadataSuggestion.mockResolvedValue({
     ...reviewItem.metadata_suggestion,
     status: 'edited',
@@ -82,6 +101,7 @@ describe('AdminReviewsView metadata governance', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('元数据建议')
+    expect(wrapper.text()).toContain('重复候选提示')
     expect(wrapper.text()).toContain('heart failure')
 
     const inputs = wrapper.findAll('.metadata-grid input')
@@ -105,6 +125,21 @@ describe('AdminReviewsView metadata governance', () => {
         source: 'manual source',
         review_due_at: '2031-02-03T00:00:00Z',
       },
+    })
+  })
+
+  it('publishes a duplicate submission as a new version explicitly', async () => {
+    const wrapper = mount(AdminReviewsView, {
+      global: { stubs: { teleport: true } },
+    })
+    await flushPromises()
+
+    await wrapper.get('.duplicate-list .secondary-action').trigger('click')
+    await flushPromises()
+
+    expect(platformApi.approveReviewAsVersion).toHaveBeenCalledWith('submission-1', {
+      supersedes_document_id: 'document-old',
+      change_reason: '正文重复：规范化正文 SHA-256 完全相同',
     })
   })
 

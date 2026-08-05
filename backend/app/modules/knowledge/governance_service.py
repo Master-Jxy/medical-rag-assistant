@@ -22,7 +22,7 @@ class KnowledgeGovernanceService:
                 KnowledgeDocument.status.in_(("published", "ready")),
                 DocumentVersion.review_due_at.is_not(None),
                 DocumentVersion.review_due_at <= now,
-                DocumentVersion.review_status == "current",
+                DocumentVersion.review_status.in_(("current", "due", "expired")),
             )
             .with_for_update()
         ).all()

@@ -11,7 +11,10 @@ from app.modules.audit.repository import SqlAlchemyAuditRecorder
 from app.modules.auth.dependencies import require_admin
 from app.modules.auth.schemas import UserResponse
 from app.modules.knowledge.asset_schemas import (
+    AssetExpireRequest,
     AssetMetadataUpdate,
+    AssetRestoreRequest,
+    AssetReviewDeferRequest,
     KnowledgeAssetItem,
     KnowledgeAssetListResponse,
     ReplacementRequest,
@@ -25,15 +28,6 @@ from app.modules.knowledge.governance_service import KnowledgeGovernanceService
 from datetime import datetime, timezone
 
 router = APIRouter(prefix="/admin/knowledge-assets", tags=["管理员知识资产"])
-
-
-@router.post("/governance/scan")
-def scan_governance(
-    _admin: UserResponse = Depends(require_admin),
-    session: Session = Depends(get_db_session),
-):
-    ids = KnowledgeGovernanceService(session, SqlAlchemyJobService(session)).scan_due_reviews(datetime.now(timezone.utc))
-    return {"created_job_ids": ids, "count": len(ids)}
 
 
 def get_asset_service(
@@ -54,6 +48,23 @@ def get_asset_service(
     )
 
 
+@router.post("/governance/scan")
+def scan_governance(
+    _admin: UserResponse = Depends(require_admin),
+    session: Session = Depends(get_db_session),
+    service: KnowledgeAssetService = Depends(get_asset_service),
+):
+    ids = KnowledgeGovernanceService(
+        session, SqlAlchemyJobService(session)
+    ).scan_due_reviews(datetime.now(timezone.utc))
+    duplicate_scan = service.scan_duplicate_fingerprints()
+    return {
+        "created_job_ids": ids,
+        "count": len(ids),
+        "duplicate_scan": duplicate_scan,
+    }
+
+
 @router.get("", response_model=KnowledgeAssetListResponse)
 def list_assets(
     status: str | None = Query(default=None, max_length=20),
@@ -61,7 +72,7 @@ def list_assets(
     tag: str | None = Query(default=None, max_length=50),
     review_status: str | None = Query(
         default=None,
-        pattern="^(current|due|in_review)$",
+        pattern="^(current|due|in_review|expired)$",
     ),
     expired: bool | None = Query(default=None),
     offset: int = Query(default=0, ge=0),
@@ -110,6 +121,56 @@ def review_asset(
     service: KnowledgeAssetService = Depends(get_asset_service),
 ):
     return service.mark_reviewed(
+        document_id,
+        next_review_due_at=payload.next_review_due_at,
+        note=payload.note,
+        actor_user_id=admin.id,
+        request_id=getattr(request.state, "request_id", None),
+    )
+
+
+@router.post("/{document_id}/review/defer", response_model=KnowledgeAssetItem)
+def defer_asset_review(
+    document_id: str,
+    payload: AssetReviewDeferRequest,
+    request: Request,
+    admin: UserResponse = Depends(require_admin),
+    service: KnowledgeAssetService = Depends(get_asset_service),
+) -> KnowledgeAssetItem:
+    return service.defer_review(
+        document_id,
+        next_review_due_at=payload.next_review_due_at,
+        note=payload.note,
+        actor_user_id=admin.id,
+        request_id=getattr(request.state, "request_id", None),
+    )
+
+
+@router.post("/{document_id}/expire", response_model=KnowledgeAssetItem)
+def expire_asset(
+    document_id: str,
+    payload: AssetExpireRequest,
+    request: Request,
+    admin: UserResponse = Depends(require_admin),
+    service: KnowledgeAssetService = Depends(get_asset_service),
+) -> KnowledgeAssetItem:
+    return service.mark_expired(
+        document_id,
+        reason=payload.reason,
+        actor_user_id=admin.id,
+        request_id=getattr(request.state, "request_id", None),
+    )
+
+
+@router.post("/{document_id}/restore", response_model=KnowledgeAssetItem)
+def restore_asset(
+    document_id: str,
+    payload: AssetRestoreRequest,
+    request: Request,
+    admin: UserResponse = Depends(require_admin),
+    service: KnowledgeAssetService = Depends(get_asset_service),
+) -> KnowledgeAssetItem:
+    return service.restore_current(
         document_id,
         next_review_due_at=payload.next_review_due_at,
         note=payload.note,

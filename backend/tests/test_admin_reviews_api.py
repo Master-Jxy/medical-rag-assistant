@@ -16,6 +16,7 @@ from app.db.session import build_engine, get_db_session
 from app.main import app
 from app.models import (
     AuditEvent,
+    DocumentVersion,
     KnowledgeDocument,
     KnowledgeSubmission,
     ProcessingJob,
@@ -24,6 +25,7 @@ from app.modules.audit.repository import SqlAlchemyAuditRecorder
 from app.modules.auth.tokens import get_token_service
 from app.modules.jobs.service import SqlAlchemyJobService
 from app.modules.knowledge.lifecycle import DocumentLifecycleService
+from app.modules.knowledge.deduplication import DuplicatePolicy
 from app.modules.knowledge.repository import SubmissionReviewRepository
 from app.modules.knowledge.review_service import KnowledgeReviewService
 from tests.auth_helpers import TEST_TOKEN_SERVICE, auth_headers, create_test_user
@@ -67,6 +69,52 @@ def add_submission(factory, settings, submitter_id, suffix):
         )
         session.commit()
     return submission_id
+
+
+def add_fingerprinted_published_document(factory, settings, vectors, suffix, text):
+    settings.upload_dir.mkdir(parents=True, exist_ok=True)
+    document_id = f"published-{suffix}"
+    stored_name = f"{document_id}.txt"
+    (settings.upload_dir / stored_name).write_text(text, encoding="utf-8")
+    chunk_id = f"{document_id}:0"
+    fingerprint = DuplicatePolicy.fingerprint_text(text)
+    with factory() as session:
+        session.add(
+            KnowledgeDocument(
+                id=document_id,
+                original_name=f"已发布{suffix}.txt",
+                stored_name=stored_name,
+                content_hash=("9" + suffix[0]) * 32,
+                size_bytes=len(text.encode("utf-8")),
+                chunk_count=1,
+                chunk_ids=[chunk_id],
+                uploader_id=None,
+                is_system=True,
+                status="published",
+            )
+        )
+        session.add(
+            DocumentVersion(
+                id=f"published-version-{suffix}",
+                document_id=document_id,
+                version=1,
+                source="system",
+                tags=[],
+                parser_version="knowledge_parser_v1",
+                corpus_version="live_v1",
+                normalized_text_hash=fingerprint.normalized_text_hash,
+                normalized_text_hash_version=fingerprint.normalized_text_hash_version,
+                near_duplicate_fingerprint=fingerprint.near_duplicate_fingerprint,
+                near_duplicate_fingerprint_version=fingerprint.near_duplicate_fingerprint_version,
+            )
+        )
+        session.commit()
+    vectors.entries[chunk_id] = {
+        "document": text,
+        "metadata": {"document_id": document_id},
+        "embedding": [0.1],
+    }
+    return document_id
 
 
 def add_markdown_submission(factory, settings, submitter_id, suffix):
@@ -282,6 +330,103 @@ def test_admin_can_reject_or_publish_and_normal_user_cannot_review(tmp_path) -> 
         assert vectors.entries
         assert not (settings.submission_dir / f"{approved_id}.txt").exists()
         assert (settings.submission_dir / f"{rejected_id}.txt").exists()
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def test_admin_sees_duplicate_candidates_and_can_publish_submission_as_new_version(
+    tmp_path,
+) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'review-duplicates.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    submitter = create_test_user(factory, "review-duplicate-submitter")
+    admin = create_test_user(factory, "review-duplicate-admin", role="admin")
+    settings = Settings(
+        _env_file=None,
+        submission_dir=tmp_path / "isolated",
+        upload_dir=tmp_path / "published",
+        chunk_size=80,
+        chunk_overlap=5,
+    )
+    vectors = FakeVectorStore()
+    old_document_id = add_fingerprinted_published_document(
+        factory,
+        settings,
+        vectors,
+        "base",
+        "心力衰竭 随访 用药 复查 血压",
+    )
+    submission_id = add_submission(factory, settings, submitter.id, "v")
+    with factory() as session:
+        submission = session.get(KnowledgeSubmission, submission_id)
+        submission.preview_text = "心力衰竭  随访\n用药 复查 血压"
+        DuplicatePolicy.assign_to_submission(submission)
+        session.commit()
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    def override_review_service():
+        with factory() as session:
+            yield KnowledgeReviewService(
+                session,
+                settings,
+                DocumentLifecycleService(session, settings, vectors),
+                SqlAlchemyAuditRecorder(session),
+                SqlAlchemyJobService(session),
+            )
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
+    app.dependency_overrides[get_review_service] = override_review_service
+    try:
+        with TestClient(app) as client:
+            listed = client.get(
+                "/api/v1/admin/reviews",
+                headers=auth_headers(admin.id),
+            )
+            assert listed.status_code == 200
+            candidates = listed.json()["items"][0]["duplicate_candidates"]
+            assert any(
+                item["duplicate_type"] == "normalized"
+                and item["candidate_document_id"] == old_document_id
+                for item in candidates
+            )
+
+            published = client.post(
+                f"/api/v1/admin/reviews/{submission_id}/approve-as-version",
+                json={
+                    "supersedes_document_id": old_document_id,
+                    "change_reason": "同主题指南更新",
+                },
+                headers=auth_headers(admin.id),
+            )
+            assert published.status_code == 200
+            assert published.json()["submission"]["duplicate_decision"] == "version"
+
+        with factory() as session:
+            old = session.get(KnowledgeDocument, old_document_id)
+            submission = session.get(KnowledgeSubmission, submission_id)
+            new_version = session.scalar(
+                select(DocumentVersion).where(
+                    DocumentVersion.document_id == submission.document_id
+                )
+            )
+            assert old.status == "archived"
+            assert new_version.version == 2
+            assert new_version.supersedes_document_id == old_document_id
+            assert new_version.replaces_document_id == old_document_id
+            assert new_version.change_reason == "同主题指南更新"
+            assert new_version.normalized_text_hash_version == "normalized_text_sha256_v1"
+            actions = set(session.scalars(select(AuditEvent.action)).all())
+            assert "knowledge_submission.published" in actions
+        assert not any(
+            value["metadata"]["document_id"] == old_document_id
+            for value in vectors.entries.values()
+        )
     finally:
         app.dependency_overrides.clear()
         engine.dispose()

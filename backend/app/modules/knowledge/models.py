@@ -89,6 +89,23 @@ class KnowledgeSubmission(Base):
     snapshot_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     snapshot_response_mime: Mapped[str | None] = mapped_column(String(100), nullable=True)
     snapshot_content_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    normalized_text_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    normalized_text_hash_version: Mapped[str | None] = mapped_column(
+        String(40), nullable=True
+    )
+    near_duplicate_fingerprint: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )
+    near_duplicate_fingerprint_version: Mapped[str | None] = mapped_column(
+        String(40), nullable=True
+    )
+    duplicate_decision: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    duplicate_target_document_id: Mapped[str | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
+    duplicate_decision_reason: Mapped[str | None] = mapped_column(
+        String(500), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
@@ -105,6 +122,16 @@ class KnowledgeSubmission(Base):
         ),
         Index("ix_knowledge_submissions_submitter_created", "submitter_id", "created_at"),
         Index("ix_knowledge_submissions_status_created", "status", "created_at"),
+        Index(
+            "ix_knowledge_submissions_normalized_hash",
+            "normalized_text_hash",
+            "normalized_text_hash_version",
+        ),
+        CheckConstraint(
+            "duplicate_decision IS NULL OR duplicate_decision IN "
+            "('new','version','rejected')",
+            name="ck_knowledge_submissions_duplicate_decision",
+        ),
     )
 
 
@@ -118,6 +145,22 @@ class DocumentVersion(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     replaces_document_id: Mapped[str | None] = mapped_column(
         ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
+    supersedes_document_id: Mapped[str | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
+    change_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    parser_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    corpus_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    normalized_text_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    normalized_text_hash_version: Mapped[str | None] = mapped_column(
+        String(40), nullable=True
+    )
+    near_duplicate_fingerprint: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )
+    near_duplicate_fingerprint_version: Mapped[str | None] = mapped_column(
+        String(40), nullable=True
     )
     source: Mapped[str | None] = mapped_column(String(255), nullable=True)
     tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
@@ -137,10 +180,21 @@ class DocumentVersion(Base):
     __table_args__ = (
         CheckConstraint("version > 0", name="ck_document_versions_positive"),
         Index("ix_document_versions_replaces", "replaces_document_id"),
+        Index("ix_document_versions_supersedes", "supersedes_document_id"),
+        Index(
+            "ix_document_versions_normalized_hash",
+            "normalized_text_hash",
+            "normalized_text_hash_version",
+        ),
         Index("ix_document_versions_governance", "review_status", "review_due_at"),
         CheckConstraint(
-            "review_status IN ('current','due','in_review')",
+            "review_status IN ('current','due','in_review','expired')",
             name="ck_document_versions_review_status",
+        ),
+        UniqueConstraint(
+            "supersedes_document_id",
+            "version",
+            name="uq_document_versions_supersedes_version",
         ),
         CheckConstraint(
             "published_year IS NULL OR (published_year >= 1900 AND published_year <= 2100)",

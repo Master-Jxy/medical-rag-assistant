@@ -3,8 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const platformApi = vi.hoisted(() => ({
   archiveAsset: vi.fn(),
+  deferKnowledgeAssetReview: vi.fn(),
+  expireKnowledgeAsset: vi.fn(),
   getAssets: vi.fn(),
   republishAsset: vi.fn(),
+  restoreKnowledgeAsset: vi.fn(),
   reviewKnowledgeAsset: vi.fn(),
   scanKnowledgeGovernance: vi.fn(),
   updateAsset: vi.fn(),
@@ -32,7 +35,21 @@ const systemAsset = {
   category: '诊疗规范',
   department: '心血管内科',
   review_status: 'current',
+  governance_status: 'current',
   is_expired: false,
+  supersedes_document_id: null,
+  parser_version: 'knowledge_parser_v1',
+  corpus_version: 'live_v1',
+  duplicate_candidates: [{
+    duplicate_type: 'near',
+    candidate_document_id: 'user-1',
+    candidate_file_name: '用户审核资料.txt',
+    candidate_version: 1,
+    score: 0.92,
+    distance: 5,
+    threshold: 8,
+    reason: '近重复 SimHash 距离低于阈值',
+  }],
 }
 
 const userAsset = {
@@ -48,6 +65,9 @@ beforeEach(() => {
   platformApi.getAssets.mockResolvedValue({ items: [systemAsset, userAsset], total: 2 })
   platformApi.updateAsset.mockResolvedValue(systemAsset)
   platformApi.scanKnowledgeGovernance.mockResolvedValue({ count: 0 })
+  platformApi.deferKnowledgeAssetReview.mockResolvedValue(systemAsset)
+  platformApi.expireKnowledgeAsset.mockResolvedValue({ ...systemAsset, governance_status: 'expired', is_expired: true })
+  platformApi.restoreKnowledgeAsset.mockResolvedValue(systemAsset)
   documentApi.createSystemDocument.mockResolvedValue({ file_name: '新增.txt' })
   documentApi.replaceAdminDocument.mockResolvedValue({ file_name: '新版.txt' })
   documentApi.deleteAdminDocument.mockResolvedValue({ document_id: 'system-1' })
@@ -62,6 +82,7 @@ describe('统一知识资产页面', () => {
 
     expect(platformApi.getAssets).toHaveBeenCalledWith({ limit: 100 })
     expect(wrapper.text()).toContain('统一管理用户提交和系统资料')
+    expect(wrapper.text()).toContain('近重复：用户审核资料.txt')
     expect(wrapper.findAll('.asset-table > article')).toHaveLength(2)
     expect(wrapper.findAll('.asset-filters select')).toHaveLength(4)
 
@@ -110,5 +131,31 @@ describe('统一知识资产页面', () => {
     await wrapper.get('.confirm-dialog .dialog-button.danger').trigger('click')
     await flushPromises()
     expect(documentApi.deleteAdminDocument).toHaveBeenCalledWith('user-1')
+  })
+
+  it('supports expiry governance actions without leaving the asset page', async () => {
+    const wrapper = mount(AdminAssetsView, {
+      global: { stubs: { teleport: true } },
+    })
+    await flushPromises()
+
+    await wrapper.find('button[title="标记失效"]').trigger('click')
+    await wrapper.get('.confirm-dialog .dialog-button.danger').trigger('click')
+    await flushPromises()
+    expect(platformApi.expireKnowledgeAsset).toHaveBeenCalledWith('system-1', {
+      reason: '管理员标记失效',
+    })
+
+    const dueAsset = { ...systemAsset, governance_status: 'due', review_status: 'current' }
+    platformApi.getAssets.mockResolvedValueOnce({ items: [dueAsset], total: 1 })
+    const dueWrapper = mount(AdminAssetsView, {
+      global: { stubs: { teleport: true } },
+    })
+    await flushPromises()
+    await dueWrapper.find('button[title="延后复核"]').trigger('click')
+    await flushPromises()
+    expect(platformApi.deferKnowledgeAssetReview).toHaveBeenCalledWith('system-1', expect.objectContaining({
+      note: '管理员延后复核',
+    }))
   })
 })

@@ -100,3 +100,27 @@ MinerU, Unstructured, OCR engines, vision SDKs, or online model downloads.
 
 No new dependency was added for Stage 24.5. Real metadata models remain outside
 this stage and would require a separate cost, privacy, and deployment gate.
+
+## 7. Stage 24.6 adopted references
+
+- RAGFlow (Apache-2.0): referenced `api/apps/services/document_api_service.py`
+  and web document status interfaces for administrator-visible document
+  processing/governance state. Stage 24.6 keeps the existing modular monolith
+  and JobPort; it does not copy task executor code or add a scheduler.
+- Dify (modified Apache-2.0 with additional terms): referenced dataset document
+  governance and version/status management boundaries only. No restricted UI,
+  dataset service implementation, or source code was copied.
+- Unstructured (Apache-2.0): referenced the idea that normalized elements can
+  feed downstream cleaning/fingerprinting. Stage 24.6 implements its own
+  deterministic text normalization and SimHash policy without importing
+  Unstructured.
+- Docling (MIT): referenced provenance/version thinking around converted
+  document structures. Stage 24.6 stores only this project's own
+  `document_versions` lineage fields and does not copy Docling objects or code.
+- Haystack (Apache-2.0): referenced converter/component separation. Duplicate
+  fingerprinting is a small knowledge application policy, not a parser or model
+  adapter, and third-party components are not introduced.
+
+No new dependency was added for Stage 24.6. Exact duplicate, normalized hash,
+and near-duplicate SimHash are implemented with the Python standard library and
+project-owned code.

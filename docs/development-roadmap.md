@@ -792,8 +792,8 @@
    生产继续使用 PyPDF 基线。
 6. **24.4 `[completed]`**: OCR/Vision ports, fake/disabled adapters, resource and quota gates, image asset lifecycle, and PNG/JPEG pending-review input; real providers require separate approval.
    真实调用与启用另行授权。
-7. **24.5 `[follow-up validation]`**: persisted metadata suggestions, explicit administrator generate action, Disabled/Fake port, administrator accept/edit/reject confirmation, formal `document_versions` writes, review UI, audit, and migration. Follow-up acceptance is still the next task before 24.6.
-8. **24.6 `[待开始]`**：补充标准化正文去重、近重复提示、版本沿袭与失效治理筛选。
+7. **24.5 `[已完成]`**：persisted metadata suggestions, explicit administrator generate action, Disabled/Fake port, administrator accept/edit/reject confirmation, formal `document_versions` writes, review UI, audit, migration, and follow-up acceptance.
+8. **24.6 `[完成，待独立验收]`**：补充 exact/normalized/near 三层重复信号、版本沿袭、失效治理筛选、显式作为新版本发布和 JobPort 治理扫描；下一任务是独立验收。
 9. **24.7 `[待开始]`**：建立不可覆盖 v1 的 `corpus_v2` manifest、覆盖矩阵、清洗报告
    和评估集；Embedding 和生产导入另设闸门。
 10. **24.8 `[待开始]`**：完整 L2/L3 验收并形成发布候选；未获当次授权不部署。

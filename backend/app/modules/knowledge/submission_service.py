@@ -23,6 +23,7 @@ from app.modules.knowledge.asset_storage import (
     ControlledDocumentAssetStore,
     StagedAssetDeletion,
 )
+from app.modules.knowledge.deduplication import DuplicatePolicy
 from app.modules.knowledge.enrichment import DocumentEnrichmentService
 from app.modules.knowledge.ingestion import FileTypePolicy, ParseRequest
 from app.modules.knowledge.models import KnowledgeDocument, KnowledgeSubmission
@@ -152,6 +153,7 @@ class KnowledgeSubmissionService:
                 record.preview_pages = preview.page_count
                 record.parse_warnings = list(preview.warnings)
                 record.parse_quality = preview.quality or {}
+                DuplicatePolicy.assign_to_submission(record)
                 record.status = "pending_review"
             except DocumentParseError:
                 self.asset_store.cleanup_submission_assets(record.id)
@@ -225,6 +227,7 @@ class KnowledgeSubmissionService:
                 record.preview_pages = preview.page_count
                 record.parse_warnings = list(preview.warnings)
                 record.parse_quality = preview.quality or {}
+                DuplicatePolicy.assign_to_submission(record)
                 record.status = "pending_review"
             except DocumentParseError:
                 self.asset_store.cleanup_submission_assets(record.id)
