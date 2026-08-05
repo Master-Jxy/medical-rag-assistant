@@ -2008,20 +2008,43 @@ vision, Qwen, Embedding, network, model download, or key read occurs.
 `EnrichmentResourcePolicy` centralizes resource and cost gates: enabled,
 approved, max pages, image count, single/total image bytes, single/total pixels,
 per-document calls, timeout, concurrency, estimated token/call, and automatic
-retries fixed at zero. If disabled, unapproved, over budget, over pixel/byte
-limits, or over concurrency, enrichment returns a deterministic
-`waiting_enrichment`, `skipped`, or `limited` status through existing
-`parse_quality` JSON. Suspected CT, X-ray, pathology, radiology, or other
-diagnostic imagery returns `restricted` and is not auto-interpreted.
+retries fixed at zero. The call limit counts concrete port operations, not
+assets: one materialized image currently plans one OCR operation and one vision
+operation, and the service refuses the operation plan before calling a provider
+when it would exceed `max_calls_per_document`. Usage returned by OCR/Vision
+ports is aggregated and settled through the existing quota gate; if a later port
+fails after earlier usage was spent, that partial actual/unknown usage is
+settled, while failures before any usage release the reservation. If disabled,
+unapproved, over budget, over pixel/byte limits, or over concurrency,
+enrichment returns a deterministic `waiting_enrichment`, `skipped`, or
+`limited` status through existing `parse_quality` JSON. Suspected CT, X-ray,
+pathology, radiology, or other diagnostic imagery is detected from explicit
+image type/purpose categories or filename tokens, not arbitrary substrings, and
+returns `restricted` without auto-interpretation.
 
 Image asset storage is controlled by `ControlledDocumentAssetStore`. Assets are
 materialized only under `document_asset_dir` with server-generated UUID file
 names and `document-asset://...` references; parser/model paths are never
-trusted. Submission image assets are cleaned on withdraw and reject, promoted
-from submission scope to document scope after successful publication, cleaned
-with isolation cleanup, and removed when public documents are deleted or old
-documents are replaced. This keeps discovered provenance assets distinct from
-materialized server-side files.
+trusted. Only direct PNG/JPEG uploads parsed by `ImageStructuredDocumentParser`
+may set `source_kind=uploaded_image_file`; they are materialized only after the
+store revalidates source magic bytes, Pillow MIME, dimensions, byte size, pixel
+count, and SHA-256 against the parsed asset declaration. Docling/PDF discovered
+image assets remain provenance-only unless a future controlled extractor writes
+a real image file through the same store. Those assets keep
+`materialized=false`, receive `asset_not_materialized`, are not copied from the
+source PDF, and are not passed to OCR/Vision ports. Submission image assets are
+cleaned on withdraw and reject, promoted from submission scope to document scope
+after successful publication, cleaned with isolation cleanup, and removed when
+public documents are deleted or old documents are replaced.
+
+Asset cleanup IDs are constrained to `[A-Za-z0-9][A-Za-z0-9_-]{0,127}`; `.`,
+`..`, blank, whitespace-wrapped, control-character, path-separator, and
+drive-like values fail before any recursive cleanup. Recursive cleanup still
+performs resolved-path boundary checks under `document_asset_dir`.
+Pre-transaction cleanup failures surface as `DocumentStoreError`; publication
+isolation cleanup happens after the database commit and records
+`knowledge_submission.cleanup_pending` when file or sidecar cleanup cannot
+complete.
 
 PNG/JPEG uploads are accepted as pending-review report screenshots. `FileTypePolicy`
 checks image magic bytes, Pillow structure, UTF-8/text rules for text-like

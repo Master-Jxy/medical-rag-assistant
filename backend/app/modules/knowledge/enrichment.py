@@ -18,7 +18,7 @@ from app.modules.knowledge.ingestion import (
     ParsedDocument,
     ParsedElement,
 )
-from app.modules.usage.contracts import ModelUsage
+from app.modules.usage.contracts import ModelUsage, TokenMeasurement
 from app.modules.usage.quota_service import QuotaGatePort
 
 
@@ -131,6 +131,12 @@ class EnrichmentResourcePolicy:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class EnrichmentOperation:
+    kind: str
+    asset: object
+
+
 class DocumentEnrichmentService:
     def __init__(
         self,
@@ -169,7 +175,15 @@ class DocumentEnrichmentService:
                 detail={"reason": EnrichmentErrorCode.NOT_APPROVED.value, "asset_count": len(assets)},
                 warning="OCR/Vision enrichment has not been approved for this document.",
             )
-        restricted = [asset for asset in assets if _is_diagnostic_asset(asset.metadata)]
+        materialized_assets = tuple(asset for asset in assets if _is_materialized_asset(asset))
+        if not materialized_assets:
+            return _with_enrichment_quality(
+                document,
+                status=EnrichmentStatus.WAITING,
+                detail={"reason": "asset_not_materialized", "asset_count": len(assets)},
+                warning="Image assets are provenance-only; no materialized file is available for OCR/Vision.",
+            )
+        restricted = [asset for asset in materialized_assets if _is_diagnostic_asset(asset.metadata)]
         if restricted:
             return _with_enrichment_quality(
                 document,
@@ -180,7 +194,8 @@ class DocumentEnrichmentService:
                 },
                 warning="Diagnostic imagery such as CT, X-ray, or pathology images is not auto-interpreted.",
             )
-        resource_error = self._resource_error(assets)
+        operations = self._build_operation_plan(materialized_assets)
+        resource_error = self._resource_error(materialized_assets, operation_count=len(operations))
         if resource_error:
             return _with_enrichment_quality(
                 document,
@@ -196,12 +211,18 @@ class DocumentEnrichmentService:
                 warning="OCR/Vision enrichment skipped because the concurrency limit is full.",
             )
         try:
-            return self._run_enrichment(document, user_id=user_id)
+            return self._run_enrichment(document, operations, user_id=user_id)
         finally:
             self._semaphore.release()
 
-    def _run_enrichment(self, document: ParsedDocument, *, user_id: str | None) -> ParsedDocument:
-        calls = min(len(document.assets), self.policy.max_calls_per_document)
+    def _run_enrichment(
+        self,
+        document: ParsedDocument,
+        operations: tuple[EnrichmentOperation, ...],
+        *,
+        user_id: str | None,
+    ) -> ParsedDocument:
+        calls = len(operations)
         reservation = None
         if self.quota_gate is not None and user_id is not None:
             requested = calls * self.policy.estimated_tokens_per_call
@@ -215,34 +236,44 @@ class DocumentEnrichmentService:
                 estimated_output_tokens=0,
             )
         new_elements = list(document.elements)
+        text_by_asset: dict[str, list[str]] = {}
+        usages: list[ModelUsage] = []
         try:
-            for asset in document.assets[:calls]:
-                text = self._enrich_asset(asset)
+            for operation in operations:
+                text, usage = self._run_operation(operation)
+                usages.append(usage)
                 if text.strip():
-                    new_elements.append(
-                        ParsedElement(
-                            element_id=f"{asset.asset_id}-image-text",
-                            kind="image_text",
-                            text=text.strip(),
-                            page_no=asset.page_no,
-                            order=len(new_elements) + 1,
-                            metadata={
-                                "asset_id": asset.asset_id,
-                                "source": "approved_document_enrichment",
-                            },
-                        )
-                    )
-            if reservation is not None and self.quota_gate is not None:
-                self.quota_gate.settle(reservation.id, ModelUsage.not_applicable())
+                    text_by_asset.setdefault(operation.asset.asset_id, []).append(text.strip())
         except Exception:
             if reservation is not None and self.quota_gate is not None:
-                self.quota_gate.release(reservation.id)
+                if usages:
+                    self.quota_gate.settle(reservation.id, _aggregate_usage(usages))
+                else:
+                    self.quota_gate.release(reservation.id)
             return _with_enrichment_quality(
                 document,
                 status=EnrichmentStatus.FAILED,
                 detail={"reason": "port_failure", "asset_count": len(document.assets)},
                 warning="OCR/Vision enrichment failed; manual review remains available.",
             )
+        if reservation is not None and self.quota_gate is not None:
+            self.quota_gate.settle(reservation.id, _aggregate_usage(usages))
+        for asset in document.assets:
+            text = "\n".join(text_by_asset.get(asset.asset_id, ())).strip()
+            if text:
+                new_elements.append(
+                    ParsedElement(
+                        element_id=f"{asset.asset_id}-image-text",
+                        kind="image_text",
+                        text=text,
+                        page_no=asset.page_no,
+                        order=len(new_elements) + 1,
+                        metadata={
+                            "asset_id": asset.asset_id,
+                            "source": "approved_document_enrichment",
+                        },
+                    )
+                )
         if not any(element.kind == "image_text" for element in new_elements):
             return _with_enrichment_quality(
                 document,
@@ -262,17 +293,20 @@ class DocumentEnrichmentService:
             detail={"asset_count": len(document.assets), "calls": calls},
         )
 
-    def _enrich_asset(self, asset) -> str:
-        ocr = self.ocr.extract_text(
-            OcrRequest(
-                asset_id=asset.asset_id,
-                storage_ref=asset.storage_ref,
-                page_no=asset.page_no,
-                mime_type=asset.mime_type,
-                timeout_seconds=self.policy.timeout_seconds,
+    def _run_operation(self, operation: EnrichmentOperation) -> tuple[str, ModelUsage]:
+        asset = operation.asset
+        if operation.kind == "ocr":
+            result = self.ocr.extract_text(
+                OcrRequest(
+                    asset_id=asset.asset_id,
+                    storage_ref=asset.storage_ref,
+                    page_no=asset.page_no,
+                    mime_type=asset.mime_type,
+                    timeout_seconds=self.policy.timeout_seconds,
+                )
             )
-        )
-        vision = self.vision.understand(
+            return result.text, result.usage
+        result = self.vision.understand(
             VisionDocumentRequest(
                 asset_id=asset.asset_id,
                 storage_ref=asset.storage_ref,
@@ -284,17 +318,23 @@ class DocumentEnrichmentService:
         )
         return "\n".join(
             part
-            for part in (
-                ocr.text.strip(),
-                vision.extracted_text.strip(),
-                vision.description.strip(),
-            )
+            for part in (result.extracted_text.strip(), result.description.strip())
             if part
+        ), result.usage
+
+    @staticmethod
+    def _build_operation_plan(assets) -> tuple[EnrichmentOperation, ...]:
+        return tuple(
+            EnrichmentOperation(kind=kind, asset=asset)
+            for asset in assets
+            for kind in ("ocr", "vision")
         )
 
-    def _resource_error(self, assets) -> str | None:
+    def _resource_error(self, assets, *, operation_count: int) -> str | None:
         if len(assets) > self.policy.max_images:
             return "image_count_limit"
+        if operation_count > self.policy.max_calls_per_document:
+            return "call_count_limit"
         total_bytes = 0
         total_pixels = 0
         pages = {asset.page_no for asset in assets if asset.page_no is not None}
@@ -314,8 +354,6 @@ class DocumentEnrichmentService:
             return "total_image_byte_limit"
         if total_pixels > self.policy.max_total_pixels:
             return "total_image_pixel_limit"
-        if len(assets) > self.policy.max_calls_per_document:
-            return "call_count_limit"
         return None
 
 
@@ -348,21 +386,69 @@ def _with_enrichment_quality(
     )
 
 
-def _is_diagnostic_asset(metadata: Mapping[str, object]) -> bool:
-    text = " ".join(
-        str(metadata.get(key) or "").lower()
-        for key in ("file_name", "source_name", "purpose", "image_type")
+def _is_materialized_asset(asset) -> bool:
+    metadata = dict(asset.metadata or {})
+    return (
+        metadata.get("materialized") is True
+        and str(asset.storage_ref).startswith("document-asset://")
+        and asset.mime_type in {"image/png", "image/jpeg"}
     )
-    markers = (
+
+
+def _aggregate_usage(usages: list[ModelUsage]) -> ModelUsage:
+    if not usages:
+        return ModelUsage.not_applicable()
+    measurements = {usage.measurement for usage in usages}
+    if TokenMeasurement.UNKNOWN in measurements:
+        return ModelUsage.unknown()
+    actual = [usage for usage in usages if usage.measurement is TokenMeasurement.ACTUAL]
+    if not actual:
+        return ModelUsage.not_applicable()
+    return ModelUsage.actual(
+        sum(int(usage.input_tokens or 0) for usage in actual),
+        sum(int(usage.output_tokens or 0) for usage in actual),
+    )
+
+
+def _is_diagnostic_asset(metadata: Mapping[str, object]) -> bool:
+    restricted_categories = {
         "ct",
-        "x-ray",
         "xray",
+        "x_ray",
+        "x-ray",
         "pathology",
         "radiology",
-        "diagnostic_image",
         "diagnostic",
-        "病理",
-        "影像诊断",
-        "放射",
+        "diagnostic_image",
+        "medical_imaging_diagnosis",
+    }
+    image_type_tokens = _category_tokens(metadata.get("image_type"))
+    purpose_tokens = _category_tokens(metadata.get("purpose"))
+    if image_type_tokens & restricted_categories:
+        return True
+    if purpose_tokens & restricted_categories:
+        return True
+    name_tokens = _name_tokens(
+        " ".join(str(metadata.get(key) or "") for key in ("file_name", "source_name"))
     )
-    return any(marker in text for marker in markers)
+    return bool(name_tokens & {"ct", "xray", "x-ray", "pathology", "radiology"})
+
+
+def _category_tokens(value: object) -> set[str]:
+    normalized = str(value or "").strip().lower().replace("_", " ")
+    tokens = _name_tokens(normalized)
+    compact = "_".join(normalized.split())
+    if compact:
+        tokens.add(compact)
+    return tokens
+
+
+def _name_tokens(value: str) -> set[str]:
+    normalized = "".join(
+        char.lower() if char.isalnum() else " "
+        for char in value
+    )
+    tokens = set(normalized.split())
+    if "x" in tokens and "ray" in tokens:
+        tokens.add("x-ray")
+    return tokens

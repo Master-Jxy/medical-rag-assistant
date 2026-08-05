@@ -3,14 +3,22 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import shutil
 from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
 
+from PIL import Image, UnidentifiedImageError
+
 from app.core.config import Settings
-from app.core.exceptions import DocumentStoreError
-from app.modules.knowledge.ingestion import ParsedAsset, ParsedDocument
+from app.core.exceptions import DocumentParseError, DocumentStoreError
+from app.modules.knowledge.ingestion import ParseQuality, ParsedAsset, ParsedDocument
+
+
+SAFE_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}")
+TRUSTED_UPLOAD_SOURCE_KIND = "uploaded_image_file"
+MATERIALIZED_MIME_TYPES = {"image/png": ".png", "image/jpeg": ".jpg"}
 
 
 class ControlledDocumentAssetStore:
@@ -29,16 +37,31 @@ class ControlledDocumentAssetStore:
         if not document.assets:
             return document
         target_dir = self._submission_dir(submission_id)
-        materialized = tuple(
-            self._materialize_asset(asset, source_path, target_dir, scope="submission")
-            for asset in document.assets
-        )
+        assets: list[ParsedAsset] = []
+        warnings = list(document.warnings)
+        for asset in document.assets:
+            if self._can_materialize_from_upload(asset):
+                assets.append(
+                    self._materialize_asset(asset, source_path, target_dir, scope="submission")
+                )
+            else:
+                assets.append(self._mark_not_materialized(asset))
+                warnings.append(
+                    "Image asset is provenance-only and was not materialized for OCR/Vision."
+                )
+        deduped_warnings = tuple(dict.fromkeys(warnings))
         return ParsedDocument(
             document_metadata=document.document_metadata,
             elements=document.elements,
-            assets=materialized,
-            warnings=document.warnings,
-            quality=document.quality,
+            assets=tuple(assets),
+            warnings=deduped_warnings,
+            quality=ParseQuality(
+                status="warning" if deduped_warnings else document.quality.status,
+                counts=document.quality.counts,
+                page_results=document.quality.page_results,
+                warnings=deduped_warnings,
+                parser_name=document.quality.parser_name,
+            ),
         )
 
     def promote_submission_assets(self, submission_id: str, document_id: str) -> None:
@@ -67,23 +90,74 @@ class ControlledDocumentAssetStore:
         *,
         scope: str,
     ) -> ParsedAsset:
-        if asset.mime_type not in {"image/png", "image/jpeg"}:
-            raise DocumentStoreError()
-        suffix = ".png" if asset.mime_type == "image/png" else ".jpg"
+        actual = self._inspect_upload_image(source_path)
+        if actual["mime_type"] != asset.mime_type:
+            raise DocumentParseError("Image asset MIME does not match validated upload")
+        if actual["sha256"] != asset.sha256:
+            raise DocumentParseError("Image asset hash does not match validated upload")
+        metadata = dict(asset.metadata)
+        for key in ("width", "height", "pixel_count", "byte_size"):
+            expected = metadata.get(key)
+            if expected is not None and int(expected) != int(actual[key]):
+                raise DocumentParseError("Image asset metadata does not match validated upload")
+        suffix = MATERIALIZED_MIME_TYPES[asset.mime_type]
         target_dir.mkdir(parents=True, exist_ok=True)
         target_path = target_dir / f"{uuid4()}{suffix}"
         self._assert_under_base(target_path)
         shutil.copyfile(source_path, target_path)
-        digest = hashlib.sha256(target_path.read_bytes()).hexdigest()
-        metadata = dict(asset.metadata)
         metadata["materialized"] = True
         metadata["storage_scope"] = scope
         return replace(
             asset,
             storage_ref=self._storage_ref(target_path),
-            sha256=digest,
+            sha256=str(actual["sha256"]),
             metadata=metadata,
         )
+
+    @staticmethod
+    def _can_materialize_from_upload(asset: ParsedAsset) -> bool:
+        metadata = dict(asset.metadata or {})
+        return (
+            metadata.get("source_kind") == TRUSTED_UPLOAD_SOURCE_KIND
+            and metadata.get("materialized") is False
+            and asset.mime_type in MATERIALIZED_MIME_TYPES
+        )
+
+    @staticmethod
+    def _mark_not_materialized(asset: ParsedAsset) -> ParsedAsset:
+        metadata = dict(asset.metadata or {})
+        metadata["materialized"] = False
+        metadata["materialization_status"] = "asset_not_materialized"
+        return replace(asset, metadata=metadata)
+
+    @staticmethod
+    def _inspect_upload_image(path: Path) -> dict[str, object]:
+        data = path.read_bytes()
+        if data.startswith(b"\x89PNG\r\n\x1a\n"):
+            expected_mime = "image/png"
+        elif data.startswith(b"\xff\xd8\xff"):
+            expected_mime = "image/jpeg"
+        else:
+            raise DocumentParseError("Image asset source is not a validated PNG/JPEG upload")
+        try:
+            with Image.open(path) as image:
+                mime_type = image.get_format_mimetype()
+                width, height = image.size
+                image.verify()
+        except (UnidentifiedImageError, OSError) as exc:
+            raise DocumentParseError("Image asset source structure is invalid") from exc
+        if mime_type != expected_mime:
+            raise DocumentParseError("Image asset source MIME is invalid")
+        if width <= 0 or height <= 0:
+            raise DocumentParseError("Image asset source dimensions are invalid")
+        return {
+            "mime_type": mime_type,
+            "width": width,
+            "height": height,
+            "pixel_count": width * height,
+            "byte_size": len(data),
+            "sha256": hashlib.sha256(data).hexdigest(),
+        }
 
     def _submission_dir(self, submission_id: str) -> Path:
         return self.base_dir / "submissions" / self._safe_id(submission_id)
@@ -94,7 +168,7 @@ class ControlledDocumentAssetStore:
     @staticmethod
     def _safe_id(value: str) -> str:
         cleaned = value.strip()
-        if not cleaned or any(char in cleaned for char in {"/", "\\", ":", "\x00"}):
+        if value != cleaned or cleaned in {".", ".."} or SAFE_ID_PATTERN.fullmatch(cleaned) is None:
             raise DocumentStoreError()
         return cleaned
 
@@ -103,8 +177,8 @@ class ControlledDocumentAssetStore:
         if path.exists():
             try:
                 shutil.rmtree(path)
-            except OSError:
-                pass
+            except OSError as exc:
+                raise DocumentStoreError() from exc
 
     def _assert_under_base(self, path: Path) -> None:
         base = self.base_dir.resolve()

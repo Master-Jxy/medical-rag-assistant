@@ -477,6 +477,7 @@ class ImageStructuredDocumentParser:
                 "pixel_count": pixel_count,
                 "byte_size": byte_size,
                 "purpose": "document_understanding",
+                "source_kind": "uploaded_image_file",
                 "materialized": False,
             },
         )

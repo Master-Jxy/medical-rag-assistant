@@ -241,7 +241,7 @@ class KnowledgeReviewService:
         try:
             isolated_path.unlink(missing_ok=True)
             self.asset_store.cleanup_submission_assets(record.id)
-        except OSError as exc:
+        except (OSError, DocumentStoreError) as exc:
             try:
                 self.audit.record(
                     AuditRecord(

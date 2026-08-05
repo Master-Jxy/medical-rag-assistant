@@ -22,6 +22,32 @@ Stage 24.4 已完成本地开发与无模型验证，未部署、未推送，未
 
 开源借鉴记录：24.4 参考 Docling picture/page provenance、Unstructured hi_res/OCR strategy、Dify file/image upload quota 和 RAGFlow parser task 状态的边界思想；没有复制第三方源码，没有引入 Docling/MinerU/Unstructured 重型栈。
 
+24.4 follow-up security/accounting patch (2026-08-06):
+- `ControlledDocumentAssetStore` now materializes only direct PNG/JPEG upload
+  assets marked `source_kind=uploaded_image_file` after revalidating source
+  magic bytes, Pillow MIME, dimensions, byte size, pixel count, and SHA-256.
+  PDF/Docling discovered image assets remain provenance-only with
+  `materialized=false` and `asset_not_materialized`; they are not copied from
+  the source PDF, do not receive fake image suffixes, and are not sent to
+  OCR/Vision ports.
+- Asset cleanup IDs are now limited to the project identifier alphabet and
+  explicitly reject `.`, `..`, blank, whitespace-wrapped, control-character,
+  path-separator, and drive-like values before recursive cleanup. Boundary
+  checks under `document_asset_dir` remain in place, and recursive cleanup
+  failures raise `DocumentStoreError` instead of being silently swallowed.
+- Enrichment call limits now count concrete port operations. One materialized
+  image plans one OCR call and one vision call; the service refuses over-limit
+  plans before any port call. OCR/Vision `ModelUsage` is aggregated and settled
+  through the existing quota gate; failures before any usage release the
+  reservation, while partial failures settle usage already spent.
+- Diagnostic image restriction now uses explicit image type/purpose categories
+  and filename tokens, so ordinary names such as `fact-sheet.png` and
+  `document.png` are not rejected merely because a word contains `ct`.
+- Publication isolation cleanup records the existing
+  `knowledge_submission.cleanup_pending` audit warning for both `OSError` and
+  `DocumentStoreError`. No real OCR, vision provider, model, network, production
+  data, deployment, or protected auth change was performed.
+
 ## 2. 本地验证结果
 
 已通过：
@@ -31,7 +57,13 @@ backend\.venv\Scripts\python.exe -m pytest -q backend/tests/test_document_parser
 52 passed, 2 warnings
 
 backend\.venv\Scripts\python.exe -m pytest -q backend/tests
-534 passed, 120 warnings
+555 passed, 120 warnings
+
+backend\.venv\Scripts\python.exe -m pytest -q backend/tests/test_document_enrichment.py
+32 passed
+
+backend\.venv\Scripts\python.exe -m pytest -q backend/tests/test_document_enrichment.py backend/tests/test_document_parser_contract.py backend/tests/test_knowledge_submissions_api.py backend/tests/test_admin_reviews_api.py backend/tests/test_document_service.py
+73 passed, 2 warnings
 
 D:\Nodejs\npm.cmd --prefix frontend test
 18 files / 74 tests passed
