@@ -64,11 +64,28 @@ Stage 24.4 已完成本地开发与无模型验证，未部署、未推送，未
   `knowledge_submission.cleanup_pending` audit warnings; no broad job queue
   refactor or production operation was performed.
 
+24.4 final security follow-up (2026-08-06):
+- `retry_pending_cleanups()` now validates cleanup markers before deleting any
+  tombstone: scope must be `submission` or `document`, `object_id` must pass the
+  safe-id policy, marker filename/payload/tombstone deletion id must match, and
+  tombstones must resolve directly under `.trash/{scope}s` with basename
+  `.{object_id}.{32hex}.deleting`. Malicious markers that point at normal
+  `documents/` or `submissions/` directories, cross scopes, use traversal,
+  wrong basenames, mismatched filenames, or symlinks are skipped and retained.
+- Post-commit marker writes are now best-effort. If tombstone deletion fails and
+  `.cleanup_pending` marker write/rename also fails, delete/replace/withdraw/
+  reject still return the already committed business success; lifecycle and
+  submission services log a non-sensitive warning, and review paths still try to
+  record `knowledge_submission.cleanup_pending`.
+
 ## 2. 本地验证结果
 
 已通过：
 
 ```text
+backend\.venv\Scripts\python.exe -m pytest -q backend/tests/test_document_enrichment.py backend/tests/test_document_service.py backend/tests/test_knowledge_submissions_api.py backend/tests/test_admin_reviews_api.py
+75 passed, 1 skipped, 2 warnings
+
 backend\.venv\Scripts\python.exe -m pytest -q backend/tests/test_document_enrichment.py backend/tests/test_document_service.py backend/tests/test_knowledge_submissions_api.py backend/tests/test_admin_reviews_api.py
 66 passed, 2 warnings
 
@@ -76,7 +93,7 @@ backend\.venv\Scripts\python.exe -m pytest -q backend/tests/test_document_parser
 52 passed, 2 warnings
 
 backend\.venv\Scripts\python.exe -m pytest -q backend/tests
-561 passed, 120 warnings
+570 passed, 1 skipped, 120 warnings
 
 backend\.venv\Scripts\python.exe -m pytest -q backend/tests/test_document_enrichment.py
 32 passed

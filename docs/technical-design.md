@@ -2050,10 +2050,18 @@ asset directory back. After the database state is committed,
 the business state is not rolled back; the store writes a durable
 `.cleanup_pending/*.json` marker with only scope, object id, tombstone relative
 path, and error type, and admin review paths also record
-`knowledge_submission.cleanup_pending`. `retry_pending_cleanups()` can later
-delete tombstones and remove markers. This staged protocol is used by public
-delete, managed permanent delete, replace, ordinary withdraw, reject, and
-publication isolation cleanup.
+`knowledge_submission.cleanup_pending`. Marker creation is best-effort after
+commit: failure to write or rename the marker is logged without changing the
+already committed business result. `retry_pending_cleanups()` can later delete
+tombstones and remove markers, but only after strict marker validation: scope
+must be `submission` or `document`, `object_id` must pass the same safe-id
+policy, the marker filename must match the payload and tombstone deletion id,
+and the tombstone must be a direct `.trash/{scope}s/.{object_id}.{32hex}.deleting`
+directory whose resolved parent is the expected trash directory. Invalid or
+tampered markers are skipped and left in place; they never trigger deletion of
+normal `documents/` or `submissions/` asset directories. This staged protocol is
+used by public delete, managed permanent delete, replace, ordinary withdraw,
+reject, and publication isolation cleanup.
 
 PNG/JPEG uploads are accepted as pending-review report screenshots. `FileTypePolicy`
 checks image magic bytes, Pillow structure, UTF-8/text rules for text-like

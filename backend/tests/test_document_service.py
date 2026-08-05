@@ -267,6 +267,53 @@ def test_lifecycle_delete_post_commit_asset_cleanup_failure_marks_pending(
         engine.dispose()
 
 
+def test_lifecycle_delete_marker_write_failure_still_returns_success(
+    tmp_path, monkeypatch
+) -> None:
+    service, vector_store, session, engine, owner, _ = build_service(tmp_path)
+    try:
+        uploaded = asyncio.run(
+            service.process_upload(
+                owner.id,
+                make_upload("asset-marker-fail.txt", "asset marker failure".encode()),
+            )
+        )
+        record = session.get(KnowledgeDocument, uploaded.document_id)
+        chunk_ids = set(record.chunk_ids)
+        asset_dir = service.settings.document_asset_dir / "documents" / record.id
+        asset_dir.mkdir(parents=True, exist_ok=True)
+        (asset_dir / "asset.txt").write_text("sidecar", encoding="utf-8")
+        original_rmtree = shutil.rmtree
+
+        def fail_trash_rmtree(path):
+            if ".trash" in Path(path).parts:
+                raise OSError("simulated post-commit cleanup failure")
+            return original_rmtree(path)
+
+        def fail_mark_cleanup_pending(self, staged, *, reason):
+            del self, staged, reason
+            raise OSError("simulated marker write failure")
+
+        monkeypatch.setattr("app.modules.knowledge.asset_storage.shutil.rmtree", fail_trash_rmtree)
+        monkeypatch.setattr(
+            "app.modules.knowledge.asset_storage.ControlledDocumentAssetStore.mark_cleanup_pending",
+            fail_mark_cleanup_pending,
+        )
+
+        deleted_id = service.lifecycle.delete_document(record)
+
+        assert deleted_id == uploaded.document_id
+        assert session.get(KnowledgeDocument, uploaded.document_id) is None
+        assert not asset_dir.exists()
+        assert chunk_ids.issubset(set(vector_store.deleted_ids))
+        assert vector_store.restore_calls == 0
+        assert not list((service.settings.document_asset_dir / ".cleanup_pending").glob("*.json"))
+        assert list((service.settings.document_asset_dir / ".trash" / "documents").glob("*"))
+    finally:
+        session.close()
+        engine.dispose()
+
+
 def test_duplicate_content_is_rejected_before_second_embedding(tmp_path) -> None:
     service, vector_store, session, engine, owner, _ = build_service(tmp_path)
     try:
@@ -527,6 +574,58 @@ def test_replace_post_commit_old_asset_cleanup_failure_marks_pending(
         assert not old_asset_dir.exists()
         assert vector_store.restore_calls == 0
         assert list((service.settings.document_asset_dir / ".cleanup_pending").glob("*.json"))
+        assert list((service.settings.document_asset_dir / ".trash" / "documents").glob("*"))
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_replace_marker_write_failure_still_returns_success(
+    tmp_path, monkeypatch
+) -> None:
+    service, vector_store, session, engine, owner, _ = build_service(tmp_path)
+    try:
+        uploaded = asyncio.run(
+            service.process_upload(
+                owner.id,
+                make_upload("old-marker.txt", "old marker document content".encode()),
+            )
+        )
+        old_record = session.get(KnowledgeDocument, uploaded.document_id)
+        old_asset_dir = service.settings.document_asset_dir / "documents" / old_record.id
+        old_asset_dir.mkdir(parents=True, exist_ok=True)
+        (old_asset_dir / "asset.txt").write_text("sidecar", encoding="utf-8")
+        original_rmtree = shutil.rmtree
+
+        def fail_trash_rmtree(path):
+            if ".trash" in Path(path).parts:
+                raise OSError("simulated replace cleanup failure")
+            return original_rmtree(path)
+
+        def fail_mark_cleanup_pending(self, staged, *, reason):
+            del self, staged, reason
+            raise OSError("simulated marker write failure")
+
+        monkeypatch.setattr("app.modules.knowledge.asset_storage.shutil.rmtree", fail_trash_rmtree)
+        monkeypatch.setattr(
+            "app.modules.knowledge.asset_storage.ControlledDocumentAssetStore.mark_cleanup_pending",
+            fail_mark_cleanup_pending,
+        )
+
+        replacement = asyncio.run(
+            service.lifecycle.replace_document(
+                uploaded.document_id,
+                make_upload("new-marker.txt", "new marker document content".encode()),
+                actor_user_id=owner.id,
+            )
+        )
+
+        assert replacement.id != uploaded.document_id
+        assert session.get(KnowledgeDocument, uploaded.document_id) is None
+        assert session.get(KnowledgeDocument, replacement.id) is not None
+        assert not old_asset_dir.exists()
+        assert vector_store.restore_calls == 0
+        assert not list((service.settings.document_asset_dir / ".cleanup_pending").glob("*.json"))
         assert list((service.settings.document_asset_dir / ".trash" / "documents").glob("*"))
     finally:
         session.close()

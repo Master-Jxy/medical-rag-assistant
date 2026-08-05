@@ -18,8 +18,10 @@ from app.modules.knowledge.ingestion import ParseQuality, ParsedAsset, ParsedDoc
 
 
 SAFE_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}")
+DELETION_ID_PATTERN = re.compile(r"[0-9a-f]{32}")
 TRUSTED_UPLOAD_SOURCE_KIND = "uploaded_image_file"
 MATERIALIZED_MIME_TYPES = {"image/png": ".png", "image/jpeg": ".jpg"}
+ASSET_DELETION_SCOPES = {"submission", "document"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,14 +120,14 @@ class ControlledDocumentAssetStore:
             raise DocumentStoreError()
         staged.original_dir.parent.mkdir(parents=True, exist_ok=True)
         staged.tombstone_dir.replace(staged.original_dir)
-        staged.pending_marker.unlink(missing_ok=True)
+        self._safe_unlink_marker(staged.pending_marker)
 
     def finalize_staged_deletion(self, staged: StagedAssetDeletion) -> None:
         if not staged.moved:
-            staged.pending_marker.unlink(missing_ok=True)
+            self._safe_unlink_marker(staged.pending_marker)
             return
         self._safe_rmtree(staged.tombstone_dir)
-        staged.pending_marker.unlink(missing_ok=True)
+        self._safe_unlink_marker(staged.pending_marker)
 
     def mark_cleanup_pending(
         self,
@@ -148,8 +150,21 @@ class ControlledDocumentAssetStore:
             "reason": reason,
         }
         temporary = staged.pending_marker.with_suffix(".tmp")
+        self._assert_under_base(temporary)
         temporary.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
         temporary.replace(staged.pending_marker)
+
+    def try_mark_cleanup_pending(
+        self,
+        staged: StagedAssetDeletion,
+        *,
+        reason: str,
+    ) -> bool:
+        try:
+            self.mark_cleanup_pending(staged, reason=reason)
+        except Exception:
+            return False
+        return True
 
     def retry_pending_cleanups(self) -> int:
         marker_dir = self._cleanup_pending_dir()
@@ -157,13 +172,10 @@ class ControlledDocumentAssetStore:
             return 0
         cleaned = 0
         for marker in sorted(marker_dir.glob("*.json")):
-            self._assert_under_base(marker)
             try:
-                payload = json.loads(marker.read_text(encoding="utf-8"))
-                tombstone = self.base_dir / str(payload["tombstone"])
-                self._assert_under_base(tombstone)
+                tombstone = self._validated_pending_tombstone(marker)
                 self._safe_rmtree(tombstone)
-                marker.unlink(missing_ok=True)
+                self._safe_unlink_marker(marker)
                 cleaned += 1
             except Exception:
                 continue
@@ -260,8 +272,9 @@ class ControlledDocumentAssetStore:
     ) -> StagedAssetDeletion:
         self._assert_under_base(original_dir)
         safe_id = self._safe_id(object_id)
-        tombstone_dir = self._trash_dir(scope) / f".{safe_id}.{uuid4().hex}.deleting"
-        pending_marker = self._cleanup_pending_dir() / f"{scope}-{safe_id}-{uuid4().hex}.json"
+        deletion_id = uuid4().hex
+        tombstone_dir = self._tombstone_dir(scope, safe_id, deletion_id)
+        pending_marker = self._pending_marker_path(scope, safe_id, deletion_id)
         self._assert_under_base(tombstone_dir)
         self._assert_under_base(pending_marker)
         if not original_dir.exists():
@@ -288,10 +301,80 @@ class ControlledDocumentAssetStore:
         )
 
     def _trash_dir(self, scope: str) -> Path:
+        if scope not in ASSET_DELETION_SCOPES:
+            raise DocumentStoreError()
         return self.base_dir / ".trash" / f"{scope}s"
 
     def _cleanup_pending_dir(self) -> Path:
         return self.base_dir / ".cleanup_pending"
+
+    def _tombstone_dir(self, scope: str, object_id: str, deletion_id: str) -> Path:
+        safe_id = self._safe_id(object_id)
+        if DELETION_ID_PATTERN.fullmatch(deletion_id) is None:
+            raise DocumentStoreError()
+        return self._trash_dir(scope) / f".{safe_id}.{deletion_id}.deleting"
+
+    def _pending_marker_path(self, scope: str, object_id: str, deletion_id: str) -> Path:
+        safe_id = self._safe_id(object_id)
+        if DELETION_ID_PATTERN.fullmatch(deletion_id) is None:
+            raise DocumentStoreError()
+        return self._cleanup_pending_dir() / f"{scope}-{safe_id}-{deletion_id}.json"
+
+    def _safe_unlink_marker(self, marker: Path) -> None:
+        self._assert_under_base(marker)
+        if marker.parent.resolve() != self._cleanup_pending_dir().resolve():
+            raise DocumentStoreError()
+        try:
+            marker.unlink(missing_ok=True)
+        except OSError as exc:
+            raise DocumentStoreError() from exc
+
+    def _validated_pending_tombstone(self, marker: Path) -> Path:
+        self._assert_under_base(marker)
+        if marker.parent.resolve() != self._cleanup_pending_dir().resolve():
+            raise DocumentStoreError()
+        payload = json.loads(marker.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise DocumentStoreError()
+        scope = payload.get("scope")
+        object_id = payload.get("object_id")
+        tombstone_value = payload.get("tombstone")
+        reason = payload.get("reason")
+        if scope not in ASSET_DELETION_SCOPES:
+            raise DocumentStoreError()
+        if not isinstance(object_id, str):
+            raise DocumentStoreError()
+        safe_id = self._safe_id(object_id)
+        if safe_id != object_id:
+            raise DocumentStoreError()
+        if not isinstance(tombstone_value, str) or not isinstance(reason, str):
+            raise DocumentStoreError()
+        if "\\" in tombstone_value or tombstone_value.startswith("/"):
+            raise DocumentStoreError()
+        parts = tombstone_value.split("/")
+        if ".." in parts:
+            raise DocumentStoreError()
+        if len(parts) != 3 or parts[0] != ".trash" or parts[1] != f"{scope}s":
+            raise DocumentStoreError()
+        basename = parts[2]
+        prefix = f".{safe_id}."
+        suffix = ".deleting"
+        if not basename.startswith(prefix) or not basename.endswith(suffix):
+            raise DocumentStoreError()
+        deletion_id = basename[len(prefix) : -len(suffix)]
+        if DELETION_ID_PATTERN.fullmatch(deletion_id) is None:
+            raise DocumentStoreError()
+        if marker.name != f"{scope}-{safe_id}-{deletion_id}.json":
+            raise DocumentStoreError()
+        tombstone = self.base_dir / tombstone_value
+        self._assert_under_base(tombstone)
+        expected_parent = self._trash_dir(scope).resolve()
+        if tombstone.resolve().parent != expected_parent:
+            raise DocumentStoreError()
+        expected_tombstone = self._tombstone_dir(scope, safe_id, deletion_id)
+        if tombstone != expected_tombstone:
+            raise DocumentStoreError()
+        return tombstone
 
     @staticmethod
     def _safe_id(value: str) -> str:
@@ -302,6 +385,8 @@ class ControlledDocumentAssetStore:
 
     def _safe_rmtree(self, path: Path) -> None:
         self._assert_under_base(path)
+        if path.is_symlink():
+            raise DocumentStoreError()
         if path.exists():
             try:
                 shutil.rmtree(path)

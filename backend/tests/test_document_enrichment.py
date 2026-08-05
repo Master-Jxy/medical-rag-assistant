@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -464,6 +465,116 @@ def test_asset_store_stage_rename_failure_leaves_original_assets(tmp_path, monke
     assert target.is_dir()
     assert (target / "asset.txt").is_file()
     assert not list((settings.document_asset_dir / ".trash" / "submissions").glob("*"))
+
+
+@pytest.mark.parametrize(
+    ("marker_name", "payload"),
+    [
+        (
+            "document-doc-1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json",
+            {
+                "scope": "document",
+                "object_id": "doc-1",
+                "tombstone": "documents/doc-1",
+                "reason": "DocumentStoreError",
+            },
+        ),
+        (
+            "document-doc-1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json",
+            {
+                "scope": "document",
+                "object_id": "doc-1",
+                "tombstone": ".trash/submissions/.doc-1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.deleting",
+                "reason": "DocumentStoreError",
+            },
+        ),
+        (
+            "document-doc-1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json",
+            {
+                "scope": "document",
+                "object_id": "doc-1",
+                "tombstone": "../documents/doc-1",
+                "reason": "DocumentStoreError",
+            },
+        ),
+        (
+            "document-doc-1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json",
+            {
+                "scope": "document",
+                "object_id": "doc-1",
+                "tombstone": ".trash/documents/doc-1",
+                "reason": "DocumentStoreError",
+            },
+        ),
+        (
+            "document-doc-1-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json",
+            {
+                "scope": "document",
+                "object_id": "doc-1",
+                "tombstone": ".trash/documents/.doc-1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.deleting",
+                "reason": "DocumentStoreError",
+            },
+        ),
+    ],
+)
+def test_retry_pending_cleanups_rejects_malicious_markers(
+    tmp_path,
+    marker_name,
+    payload,
+) -> None:
+    settings = Settings(_env_file=None, document_asset_dir=tmp_path / "assets")
+    protected = settings.document_asset_dir / "documents" / "doc-1"
+    protected.mkdir(parents=True)
+    (protected / "keep.txt").write_text("keep", encoding="utf-8")
+    marker_dir = settings.document_asset_dir / ".cleanup_pending"
+    marker_dir.mkdir(parents=True)
+    marker = marker_dir / marker_name
+    marker.write_text(json.dumps(payload), encoding="utf-8")
+    store = ControlledDocumentAssetStore(settings)
+
+    assert store.retry_pending_cleanups() == 0
+
+    assert (protected / "keep.txt").is_file()
+    assert marker.exists()
+
+
+def test_retry_pending_cleanups_rejects_symlink_tombstone(tmp_path) -> None:
+    settings = Settings(_env_file=None, document_asset_dir=tmp_path / "assets")
+    protected = settings.document_asset_dir / "documents" / "doc-1"
+    protected.mkdir(parents=True)
+    (protected / "keep.txt").write_text("keep", encoding="utf-8")
+    tombstone = (
+        settings.document_asset_dir
+        / ".trash"
+        / "documents"
+        / ".doc-1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.deleting"
+    )
+    tombstone.parent.mkdir(parents=True)
+    try:
+        tombstone.symlink_to(protected, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation is not allowed on this platform")
+    marker_dir = settings.document_asset_dir / ".cleanup_pending"
+    marker_dir.mkdir(parents=True)
+    marker = marker_dir / "document-doc-1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+    marker.write_text(
+        json.dumps(
+            {
+                "scope": "document",
+                "object_id": "doc-1",
+                "tombstone": ".trash/documents/.doc-1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.deleting",
+                "reason": "DocumentStoreError",
+            }
+        ),
+        encoding="utf-8",
+    )
+    store = ControlledDocumentAssetStore(settings)
+
+    assert store.retry_pending_cleanups() == 0
+
+    assert (protected / "keep.txt").is_file()
+    assert tombstone.exists()
+    assert marker.exists()
 
 
 class SimpleQuotaGate:

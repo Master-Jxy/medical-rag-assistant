@@ -1,5 +1,6 @@
 """管理员审核与发布编排；并发状态由原子迁移裁决。"""
 
+import logging
 from uuid import uuid4
 
 from fastapi import UploadFile
@@ -26,6 +27,9 @@ from app.modules.knowledge.review_schemas import (
     ReviewItem,
     ReviewListResponse,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class ReviewNotFoundError(AppError):
@@ -259,13 +263,19 @@ class KnowledgeReviewService:
             self.asset_store.finalize_staged_deletion(staged_assets)
         except (OSError, DocumentStoreError) as exc:
             if "staged_assets" in locals():
-                try:
-                    self.asset_store.mark_cleanup_pending(
-                        staged_assets,
-                        reason=type(exc).__name__,
+                marker_written = self.asset_store.try_mark_cleanup_pending(
+                    staged_assets,
+                    reason=type(exc).__name__,
+                )
+                if not marker_written:
+                    logger.warning(
+                        "review_submission_asset_cleanup_marker_failed",
+                        extra={
+                            "asset_scope": staged_assets.scope,
+                            "object_id": staged_assets.object_id,
+                            "error_type": type(exc).__name__,
+                        },
                     )
-                except Exception:
-                    pass
             try:
                 self.audit.record(
                     AuditRecord(
@@ -298,7 +308,19 @@ class KnowledgeReviewService:
         try:
             self.asset_store.finalize_staged_deletion(staged)
         except DocumentStoreError as exc:
-            self.asset_store.mark_cleanup_pending(staged, reason=type(exc).__name__)
+            marker_written = self.asset_store.try_mark_cleanup_pending(
+                staged,
+                reason=type(exc).__name__,
+            )
+            if not marker_written:
+                logger.warning(
+                    "review_submission_asset_cleanup_marker_failed",
+                    extra={
+                        "asset_scope": staged.scope,
+                        "object_id": staged.object_id,
+                        "error_type": type(exc).__name__,
+                    },
+                )
             try:
                 self.audit.record(
                     AuditRecord(

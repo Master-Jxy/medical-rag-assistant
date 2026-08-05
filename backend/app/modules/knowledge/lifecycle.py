@@ -1,6 +1,7 @@
 """文档在 MySQL、文件系统与 Chroma 之间的共享生命周期。"""
 
 import hashlib
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,6 +48,7 @@ from app.modules.knowledge.repository import (
 from app.modules.knowledge.parser import LocalDocumentParser
 
 READ_BLOCK_SIZE = 1024 * 1024
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -580,7 +582,19 @@ class DocumentLifecycleService:
         try:
             self.asset_store.finalize_staged_deletion(staged)
         except DocumentStoreError as exc:
-            self.asset_store.mark_cleanup_pending(staged, reason=type(exc).__name__)
+            marker_written = self.asset_store.try_mark_cleanup_pending(
+                staged,
+                reason=type(exc).__name__,
+            )
+            logger.warning(
+                "document_asset_cleanup_pending",
+                extra={
+                    "asset_scope": staged.scope,
+                    "object_id": staged.object_id,
+                    "error_type": type(exc).__name__,
+                    "marker_written": marker_written,
+                },
+            )
 
     def _restore_replaced_database(
         self,

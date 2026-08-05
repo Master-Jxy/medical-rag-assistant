@@ -294,6 +294,73 @@ def test_withdraw_post_commit_asset_cleanup_failure_marks_pending(
         engine.dispose()
 
 
+def test_withdraw_marker_write_failure_still_returns_success(
+    tmp_path, monkeypatch
+) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'image-withdraw-marker.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    owner = create_test_user(factory, "image-withdraw-marker-owner")
+    settings = Settings(
+        _env_file=None,
+        submission_dir=tmp_path / "isolated",
+        document_asset_dir=tmp_path / "assets",
+    )
+    original_rmtree = __import__("shutil").rmtree
+
+    def fail_trash_rmtree(path):
+        if ".trash" in path.parts:
+            raise OSError("simulated withdraw cleanup failure")
+        return original_rmtree(path)
+
+    def fail_mark_cleanup_pending(self, staged, *, reason):
+        del self, staged, reason
+        raise OSError("simulated marker write failure")
+
+    monkeypatch.setattr("app.modules.knowledge.asset_storage.shutil.rmtree", fail_trash_rmtree)
+    monkeypatch.setattr(
+        "app.modules.knowledge.asset_storage.ControlledDocumentAssetStore.mark_cleanup_pending",
+        fail_mark_cleanup_pending,
+    )
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    def override_service():
+        with factory() as session:
+            yield KnowledgeSubmissionService(session, settings, LocalDocumentParser())
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
+    app.dependency_overrides[get_submission_service] = override_service
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/v1/knowledge/submissions",
+                files={"file": ("report.png", make_png_bytes(), "text/plain")},
+                headers=auth_headers(owner.id),
+            )
+            assert created.status_code == 202
+            submission_id = created.json()["submission_id"]
+            withdrawn = client.post(
+                f"/api/v1/knowledge/submissions/{submission_id}/withdraw",
+                headers=auth_headers(owner.id),
+            )
+            assert withdrawn.status_code == 200
+            assert withdrawn.json()["status"] == "withdrawn"
+
+        with factory() as session:
+            saved = session.get(KnowledgeSubmission, submission_id)
+            assert saved.status == "withdrawn"
+        assert not (settings.document_asset_dir / "submissions" / submission_id).exists()
+        assert not list((settings.document_asset_dir / ".cleanup_pending").glob("*.json"))
+        assert list((settings.document_asset_dir / ".trash" / "submissions").glob("*"))
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
 def test_markdown_submission_gets_structured_preview_without_publication(tmp_path) -> None:
     engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'markdown-submissions.db'}")
     Base.metadata.create_all(engine)

@@ -1,6 +1,7 @@
 """普通用户资料隔离提交、无费用解析与撤回用例。"""
 
 import hashlib
+import logging
 from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -31,6 +32,7 @@ from app.modules.knowledge.web_snapshot import WebSnapshotFetchPort
 from app.services.upload_protection_service import UploadProtectionService
 
 READ_BLOCK_SIZE = 1024 * 1024
+logger = logging.getLogger(__name__)
 
 
 class SubmissionNotWithdrawableError(DocumentParseError):
@@ -285,7 +287,19 @@ class KnowledgeSubmissionService:
         try:
             self.asset_store.finalize_staged_deletion(staged)
         except DocumentStoreError as exc:
-            self.asset_store.mark_cleanup_pending(staged, reason=type(exc).__name__)
+            marker_written = self.asset_store.try_mark_cleanup_pending(
+                staged,
+                reason=type(exc).__name__,
+            )
+            logger.warning(
+                "submission_asset_cleanup_pending",
+                extra={
+                    "asset_scope": staged.scope,
+                    "object_id": staged.object_id,
+                    "error_type": type(exc).__name__,
+                    "marker_written": marker_written,
+                },
+            )
 
     def _parse_preview(
         self,
