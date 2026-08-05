@@ -24,6 +24,13 @@ knowledge_base_version 元数据；PDF/TXT 切片和引用行为保持回归通�
 （MIT，用于 HTML 正文清洗）。未引入 Docling、MinerU、OCR、视觉、网页 URL 抓取、元数据
 模型、数据库迁移、API 响应变更或生产配置变更。
 
+24.2a 安全补丁已完成：DOCX ZIP 在读取任何 entry 内容前限制 entry 数量、单 entry
+未压缩大小、总未压缩大小、压缩比、加密 entry、重复和异常路径，并在读取 `.rels` 前限制
+关系文件大小；外部关系改为在大小限制之后用 XML 结构解析识别任意 `TargetMode=External`，
+畸形关系 XML 明确拒绝。HTML 已发布原文预览不再以同源 `text/html` 内联返回，而是
+`text/plain; charset=utf-8` 加 `X-Content-Type-Options: nosniff`；当前前端没有渲染
+`ParsedElement.table_html`，后续若展示必须继续避免未消毒 `v-html`。
+
 24.1 借鉴边界：Docling 的统一转换出口思想、Unstructured 的统一 Element 模型、Haystack
 的 Converter/Splitter 组件分层；没有复制第三方源码，也没有把第三方对象传入业务服务。
 24.2a 继续借鉴 Unstructured file partition 与 Haystack converter/splitter 的组件边界；
@@ -76,8 +83,11 @@ Stage 22 的 22.1～22.8 已完成并发布，功能提交为 `5c02056`，随后
 backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_document_parser_contract.py backend\tests\test_knowledge_submissions_api.py backend\tests\test_admin_reviews_api.py backend\tests\test_admin_document_api.py backend\tests\test_document_service.py
 28 passed, 2 warnings
 
+backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_document_parser_contract.py backend\tests\test_knowledge_trace_api.py
+12 passed, 2 warnings
+
 backend\.venv\Scripts\python.exe -m pytest -q backend/tests
-490 passed, 113 warnings
+494 passed, 113 warnings
 
 D:\Nodejs\npm.cmd --prefix frontend test -- KnowledgeView.test.js AdminAssetsView.test.js
 2 files / 5 tests passed
@@ -106,7 +116,8 @@ Stage 24.0 未做生产数据写入或线上生成验证。当前仓库没有安
 目标可用于本任务的只读生产连接，因此生产健康、容器、迁移、静态资源和错误计数检查
 本轮跳过；禁止猜测连接信息。未调用 Qwen、Embedding、Reranker、OCR、视觉或 SMTP。
 Stage 24.2a 同样没有执行生产数据操作、生产健康检查、真实网页抓取或任何外网/内网边界
-验证；测试 fixture 均为本地生成的非医学资料。
+验证；测试 fixture 均为本地生成的非医学资料。24.2a 安全补丁未改前端行为，因此未重新
+运行完整前端测试。
 
 浏览器无模型/无持久化 stub 验收通过：桌面和 390px 移动端均完成 RAG/Agent 并发、独立
 停止、后台未读、重新打开清除未读、运行中删除禁用、四种 Agent 模式、固定输入器和溢出

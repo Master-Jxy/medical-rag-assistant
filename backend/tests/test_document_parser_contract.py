@@ -2,6 +2,8 @@
 
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
 from docx import Document as DocxDocument
@@ -17,6 +19,12 @@ from app.modules.knowledge.ingestion import (
     ParserRegistry,
 )
 from app.modules.knowledge.parser import LocalDocumentParser, ParsedPreview
+
+
+REQUIRED_DOCX_ENTRIES = {
+    "[Content_Types].xml": b"<Types />",
+    "word/document.xml": b"<w:document />",
+}
 
 
 def write_docx(path: Path) -> bytes:
@@ -133,6 +141,169 @@ def test_file_type_policy_rejects_spoofed_binary_and_damaged_docx(tmp_path) -> N
     damaged_docx.write_bytes(b"not a zip")
     with pytest.raises(DocumentParseError, match="DOCX"):
         FileTypePolicy.validate_path(damaged_docx, ".docx")
+
+
+def write_minimal_docx(path: Path, entries: dict[str, bytes]) -> None:
+    with ZipFile(path, "w", compression=ZIP_DEFLATED) as package:
+        for name, content in entries.items():
+            package.writestr(name, content)
+
+
+def test_docx_policy_rejects_high_compression_ratio(tmp_path) -> None:
+    path = tmp_path / "ratio.docx"
+    entries = {
+        **REQUIRED_DOCX_ENTRIES,
+        "word/large.xml": b"A" * (1024 * 1024),
+    }
+    write_minimal_docx(path, entries)
+
+    with pytest.raises(DocumentParseError, match="压缩比"):
+        FileTypePolicy.validate_path(path, ".docx")
+
+
+def test_docx_policy_rejects_metadata_before_reading_entries(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "metadata.docx"
+    path.write_bytes(b"placeholder")
+
+    def run_with_infos(infos, expected: str) -> None:
+        class FakeZip:
+            def __init__(self, _: Path) -> None:
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args) -> None:
+                return None
+
+            def infolist(self):
+                return infos
+
+            def read(self, _info):
+                raise AssertionError("entry content should not be read before metadata passes")
+
+        monkeypatch.setattr(
+            "app.modules.knowledge.ingestion.file_types.is_zipfile",
+            lambda _: True,
+        )
+        monkeypatch.setattr("app.modules.knowledge.ingestion.file_types.ZipFile", FakeZip)
+        with pytest.raises(DocumentParseError, match=expected):
+            FileTypePolicy.validate_path(path, ".docx")
+
+    normal = [
+        SimpleNamespace(
+            filename=name,
+            file_size=len(content),
+            compress_size=max(1, len(content)),
+            flag_bits=0,
+        )
+        for name, content in REQUIRED_DOCX_ENTRIES.items()
+    ]
+    run_with_infos(
+        [
+            SimpleNamespace(
+                filename=f"word/item-{index}.xml",
+                file_size=1,
+                compress_size=1,
+                flag_bits=0,
+            )
+            for index in range(257)
+        ],
+        "过多",
+    )
+    run_with_infos(
+        normal
+        + [
+            SimpleNamespace(
+                filename="word/big.xml",
+                file_size=51 * 1024 * 1024,
+                compress_size=51 * 1024 * 1024,
+                flag_bits=0,
+            )
+        ],
+        "单个文件条目过大",
+    )
+    run_with_infos(
+        normal
+        + [
+            SimpleNamespace(
+                filename=f"word/part-{index}.xml",
+                file_size=10 * 1024 * 1024,
+                compress_size=10 * 1024 * 1024,
+                flag_bits=0,
+            )
+            for index in range(6)
+        ],
+        "总体积过大",
+    )
+    run_with_infos(
+        normal
+        + [
+            SimpleNamespace(
+                filename="word/encrypted.xml",
+                file_size=1,
+                compress_size=1,
+                flag_bits=0x1,
+            )
+        ],
+        "加密",
+    )
+    run_with_infos(
+        normal
+        + [
+            SimpleNamespace(
+                filename="../evil.xml",
+                file_size=1,
+                compress_size=1,
+                flag_bits=0,
+            )
+        ],
+        "路径异常",
+    )
+    run_with_infos(
+        normal
+        + [
+            SimpleNamespace(
+                filename="_rels/.rels",
+                file_size=300 * 1024,
+                compress_size=300 * 1024,
+                flag_bits=0,
+            )
+        ],
+        "关系文件过大",
+    )
+
+
+def test_docx_policy_rejects_external_relationship_with_single_quotes(tmp_path) -> None:
+    path = tmp_path / "external.docx"
+    write_minimal_docx(
+        path,
+        {
+            **REQUIRED_DOCX_ENTRIES,
+            "_rels/.rels": b"""
+            <Relationships xmlns='http://schemas.openxmlformats.org/package/2006/relationships'>
+              <Relationship Id='rId1' Type='x' Target='https://example.com' TargetMode='External'/>
+            </Relationships>
+            """,
+        },
+    )
+
+    with pytest.raises(DocumentParseError, match="外部关系"):
+        FileTypePolicy.validate_path(path, ".docx")
+
+
+def test_docx_policy_rejects_malformed_relationship_xml(tmp_path) -> None:
+    path = tmp_path / "bad-rels.docx"
+    write_minimal_docx(
+        path,
+        {
+            **REQUIRED_DOCX_ENTRIES,
+            "_rels/.rels": b"<Relationships><Relationship TargetMode='External'",
+        },
+    )
+
+    with pytest.raises(DocumentParseError, match="关系XML无效"):
+        FileTypePolicy.validate_path(path, ".docx")
 
 
 def test_docx_parser_preserves_title_list_and_table_semantics(tmp_path) -> None:

@@ -70,5 +70,8 @@ def preview_document(
     return Response(
         content=item.content,
         media_type=item.mime_type,
-        headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(item.file_name)}"},
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(item.file_name)}",
+            "X-Content-Type-Options": "nosniff",
+        },
     )

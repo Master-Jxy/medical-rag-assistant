@@ -22,6 +22,10 @@ def test_trace_and_preview_only_expose_published_documents(tmp_path) -> None:
     upload_dir = tmp_path / "published"
     upload_dir.mkdir()
     (upload_dir / "trace-document.txt").write_text("可追溯正文", encoding="utf-8")
+    (upload_dir / "trace-html.html").write_text(
+        "<!doctype html><script>window.__executed = true</script><p>正文</p>",
+        encoding="utf-8",
+    )
     with factory() as session:
         session.add(
             KnowledgeDocument(
@@ -32,6 +36,20 @@ def test_trace_and_preview_only_expose_published_documents(tmp_path) -> None:
                 size_bytes=18,
                 chunk_count=1,
                 chunk_ids=["trace-document:0"],
+                uploader_id=None,
+                is_system=True,
+                status="published",
+            )
+        )
+        session.add(
+            KnowledgeDocument(
+                id="trace-html",
+                original_name="恶意预览.html",
+                stored_name="trace-html.html",
+                content_hash="b" * 64,
+                size_bytes=64,
+                chunk_count=1,
+                chunk_ids=["trace-html:0"],
                 uploader_id=None,
                 is_system=True,
                 status="published",
@@ -79,6 +97,15 @@ def test_trace_and_preview_only_expose_published_documents(tmp_path) -> None:
             )
             assert preview.status_code == 200
             assert preview.content.decode("utf-8") == "可追溯正文"
+            html_preview = client.get(
+                "/api/v1/knowledge/documents/trace-html/preview",
+                headers=auth_headers(user.id),
+            )
+            assert html_preview.status_code == 200
+            assert html_preview.headers["content-type"].startswith("text/plain")
+            assert html_preview.headers["x-content-type-options"] == "nosniff"
+            assert "text/html" not in html_preview.headers["content-type"]
+            assert "<script>" in html_preview.content.decode("utf-8")
 
             with factory() as session:
                 session.get(KnowledgeDocument, "trace-document").status = "archived"

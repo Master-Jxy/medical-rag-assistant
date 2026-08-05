@@ -102,7 +102,7 @@ class PublishedKnowledgeCatalogService:
         if root not in path.parents or not path.is_file():
             return None
         try:
-            mime_type = FileTypePolicy.mime_type_for_suffix(path.suffix.lower())
+            mime_type = FileTypePolicy.preview_mime_type_for_suffix(path.suffix.lower())
         except Exception:
             return None
         return PublishedDocumentFile(document.id, document.original_name, mime_type, path.read_bytes())

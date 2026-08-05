@@ -1930,6 +1930,13 @@ document_id、file_name、source、hash、visibility、document_type 和 kb_vers
 24.2a 参考 Unstructured file partition 和 Haystack converter/splitter 边界，没有复制源码，
 没有新增网页 URL、OCR、视觉、元数据模型、数据库迁移或重型解析栈。
 
+24.2a 安全补丁要求 DOCX ZIP 在读取 entry 内容前完成集中限额检查：entry 数量、单 entry
+未压缩大小、总未压缩大小、压缩比、加密 entry、重复和异常路径均会稳定拒绝；`.rels`
+文件有更小的读取上限，外部关系用 XML 结构解析识别 `TargetMode=External`，畸形 XML 拒绝。
+已发布 HTML 原文预览只按 `text/plain; charset=utf-8` 加 `nosniff` 暴露，不能在同源下以
+`text/html` 内联执行；结构化 `table_html` 若未来进入 UI，必须继续经过受控消毒而不是
+直接未消毒 `v-html`。
+
 AI 元数据输出是 suggestion，不是正式文档元数据。只有管理员接受或编辑后，知识应用
 服务才更新 `document_versions` 并写审计。精确文件哈希继续硬拒绝；标准化正文哈希与
 近重复只提示合并/建新版本，不自动删除。OCR、视觉、真实 Embedding 和生产导入均通过
