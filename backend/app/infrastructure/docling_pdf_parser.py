@@ -8,9 +8,10 @@ until a fixed offline gate proves the candidate can replace the PyPDF baseline.
 from __future__ import annotations
 
 import hashlib
+import json
 import multiprocessing
 import os
-import queue
+import tempfile
 from html import escape
 from importlib.util import find_spec
 from pathlib import Path
@@ -27,6 +28,9 @@ from app.modules.knowledge.ingestion import (
     ParsedElement,
 )
 
+DOCLING_RESULT_MAX_BYTES = 1024 * 1024
+WORKER_GRACE_SECONDS = 2
+
 
 class DoclingPdfStructuredParser:
     name = "docling_pdf_candidate"
@@ -36,10 +40,12 @@ class DoclingPdfStructuredParser:
         converter_factory: Callable[[], Any] | None = None,
         *,
         timeout_seconds: float = 20.0,
-        worker_target: Callable[[str, Any], None] | None = None,
+        result_max_bytes: int = DOCLING_RESULT_MAX_BYTES,
+        worker_target: Callable[[str, str, int, Any], None] | None = None,
     ) -> None:
         self.converter_factory = converter_factory
         self.timeout_seconds = timeout_seconds
+        self.result_max_bytes = result_max_bytes
         self.worker_target = worker_target or run_docling_worker
 
     @property
@@ -70,42 +76,86 @@ class DoclingPdfStructuredParser:
         if find_spec("docling") is None:
             raise DocumentParseError("Docling is not installed")
         context = multiprocessing.get_context("spawn")
-        output_queue = context.Queue(maxsize=1)
+        parent_status, child_status = context.Pipe(duplex=False)
+        result_path = self._create_result_path(path)
         process = context.Process(
             target=self.worker_target,
-            args=(str(path), output_queue),
+            args=(str(path), str(result_path), self.result_max_bytes, child_status),
             name="docling-pdf-candidate",
         )
-        process.start()
-        process.join(self.timeout_seconds)
-        if process.is_alive():
-            process.terminate()
-            process.join(2)
-            if process.is_alive():
-                process.kill()
-                process.join(2)
-            self._close_worker_resources(output_queue, process)
-            raise DocumentParseError("Docling candidate worker timed out")
         try:
-            message = output_queue.get(timeout=0.1)
-        except queue.Empty as exc:
-            self._close_worker_resources(output_queue, process)
-            raise DocumentParseError("Docling candidate worker returned no output") from exc
-        self._close_worker_resources(output_queue, process)
-        if not isinstance(message, dict) or message.get("ok") is not True:
-            code = "worker_error"
-            if isinstance(message, dict):
-                code = str(message.get("error_code") or code)
-            raise DocumentParseError(f"Docling candidate worker failed: {code}")
-        document = message.get("document")
+            process.start()
+            child_status.close()
+            process.join(self.timeout_seconds)
+            if process.is_alive():
+                self._stop_worker(process)
+                raise DocumentParseError("Docling candidate worker timed out")
+            message = self._read_worker_status(parent_status)
+            if not isinstance(message, dict) or message.get("ok") is not True:
+                code = "worker_error"
+                if isinstance(message, dict):
+                    code = str(message.get("error_code") or code)
+                raise DocumentParseError(f"Docling candidate worker failed: {code}")
+            return self._read_result_file(result_path)
+        finally:
+            self._cleanup_result_file(result_path)
+            self._close_worker_resources(parent_status, child_status, process)
+
+    @staticmethod
+    def _create_result_path(source_path: Path) -> Path:
+        handle = tempfile.NamedTemporaryFile(
+            prefix="docling-result-",
+            suffix=".json",
+            dir=source_path.parent,
+            delete=False,
+        )
+        handle.close()
+        return Path(handle.name)
+
+    @staticmethod
+    def _read_worker_status(parent_status: Any) -> dict[str, object]:
+        if not parent_status.poll(0.1):
+            raise DocumentParseError("Docling candidate worker returned no output")
+        message = parent_status.recv()
+        return message if isinstance(message, dict) else {"ok": False, "error_code": "invalid_status"}
+
+    def _read_result_file(self, result_path: Path) -> dict[str, Any]:
+        try:
+            raw = result_path.read_bytes()
+        except OSError as exc:
+            raise DocumentParseError("Docling candidate worker result missing") from exc
+        if not raw or len(raw) > self.result_max_bytes:
+            raise DocumentParseError("Docling candidate worker result invalid")
+        try:
+            document = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise DocumentParseError("Docling candidate worker result invalid") from exc
         if not isinstance(document, dict):
             raise DocumentParseError("Docling candidate worker returned invalid output")
         return document
 
     @staticmethod
-    def _close_worker_resources(output_queue: Any, process: Any) -> None:
-        output_queue.close()
-        output_queue.join_thread()
+    def _stop_worker(process: Any) -> None:
+        process.terminate()
+        process.join(WORKER_GRACE_SECONDS)
+        if process.is_alive():
+            process.kill()
+            process.join(WORKER_GRACE_SECONDS)
+
+    @staticmethod
+    def _cleanup_result_file(result_path: Path) -> None:
+        try:
+            result_path.unlink()
+        except FileNotFoundError:
+            pass
+
+    @staticmethod
+    def _close_worker_resources(parent_status: Any, child_status: Any, process: Any) -> None:
+        for connection in (parent_status, child_status):
+            try:
+                connection.close()
+            except OSError:
+                pass
         close = getattr(process, "close", None)
         if callable(close):
             close()
@@ -194,21 +244,54 @@ class DoclingPdfStructuredParser:
         return items
 
 
-def run_docling_worker(path_text: str, output_queue: Any) -> None:
+def run_docling_worker(
+    path_text: str,
+    result_path_text: str,
+    result_max_bytes: int,
+    status_sender: Any,
+) -> None:
     configure_docling_offline_environment()
     try:
         from docling.document_converter import DocumentConverter
 
         result = DocumentConverter().convert(Path(path_text))
-        output_queue.put({"ok": True, "document": export_docling_document_data(result)})
+        write_worker_result(
+            export_docling_document_data(result),
+            Path(result_path_text),
+            result_max_bytes,
+        )
+        status_sender.send({"ok": True})
+    except WorkerResultTooLargeError:
+        status_sender.send({"ok": False, "error_code": "result_too_large"})
     except Exception:
-        output_queue.put({"ok": False, "error_code": "docling_parse_failed"})
+        status_sender.send({"ok": False, "error_code": "docling_parse_failed"})
+    finally:
+        status_sender.close()
 
 
 def configure_docling_offline_environment() -> None:
-    os.environ.setdefault("HF_HUB_OFFLINE", "1")
-    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-    os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    os.environ["HF_DATASETS_OFFLINE"] = "1"
+
+
+class WorkerResultTooLargeError(Exception):
+    pass
+
+
+def write_worker_result(
+    document: dict[str, Any],
+    result_path: Path,
+    result_max_bytes: int,
+) -> None:
+    payload = json.dumps(
+        document,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    if len(payload) > result_max_bytes:
+        raise WorkerResultTooLargeError()
+    result_path.write_bytes(payload)
 
 
 def export_docling_document_data(result: Any) -> dict[str, Any]:

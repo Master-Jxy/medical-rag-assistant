@@ -2,6 +2,7 @@
 
 import json
 import multiprocessing
+import os
 import time
 from pathlib import Path
 
@@ -38,12 +39,56 @@ class WorseParser:
         return ParsedPreview("只有表格", 1)
 
 
-def hanging_docling_worker(_path_text, _output_queue) -> None:
+def hanging_docling_worker(_path_text, _result_path_text, _result_max_bytes, _status_sender) -> None:
     time.sleep(30)
 
 
-def failing_docling_worker(_path_text, output_queue) -> None:
-    output_queue.put({"ok": False, "error_code": "docling_parse_failed"})
+def failing_docling_worker(_path_text, _result_path_text, _result_max_bytes, status_sender) -> None:
+    status_sender.send({"ok": False, "error_code": "docling_parse_failed"})
+    status_sender.close()
+
+
+def large_docling_worker(_path_text, result_path_text, result_max_bytes, status_sender) -> None:
+    document = {
+        "page_count": 1,
+        "elements": [
+            {
+                "kind": "paragraph",
+                "text": "large result " + ("x" * 200_000),
+                "page_no": 1,
+            }
+        ],
+    }
+    docling_pdf_parser.write_worker_result(
+        document,
+        Path(result_path_text),
+        result_max_bytes,
+    )
+    status_sender.send({"ok": True})
+    status_sender.close()
+
+
+def oversized_docling_worker(_path_text, result_path_text, result_max_bytes, status_sender) -> None:
+    try:
+        docling_pdf_parser.write_worker_result(
+            {
+                "page_count": 1,
+                "elements": [
+                    {
+                        "kind": "paragraph",
+                        "text": "oversized " + ("y" * 10_000),
+                        "page_no": 1,
+                    }
+                ],
+            },
+            Path(result_path_text),
+            result_max_bytes,
+        )
+    except docling_pdf_parser.WorkerResultTooLargeError:
+        status_sender.send({"ok": False, "error_code": "result_too_large"})
+    else:
+        status_sender.send({"ok": True})
+    status_sender.close()
 
 
 class BaselineStructuredParser:
@@ -325,6 +370,67 @@ def test_docling_adapter_worker_error_does_not_leak_path_or_content(tmp_path, mo
 
     assert "docling_parse_failed" in message
     assert "secret-patient-content" not in message
+
+
+def test_docling_adapter_large_result_uses_file_without_pipe_deadlock(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "large-result.pdf"
+    path.write_bytes(b"%PDF-1.4\n%fake")
+    monkeypatch.setattr(docling_pdf_parser, "find_spec", lambda _name: object())
+    parser = DoclingPdfStructuredParser(
+        timeout_seconds=5,
+        worker_target=large_docling_worker,
+    )
+
+    started = time.monotonic()
+    parsed = parser.parse(ParseRequest(path=path, suffix=".pdf"))
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 5
+    assert parsed.text.startswith("large result ")
+    assert len(parsed.text) > 100_000
+    assert not list(tmp_path.glob("docling-result-*.json"))
+    assert all(
+        child.name != "docling-pdf-candidate"
+        for child in multiprocessing.active_children()
+    )
+
+
+def test_docling_adapter_oversized_result_is_rejected_and_temp_file_removed(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "secret-oversized.pdf"
+    path.write_bytes(b"%PDF-1.4\n%fake")
+    monkeypatch.setattr(docling_pdf_parser, "find_spec", lambda _name: object())
+    parser = DoclingPdfStructuredParser(
+        timeout_seconds=5,
+        result_max_bytes=256,
+        worker_target=oversized_docling_worker,
+    )
+
+    try:
+        parser.parse(ParseRequest(path=path, suffix=".pdf"))
+    except Exception as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("expected result size failure")
+
+    assert "result_too_large" in message
+    assert "secret-oversized" not in message
+    assert not list(tmp_path.glob("docling-result-*.json"))
+    assert all(
+        child.name != "docling-pdf-candidate"
+        for child in multiprocessing.active_children()
+    )
+
+
+def test_docling_offline_environment_overrides_inherited_values(monkeypatch) -> None:
+    monkeypatch.setenv("HF_HUB_OFFLINE", "0")
+    monkeypatch.setenv("TRANSFORMERS_OFFLINE", "false")
+    monkeypatch.setenv("HF_DATASETS_OFFLINE", "")
+
+    docling_pdf_parser.configure_docling_offline_environment()
+
+    assert os.environ["HF_HUB_OFFLINE"] == "1"
+    assert os.environ["TRANSFORMERS_OFFLINE"] == "1"
+    assert os.environ["HF_DATASETS_OFFLINE"] == "1"
 
 
 def test_complex_pdf_manifest_and_structured_gate_require_real_improvement() -> None:

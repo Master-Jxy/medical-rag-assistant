@@ -58,11 +58,14 @@ Docling 对象只停留在 adapter 内，业务层只接收 `ParsedDocument`/`Pa
 实验执行；`DOCLING_PDF_CANDIDATE_PROMOTED=false` 独立表示候选是否获准替换 PyPDF。启用
 实验后仍受页数、文件大小、单进程并发、空输出、页序、页数一致性和质量状态检查约束；未
 promoted 时即使候选输出正常也继续返回 PyPDF，并记录“尚未批准替换PyPDF”的 warning。
-真实 Docling 路径在 infrastructure 子进程 worker 中运行，父进程只接收可序列化标准 dict
-或稳定错误码；超过 `DOCLING_PDF_TIMEOUT_SECONDS` 后 terminate/kill/join worker、关闭 IPC
-资源并确定性回退 PyPDF。parser fallback 不再用事后耗时比较宣称硬超时。未安装 Docling 时
-默认后端启动和测试不失败；worker 使用离线模式，缺少本地依赖或工件时快速失败并回退，
-不会静默在线下载模型。
+真实 Docling 路径在 infrastructure 子进程 worker 中运行，父进程预创建同目录临时 JSON
+结果文件；worker 只通过 Pipe 回传小状态，避免大 document dict 通过 Queue/Pipe 造成管道
+反压死锁。序列化结果有严格最大字节限制，超限返回稳定错误码；成功、失败、超时和 kill
+路径都会清理临时文件、Pipe 和子进程句柄。超过 `DOCLING_PDF_TIMEOUT_SECONDS` 后
+terminate/kill/join worker 并确定性回退 PyPDF，deadline 覆盖解析、序列化、写文件和状态
+回传整个 worker 生命周期。parser fallback 不再用事后耗时比较宣称硬超时。未安装 Docling 时
+默认后端启动和测试不失败；worker 强制设置离线环境变量为 `1`，覆盖父环境中相反值，缺少
+本地依赖或工件时快速失败并回退，不会静默在线下载模型。
 
 24.3 候选输出标题、段落、列表、表格和图片资产的 page_no、order 与可空标准化 bbox；
 表格保留安全 Markdown/HTML 表示和纯文本回退，发布切片优先消费标准化 elements，表格按行
@@ -70,8 +73,9 @@ promoted 时即使候选输出正常也继续返回 PyPDF，并记录“尚未�
 固定复杂 PDF manifest 为无隐私合成用例，覆盖双栏、跨页表格、页码顺序、图片资产、空页和
 损坏候选；离线比较指标包括页数一致性、非空元素率、乱码率、顺序异常、表格完整率和
 provenance 完整率。当前只完成契约/fixture/Fake 候选闸门，尚无真实 Docling 评估结果，
-不能宣称晋级。24.3 follow-up 修复了主提交中过度表述的 timeout 语义，并补充
-worker 卡住终止、子进程不残留、错误不泄漏路径/内容和未 promoted 不替换生产结果的测试。
+不能宣称晋级。24.3 follow-up 修复了主提交中过度表述的 timeout 语义和二次复核发现的
+Queue 大结果反压风险，并补充 worker 卡住终止、大结果不误超时、超限清理、子进程不残留、
+错误不泄漏路径/内容、强制离线覆盖继承环境和未 promoted 不替换生产结果的测试。
 
 24.1 借鉴边界：Docling 的统一转换出口思想、Unstructured 的统一 Element 模型、Haystack
 的 Converter/Splitter 组件分层；没有复制第三方源码，也没有把第三方对象传入业务服务。
@@ -125,10 +129,10 @@ Stage 22 的 22.1～22.8 已完成并发布，功能提交为 `5c02056`，随后
 
 ```text
 backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_parser_experiments.py backend\tests\test_document_parser_contract.py backend\tests\test_document_service.py backend\tests\test_admin_reviews_api.py
-40 passed, 2 warnings
+43 passed, 2 warnings
 
 backend\.venv\Scripts\python.exe -m pytest -q backend/tests
-514 passed, 120 warnings
+517 passed, 120 warnings
 
 D:\Nodejs\npm.cmd --prefix frontend test
 18 files / 74 tests passed

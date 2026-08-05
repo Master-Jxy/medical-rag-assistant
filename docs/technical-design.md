@@ -1963,12 +1963,15 @@ MIME、空正文、NUL 和非 UTF-8；text/plain 会被转成受控 HTML 快照�
 `DOCLING_PDF_CANDIDATE_PROMOTED=false` 独立表示是否允许候选替换生产 PyPDF 结果。候选
 还有页数、文件大小、单进程并发、页序、页数一致性、空输出和质量状态闸门；未晋级时即使
 候选输出正常也继续返回 PyPDF，并在 warning 中记录候选仅作观测。真实 Docling 路径必须由
-`DoclingPdfStructuredParser` 在独立 `spawn` 子进程 worker 中执行，父进程只通过 IPC 接收
-可序列化标准 dict 或稳定错误码；超过 `DOCLING_PDF_TIMEOUT_SECONDS` 后父进程会
-terminate/kill/join worker、关闭 IPC 资源并确定性回退 PyPDF。parser fallback 不再用事后
-`monotonic` 比较伪装硬超时，只负责资源前置检查、并发闸门、质量校验和 promoted gate。
-未安装 Docling 的默认后端启动和测试不得失败；worker 进入离线模式，缺少本地依赖或工件时
-快速失败并回退，不静默在线下载模型或权重。
+`DoclingPdfStructuredParser` 在独立 `spawn` 子进程 worker 中执行；父进程预创建同目录临时
+JSON 结果文件，worker 只通过 Pipe 回传小状态，避免大 document dict 通过 Queue/Pipe 时因
+管道反压阻塞退出。序列化结果有严格最大字节限制，超限返回稳定错误码；成功、失败、超时
+和 kill 路径都会清理临时结果文件、Pipe 和子进程句柄。超过 `DOCLING_PDF_TIMEOUT_SECONDS`
+后父进程会 terminate/kill/join worker 并确定性回退 PyPDF，这个 deadline 覆盖解析、序列化、
+写文件和状态回传整个 worker 生命周期。parser fallback 不再用事后 `monotonic` 比较伪装硬
+超时，只负责资源前置检查、并发闸门、质量校验和 promoted gate。未安装 Docling 的默认后端
+启动和测试不得失败；worker 强制设置离线环境变量为 `1`，覆盖父环境中相反值，缺少本地依赖
+或工件时快速失败并回退，不静默在线下载模型或权重。
 
 Docling 候选输出只保留标准化元素：标题、段落、列表、表格和图片资产均带 page_no、
 order 与可空归一化 bbox；表格保留纯文本、受控 Markdown/HTML 表示，前端不得渲染未消毒
