@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
+from app.modules.knowledge.deduplication import DuplicatePolicy
 from app.modules.knowledge.ingestion import FileTypePolicy
 from app.modules.knowledge.models import DocumentVersion, KnowledgeDocument
 from app.modules.knowledge.parser import LocalDocumentParser, ParserPort
@@ -33,17 +34,7 @@ class PublishedKnowledgeCatalogService:
     def get_published_document(
         self, document_id: str
     ) -> PublishedDocumentInfo | None:
-        row = self.session.execute(
-            select(KnowledgeDocument, DocumentVersion)
-            .outerjoin(
-                DocumentVersion,
-                DocumentVersion.document_id == KnowledgeDocument.id,
-            )
-            .where(
-                KnowledgeDocument.id == document_id,
-                KnowledgeDocument.status.in_(PUBLIC_DOCUMENT_STATUSES),
-            )
-        ).one_or_none()
+        row = self._eligible_row(document_id)
         if row is None:
             return None
         document, version = row
@@ -67,14 +58,10 @@ class PublishedKnowledgeCatalogService:
     def get_published_content(
         self, document_id: str
     ) -> PublishedDocumentContent | None:
-        document = self.session.scalar(
-            select(KnowledgeDocument).where(
-                KnowledgeDocument.id == document_id,
-                KnowledgeDocument.status.in_(PUBLIC_DOCUMENT_STATUSES),
-            )
-        )
-        if document is None:
+        row = self._eligible_row(document_id)
+        if row is None:
             return None
+        document, _version = row
         upload_root = self.settings.upload_dir.resolve()
         path = (upload_root / document.stored_name).resolve()
         if upload_root not in path.parents or not path.is_file():
@@ -89,14 +76,10 @@ class PublishedKnowledgeCatalogService:
         )
 
     def read_published_file(self, document_id: str) -> PublishedDocumentFile | None:
-        document = self.session.scalar(
-            select(KnowledgeDocument).where(
-                KnowledgeDocument.id == document_id,
-                KnowledgeDocument.status.in_(PUBLIC_DOCUMENT_STATUSES),
-            )
-        )
-        if document is None:
+        row = self._eligible_row(document_id)
+        if row is None:
             return None
+        document, _version = row
         root = self.settings.upload_dir.resolve()
         path = (root / document.stored_name).resolve()
         if root not in path.parents or not path.is_file():
@@ -106,3 +89,24 @@ class PublishedKnowledgeCatalogService:
         except Exception:
             return None
         return PublishedDocumentFile(document.id, document.original_name, mime_type, path.read_bytes())
+
+    def _eligible_row(
+        self, document_id: str
+    ) -> tuple[KnowledgeDocument, DocumentVersion | None] | None:
+        row = self.session.execute(
+            select(KnowledgeDocument, DocumentVersion)
+            .outerjoin(
+                DocumentVersion,
+                DocumentVersion.document_id == KnowledgeDocument.id,
+            )
+            .where(
+                KnowledgeDocument.id == document_id,
+                KnowledgeDocument.status.in_(PUBLIC_DOCUMENT_STATUSES),
+            )
+        ).one_or_none()
+        if row is None:
+            return None
+        document, version = row
+        if DuplicatePolicy.governance_status(version) == "expired":
+            return None
+        return document, version

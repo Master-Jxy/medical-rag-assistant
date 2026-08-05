@@ -1,9 +1,11 @@
 """知识资产元数据、下线、重发和替换回归。"""
 
+import hashlib
+
 from fastapi.testclient import TestClient
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.orm import sessionmaker
 
 from app.api.admin_knowledge_assets import get_asset_service
@@ -38,7 +40,7 @@ def add_asset(factory, settings, vectors, suffix):
                 id=document_id,
                 original_name=f"知识资产{suffix}.txt",
                 stored_name=stored_name,
-                content_hash=suffix[0] * 64,
+                content_hash=hashlib.sha256(suffix.encode("utf-8")).hexdigest(),
                 size_bytes=20,
                 chunk_count=1,
                 chunk_ids=[chunk_id],
@@ -136,6 +138,17 @@ def test_asset_metadata_archive_republish_and_replace(tmp_path) -> None:
             )
             assert governance_metadata.status_code == 200
             assert governance_metadata.json()["department"] == "心内科"
+            with factory() as session:
+                second_version = session.scalar(
+                    select(DocumentVersion).where(
+                        DocumentVersion.document_id == second_id
+                    )
+                )
+                second_version.review_due_at = datetime.now(timezone.utc) - timedelta(
+                    days=1
+                )
+                second_version.review_status = "current"
+                session.commit()
             assert client.post(
                 "/api/v1/admin/knowledge-assets/governance/scan",
                 headers=auth_headers(normal.id),
@@ -147,6 +160,13 @@ def test_asset_metadata_archive_republish_and_replace(tmp_path) -> None:
             assert scan.status_code == 200
             assert scan.json()["count"] == 1
             assert scan.json()["duplicate_scan"]["updated"] == 0
+            with factory() as session:
+                first_version = session.scalar(
+                    select(DocumentVersion).where(
+                        DocumentVersion.document_id == first_id
+                    )
+                )
+                assert first_version.review_status != "in_review"
             in_review = client.get(
                 "/api/v1/admin/knowledge-assets?review_status=in_review",
                 headers=auth_headers(admin.id),
@@ -192,6 +212,17 @@ def test_asset_metadata_archive_republish_and_replace(tmp_path) -> None:
             )
             assert expired_mark.status_code == 200
             assert expired_mark.json()["governance_status"] == "expired"
+            stale_restore = client.post(
+                f"/api/v1/admin/knowledge-assets/{first_id}/restore",
+                json={
+                    "next_review_due_at": (
+                        datetime.now(timezone.utc) - timedelta(days=1)
+                    ).isoformat(),
+                    "note": "过期复核时间不允许",
+                },
+                headers=auth_headers(admin.id),
+            )
+            assert stale_restore.status_code == 409
             restored = client.post(
                 f"/api/v1/admin/knowledge-assets/{first_id}/restore",
                 json={
@@ -257,12 +288,12 @@ def test_asset_metadata_archive_republish_and_replace(tmp_path) -> None:
             } <= actions
             review_job = session.scalar(
                 select(ProcessingJob).where(
-                    ProcessingJob.object_id == first_id,
+                    ProcessingJob.object_id == second_id,
                     ProcessingJob.job_type == "knowledge_review",
                 )
             )
             assert review_job is not None
-            assert review_job.status == "completed"
+            assert review_job.status == "running"
     finally:
         app.dependency_overrides.clear()
         engine.dispose()
@@ -323,6 +354,7 @@ def test_asset_duplicate_candidates_and_fingerprint_scan_are_visible(tmp_path) -
             )
             assert scan.status_code == 200
             assert scan.json()["duplicate_scan"]["updated"] == 1
+            assert scan.json()["duplicate_scan"]["remaining"] is False
 
             listed = client.get(
                 "/api/v1/admin/knowledge-assets",
@@ -341,3 +373,109 @@ def test_asset_duplicate_candidates_and_fingerprint_scan_are_visible(tmp_path) -
     finally:
         app.dependency_overrides.clear()
         engine.dispose()
+
+
+def test_asset_list_prefetches_duplicate_candidates_without_per_item_queries(
+    tmp_path,
+) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'assets-batch.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    admin = create_test_user(factory, "asset-batch-admin", role="admin")
+    settings = Settings(
+        _env_file=None,
+        upload_dir=tmp_path / "published",
+        chunk_size=30,
+        chunk_overlap=5,
+    )
+    vectors = FakeVectorStore()
+    ids = [add_asset(factory, settings, vectors, f"b{index}") for index in range(6)]
+    with factory() as session:
+        first_version = session.scalar(
+            select(DocumentVersion).where(DocumentVersion.document_id == ids[0])
+        )
+        for document_id in ids[1:]:
+            version = session.scalar(
+                select(DocumentVersion).where(DocumentVersion.document_id == document_id)
+            )
+            version.normalized_text_hash = first_version.normalized_text_hash
+            version.normalized_text_hash_version = first_version.normalized_text_hash_version
+        session.commit()
+
+    query_count = 0
+
+    def count_queries(*args):
+        nonlocal query_count
+        del args
+        query_count += 1
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    def override_asset_service():
+        with factory() as session:
+            yield KnowledgeAssetService(
+                session,
+                DocumentLifecycleService(session, settings, vectors),
+                SqlAlchemyAuditRecorder(session),
+                SqlAlchemyJobService(session),
+            )
+
+    event.listen(engine, "before_cursor_execute", count_queries)
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
+    app.dependency_overrides[get_asset_service] = override_asset_service
+    try:
+        with TestClient(app) as client:
+            listed = client.get(
+                "/api/v1/admin/knowledge-assets?limit=6",
+                headers=auth_headers(admin.id),
+            )
+            assert listed.status_code == 200
+            assert listed.json()["total"] == 6
+            assert any(
+                item["duplicate_candidates"] for item in listed.json()["items"]
+            )
+        assert query_count <= 12
+    finally:
+        event.remove(engine, "before_cursor_execute", count_queries)
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def test_duplicate_fingerprint_scan_is_batched_and_reports_remaining(tmp_path) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'assets-scan-batch.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    settings = Settings(
+        _env_file=None,
+        upload_dir=tmp_path / "published",
+        chunk_size=30,
+        chunk_overlap=5,
+    )
+    vectors = FakeVectorStore()
+    for index in range(105):
+        document_id = add_asset(factory, settings, vectors, f"s{index}")
+        with factory() as session:
+            version = session.scalar(
+                select(DocumentVersion).where(DocumentVersion.document_id == document_id)
+            )
+            version.normalized_text_hash = None
+            version.normalized_text_hash_version = None
+            session.commit()
+
+    with factory() as session:
+        service = KnowledgeAssetService(
+            session,
+            DocumentLifecycleService(session, settings, vectors),
+            SqlAlchemyAuditRecorder(session),
+            SqlAlchemyJobService(session),
+        )
+
+        result = service.scan_duplicate_fingerprints()
+
+        assert result["scanned"] == 100
+        assert result["updated"] == 100
+        assert result["remaining"] is True
+    engine.dispose()

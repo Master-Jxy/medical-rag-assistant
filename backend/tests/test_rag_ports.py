@@ -1,12 +1,25 @@
 from collections.abc import AsyncIterator, Iterator
 import asyncio
+from datetime import datetime, timedelta, timezone
+import hashlib
 from unittest.mock import Mock
 
 import pytest
 from langchain_core.documents import Document
 from pydantic import ValidationError
+from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.db.base import Base
+from app.db.session import build_engine
+from app.models import DocumentVersion, KnowledgeDocument
+from app.modules.agent.contracts import AgentToolContext
+from app.modules.agent.knowledge_tools import create_read_only_knowledge_registry
+from app.modules.knowledge.public_catalog import PublishedKnowledgeCatalogService
+from app.modules.knowledge.retrieval_eligibility import (
+    EligibilityFilteredKnowledgeSearch,
+    SqlAlchemyDocumentRetrievalEligibility,
+)
 from app.modules.rag.adapters import CurrentChromaKnowledgeSearchAdapter
 from app.modules.rag.ports import (
     ChatHistory,
@@ -85,6 +98,16 @@ class FixedAnswerGenerator:
         yield GeneratedAnswerChunk("异步")
         yield GeneratedAnswerChunk("回答")
         yield GeneratedAnswerChunk("", ModelUsage.actual(15, 4))
+
+
+class FixedOptionAwareKnowledgeSearch:
+    def __init__(self, chunks: list[RetrievedChunk]) -> None:
+        self.chunks = chunks
+        self.calls: list[tuple[str, int, object | None]] = []
+
+    def search(self, query: str, top_k: int, options=None) -> list[RetrievedChunk]:
+        self.calls.append((query, top_k, options))
+        return self.chunks[:top_k]
 
 
 def build_service(
@@ -321,3 +344,129 @@ def test_no_qualified_context_uses_configured_refusal_without_answer_call() -> N
     assert sources == []
     assert search.options == policy.search_options
     assert answer.answer_calls == []
+
+
+def test_retrieval_eligibility_filters_expired_and_overfetches_without_n_plus_one() -> None:
+    engine = build_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    now = datetime.now(timezone.utc)
+    with Session(engine, expire_on_commit=False) as session:
+        for document_id, status, expires_at in (
+            ("doc-expired", "published", now - timedelta(seconds=1)),
+            ("doc-archived", "archived", None),
+            ("doc-current", "published", now + timedelta(days=1)),
+            ("doc-current-2", "ready", None),
+        ):
+            session.add(
+                KnowledgeDocument(
+                    id=document_id,
+                    original_name=f"{document_id}.txt",
+                    stored_name=f"{document_id}.txt",
+                    content_hash=hashlib.sha256(document_id.encode("utf-8")).hexdigest(),
+                    size_bytes=10,
+                    chunk_count=1,
+                    chunk_ids=[f"{document_id}:0"],
+                    uploader_id=None,
+                    is_system=True,
+                    status=status,
+                )
+            )
+            session.add(
+                DocumentVersion(
+                    id=f"version-{document_id}",
+                    document_id=document_id,
+                    version=1,
+                    source="system",
+                    tags=[],
+                    expires_at=expires_at,
+                    review_status="current",
+                )
+            )
+        session.commit()
+        search = FixedOptionAwareKnowledgeSearch(
+            [
+                RetrievedChunk("过期", "a.txt", None, document_id="doc-expired"),
+                RetrievedChunk("归档", "b.txt", None, document_id="doc-archived"),
+                RetrievedChunk("有效1", "c.txt", None, document_id="doc-current"),
+                RetrievedChunk("有效2", "d.txt", None, document_id="doc-current-2"),
+            ]
+        )
+        filtered = EligibilityFilteredKnowledgeSearch(
+            search,
+            SqlAlchemyDocumentRetrievalEligibility(session, now=now),
+            overfetch_factor=4,
+            overfetch_extra=8,
+            overfetch_max=50,
+        )
+
+        chunks = filtered.search("问题", 2)
+
+        assert [chunk.document_id for chunk in chunks] == ["doc-current", "doc-current-2"]
+        assert search.calls == [("问题", 10, None)]
+    engine.dispose()
+
+
+def test_agent_tool_and_catalog_share_expired_retrieval_eligibility() -> None:
+    engine = build_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    now = datetime.now(timezone.utc)
+    with Session(engine, expire_on_commit=False) as session:
+        for document_id, expires_at in (
+            ("doc-expired", now - timedelta(seconds=1)),
+            ("doc-current", None),
+        ):
+            session.add(
+                KnowledgeDocument(
+                    id=document_id,
+                    original_name=f"{document_id}.txt",
+                    stored_name=f"{document_id}.txt",
+                    content_hash=hashlib.sha256(document_id.encode("utf-8")).hexdigest(),
+                    size_bytes=10,
+                    chunk_count=1,
+                    chunk_ids=[f"{document_id}:0"],
+                    uploader_id=None,
+                    is_system=True,
+                    status="published",
+                )
+            )
+            session.add(
+                DocumentVersion(
+                    id=f"version-{document_id}",
+                    document_id=document_id,
+                    version=1,
+                    source="system",
+                    tags=[],
+                    expires_at=expires_at,
+                    review_status="current",
+                )
+            )
+        session.commit()
+        search = EligibilityFilteredKnowledgeSearch(
+            FixedOptionAwareKnowledgeSearch(
+                [
+                    RetrievedChunk("过期", "a.txt", None, document_id="doc-expired"),
+                    RetrievedChunk("有效", "b.txt", None, document_id="doc-current"),
+                ]
+            ),
+            SqlAlchemyDocumentRetrievalEligibility(session, now=now),
+        )
+        registry = create_read_only_knowledge_registry(
+            search,
+            PublishedKnowledgeCatalogService(session),
+        )
+        context = AgentToolContext(run_id="run-1", user_id="user-1")
+
+        search_result = registry.invoke(
+            "search_knowledge",
+            context,
+            {"query": "患者安全", "top_k": 2},
+        )
+        expired_info = registry.invoke(
+            "get_document_info",
+            context,
+            {"document_id": "doc-expired"},
+        )
+
+        assert search_result.source_ids == ["doc-current"]
+        assert expired_info.data == {"found": False}
+    engine.dispose()

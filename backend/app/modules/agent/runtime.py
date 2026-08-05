@@ -12,6 +12,10 @@ from app.modules.agent.cancellation import AgentCancellationService
 from app.modules.agent.graph import BoundedAgentGraph
 from app.modules.agent.knowledge_tools import create_read_only_knowledge_registry
 from app.modules.knowledge.public_catalog import PublishedKnowledgeCatalogService
+from app.modules.knowledge.retrieval_eligibility import (
+    EligibilityFilteredKnowledgeSearch,
+    SqlAlchemyDocumentRetrievalEligibility,
+)
 from app.modules.rag.hybrid_search import create_current_knowledge_search
 from app.modules.agent.usage import AgentModelCallBudget, AgentModelUsageCollector
 
@@ -24,7 +28,10 @@ def create_agent_graph_factory(
 ):
     def factory(user_id: str, run_id: str) -> BoundedAgentGraph:
         # 查询历史和停止运行不应初始化Chroma或模型；只在真正执行时装配。
-        search = create_current_knowledge_search(settings)
+        search = EligibilityFilteredKnowledgeSearch(
+            create_current_knowledge_search(settings),
+            SqlAlchemyDocumentRetrievalEligibility(session),
+        )
         catalog = PublishedKnowledgeCatalogService(session, settings=settings)
         usage_collector = AgentModelUsageCollector()
         call_budget = AgentModelCallBudget(settings.agent_max_model_calls)

@@ -4,9 +4,11 @@ from pathlib import Path
 from io import BytesIO
 from zipfile import ZipFile
 
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app.api.admin_reviews import get_review_service
@@ -430,6 +432,144 @@ def test_admin_sees_duplicate_candidates_and_can_publish_submission_as_new_versi
     finally:
         app.dependency_overrides.clear()
         engine.dispose()
+
+
+def test_approve_as_version_failure_restores_old_vectors_and_cleans_new_document(
+    tmp_path,
+) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'review-version-failure.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    submitter = create_test_user(factory, "review-version-failure-submitter")
+    admin = create_test_user(factory, "review-version-failure-admin", role="admin")
+    settings = Settings(
+        _env_file=None,
+        submission_dir=tmp_path / "isolated",
+        upload_dir=tmp_path / "published",
+        chunk_size=80,
+        chunk_overlap=5,
+    )
+    vectors = FakeVectorStore()
+    old_document_id = add_fingerprinted_published_document(
+        factory,
+        settings,
+        vectors,
+        "rollback",
+        "心力衰竭 随访 用药 复查 血压",
+    )
+    old_entries = dict(vectors.entries)
+    submission_id = add_submission(factory, settings, submitter.id, "rollback")
+    with factory() as session:
+        submission = session.get(KnowledgeSubmission, submission_id)
+        submission.preview_text = "心力衰竭 随访 用药 复查 血压 更新"
+        DuplicatePolicy.assign_to_submission(submission)
+        session.commit()
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    def override_review_service():
+        with factory() as session:
+            yield KnowledgeReviewService(
+                session,
+                settings,
+                DocumentLifecycleService(session, settings, vectors),
+                FailPublishedAudit(),
+                SqlAlchemyJobService(session),
+            )
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
+    app.dependency_overrides[get_review_service] = override_review_service
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                f"/api/v1/admin/reviews/{submission_id}/approve-as-version",
+                json={
+                    "supersedes_document_id": old_document_id,
+                    "change_reason": "失败回滚测试",
+                },
+                headers=auth_headers(admin.id),
+            )
+            assert response.status_code == 500
+            assert response.json()["error"]["code"] == "DOCUMENT_STORE_ERROR"
+
+        with factory() as session:
+            old = session.get(KnowledgeDocument, old_document_id)
+            submission = session.get(KnowledgeSubmission, submission_id)
+            documents = session.scalars(select(KnowledgeDocument)).all()
+            job = session.scalar(select(ProcessingJob))
+            assert old.status == "published"
+            assert submission.status == "failed"
+            assert submission.document_id is None
+            assert job.status == "failed"
+            assert [document.id for document in documents] == [old_document_id]
+            assert session.scalar(
+                select(DocumentVersion).where(
+                    DocumentVersion.supersedes_document_id == old_document_id
+                )
+            ) is None
+        assert vectors.entries == old_entries
+        assert vectors.restore_calls == 1
+        assert len(list(settings.upload_dir.glob("*.txt"))) == 1
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def test_document_version_supersedes_version_unique_constraint_blocks_double_branch(
+    tmp_path,
+) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'version-constraint.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        for document_id in ("old", "new-a", "new-b"):
+            session.add(
+                KnowledgeDocument(
+                    id=document_id,
+                    original_name=f"{document_id}.txt",
+                    stored_name=f"{document_id}.txt",
+                    content_hash=(document_id[-1] * 64),
+                    size_bytes=10,
+                    chunk_count=1,
+                    chunk_ids=[f"{document_id}:0"],
+                    uploader_id=None,
+                    is_system=True,
+                    status="published",
+                )
+            )
+        session.add_all(
+            [
+                DocumentVersion(
+                    id="version-old",
+                    document_id="old",
+                    version=1,
+                    source="system",
+                    tags=[],
+                ),
+                DocumentVersion(
+                    id="version-new-a",
+                    document_id="new-a",
+                    version=2,
+                    supersedes_document_id="old",
+                    source="system",
+                    tags=[],
+                ),
+                DocumentVersion(
+                    id="version-new-b",
+                    document_id="new-b",
+                    version=2,
+                    supersedes_document_id="old",
+                    source="system",
+                    tags=[],
+                ),
+            ]
+        )
+        with pytest.raises(IntegrityError):
+            session.commit()
+    engine.dispose()
 
 
 

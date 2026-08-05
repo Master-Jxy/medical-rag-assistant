@@ -4,13 +4,19 @@ import asyncio
 from pathlib import Path
 from time import monotonic
 
-from fastapi import Request
+from fastapi import Depends, Request
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage
+from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConfigurationError, RagServiceError
 from app.core.config import get_settings
 from app.core.request_context import get_request_id
+from app.db.session import get_db_session
+from app.modules.knowledge.retrieval_eligibility import (
+    EligibilityFilteredKnowledgeSearch,
+    SqlAlchemyDocumentRetrievalEligibility,
+)
 from app.modules.rag.adapters import (
     RAG_SYSTEM_PROMPT,
     CurrentQueryBuilderAdapter,
@@ -413,10 +419,27 @@ class RagService:
         )
 
 
-def get_rag_service(request: Request) -> RagService:
-    """第一次聊天请求时创建服务，之后复用模型和 Chroma 连接。"""
-    service = getattr(request.app.state, "rag_service", None)
-    if service is None:
-        service = RagService(telemetry=request.app.state.telemetry)
-        request.app.state.rag_service = service
-    return service
+def get_rag_service(
+    request: Request,
+    session: Session = Depends(get_db_session),
+) -> RagService:
+    """Reuse model/Chroma clients while applying per-request retrieval eligibility."""
+    base_service = getattr(request.app.state, "rag_service_base", None)
+    if base_service is None:
+        base_service = getattr(request.app.state, "rag_service", None)
+    if base_service is None:
+        base_service = RagService(telemetry=request.app.state.telemetry)
+        request.app.state.rag_service_base = base_service
+        request.app.state.rag_service = base_service
+    eligible_search = EligibilityFilteredKnowledgeSearch(
+        base_service.knowledge_search,
+        SqlAlchemyDocumentRetrievalEligibility(session),
+    )
+    return RagService(
+        base_service.query_builder,
+        eligible_search,
+        base_service.answer_generator,
+        base_service.retrieval_policy,
+        base_service.rerank_stage,
+        telemetry=base_service.telemetry,
+    )

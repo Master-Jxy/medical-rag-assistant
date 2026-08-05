@@ -2165,6 +2165,19 @@ idempotent local fingerprint backfill job for published/archived versions
 missing normalized hashes. No scheduler, Celery, model call, Embedding, OCR,
 Vision, Docling run, or production data access is introduced.
 
+Stage 24.6 hardening adds a shared retrieval eligibility boundary for ordinary
+RAG and Agent tools. `EligibilityFilteredKnowledgeSearch` wraps the current
+SearchPort with `SqlAlchemyDocumentRetrievalEligibility`, overfetches a bounded
+candidate pool, batch-checks MySQL once, and returns only `published`/`ready`
+documents whose governance status is not `expired`; `archived`, `failed`, an
+explicit `review_status='expired'`, or an elapsed `expires_at` are never
+returned as RAG/Agent context. Public knowledge catalog reads use the same
+expiry policy. Due-review scanning now excludes expired documents so expiry and
+review workflow remain separate. Near-duplicate scans have deterministic SQL
+limits and invalid SimHash values are ignored safely; asset list duplicate
+candidates are batch-prefetched per page, and fingerprint backfill runs in
+bounded batches with a `remaining` result for idempotent retries.
+
 The administrator review UI shows duplicate candidates inside existing review
 cards and exposes the explicit "作为新版本发布" action. The knowledge asset UI
 shows compact version/fingerprint/governance status, duplicate hints,

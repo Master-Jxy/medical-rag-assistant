@@ -22,6 +22,8 @@ NORMALIZED_TEXT_HASH_VERSION = "normalized_text_sha256_v1"
 NEAR_DUPLICATE_FINGERPRINT_VERSION = "simhash64_v1"
 NEAR_DUPLICATE_DISTANCE_THRESHOLD = 8
 MAX_NORMALIZED_TEXT_CHARS = 250_000
+NEAR_DUPLICATE_SCAN_LIMIT = 500
+NEAR_DUPLICATE_BATCH_SCAN_LIMIT = 1_000
 TOKEN_PATTERN = re.compile(r"[a-z0-9_]+|[\u4e00-\u9fff]", re.IGNORECASE)
 
 
@@ -155,6 +157,151 @@ class DuplicateCandidateService:
             limit=limit,
         )
 
+    def for_documents(
+        self,
+        pairs: Iterable[tuple[KnowledgeDocument, DocumentVersion | None]],
+        *,
+        limit: int = 5,
+    ) -> dict[str, list[DuplicateCandidate]]:
+        entries = list(pairs)
+        result: dict[str, list[DuplicateCandidate]] = {
+            document.id: [] for document, _version in entries
+        }
+        if not entries:
+            return result
+        by_hash: dict[str, list[tuple[KnowledgeDocument, DocumentVersion | None]]] = {}
+        by_normalized: dict[
+            tuple[str, str], list[tuple[KnowledgeDocument, DocumentVersion | None]]
+        ] = {}
+        near_targets: list[
+            tuple[KnowledgeDocument, DocumentVersion | None, int, str | None]
+        ] = []
+        for document, version in entries:
+            if document.content_hash:
+                by_hash.setdefault(document.content_hash, []).append((document, version))
+            if version and version.normalized_text_hash and version.normalized_text_hash_version:
+                by_normalized.setdefault(
+                    (
+                        version.normalized_text_hash,
+                        version.normalized_text_hash_version,
+                    ),
+                    [],
+                ).append((document, version))
+            if version and version.near_duplicate_fingerprint and version.near_duplicate_fingerprint_version:
+                target = _parse_simhash_hex(version.near_duplicate_fingerprint)
+                if target is not None:
+                    near_targets.append(
+                        (document, version, target, version.normalized_text_hash)
+                    )
+
+        if by_hash:
+            rows = self.session.execute(
+                select(KnowledgeDocument, DocumentVersion)
+                .outerjoin(DocumentVersion, DocumentVersion.document_id == KnowledgeDocument.id)
+                .where(
+                    KnowledgeDocument.content_hash.in_(sorted(by_hash)),
+                )
+                .order_by(KnowledgeDocument.created_at.asc(), KnowledgeDocument.id.asc())
+                .limit(NEAR_DUPLICATE_BATCH_SCAN_LIMIT)
+            ).all()
+            for candidate_document, candidate_version in rows:
+                for source_document, _source_version in by_hash.get(
+                    candidate_document.content_hash, []
+                ):
+                    if candidate_document.id == source_document.id:
+                        continue
+                    result[source_document.id].append(
+                        _candidate(
+                            "exact",
+                            candidate_document,
+                            candidate_version,
+                            score=1.0,
+                            distance=0,
+                            threshold=0,
+                            reason="原始文件 SHA-256 完全相同",
+                        )
+                    )
+
+        if by_normalized:
+            normalized_hashes = sorted({key[0] for key in by_normalized})
+            normalized_versions = sorted({key[1] for key in by_normalized})
+            rows = self.session.execute(
+                select(KnowledgeDocument, DocumentVersion)
+                .join(DocumentVersion, DocumentVersion.document_id == KnowledgeDocument.id)
+                .where(
+                    DocumentVersion.normalized_text_hash.in_(normalized_hashes),
+                    DocumentVersion.normalized_text_hash_version.in_(normalized_versions),
+                )
+                .order_by(KnowledgeDocument.created_at.asc(), KnowledgeDocument.id.asc())
+                .limit(NEAR_DUPLICATE_BATCH_SCAN_LIMIT)
+            ).all()
+            for candidate_document, candidate_version in rows:
+                key = (
+                    candidate_version.normalized_text_hash,
+                    candidate_version.normalized_text_hash_version,
+                )
+                for source_document, _source_version in by_normalized.get(key, []):
+                    if candidate_document.id == source_document.id:
+                        continue
+                    result[source_document.id].append(
+                        _candidate(
+                            "normalized",
+                            candidate_document,
+                            candidate_version,
+                            score=1.0,
+                            distance=0,
+                            threshold=0,
+                            reason="规范化正文 SHA-256 完全相同",
+                        )
+                    )
+
+        if near_targets:
+            versions = sorted(
+                {
+                    version.near_duplicate_fingerprint_version
+                    for _document, version, _target, _normalized in near_targets
+                    if version and version.near_duplicate_fingerprint_version
+                }
+            )
+            rows = self.session.execute(
+                select(KnowledgeDocument, DocumentVersion)
+                .join(DocumentVersion, DocumentVersion.document_id == KnowledgeDocument.id)
+                .where(
+                    DocumentVersion.near_duplicate_fingerprint.is_not(None),
+                    DocumentVersion.near_duplicate_fingerprint_version.in_(versions),
+                )
+                .order_by(KnowledgeDocument.created_at.asc(), KnowledgeDocument.id.asc())
+                .limit(NEAR_DUPLICATE_BATCH_SCAN_LIMIT)
+            ).all()
+            for candidate_document, candidate_version in rows:
+                candidate_fingerprint = _parse_simhash_hex(
+                    candidate_version.near_duplicate_fingerprint
+                )
+                if candidate_fingerprint is None:
+                    continue
+                for source_document, _source_version, target, normalized_hash in near_targets:
+                    if candidate_document.id == source_document.id:
+                        continue
+                    if candidate_version.normalized_text_hash == normalized_hash:
+                        continue
+                    distance = hamming_distance(target, candidate_fingerprint)
+                    if distance <= NEAR_DUPLICATE_DISTANCE_THRESHOLD:
+                        result[source_document.id].append(
+                            _candidate(
+                                "near",
+                                candidate_document,
+                                candidate_version,
+                                score=round(1 - distance / 64, 4),
+                                distance=distance,
+                                threshold=NEAR_DUPLICATE_DISTANCE_THRESHOLD,
+                                reason="近重复 SimHash 距离低于阈值",
+                            )
+                        )
+        return {
+            document_id: _dedupe_candidates(candidates)[:limit]
+            for document_id, candidates in result.items()
+        }
+
     def _find_candidates(
         self,
         *,
@@ -214,7 +361,9 @@ class DuplicateCandidateService:
                 for document, version in rows
             )
         if near_duplicate_fingerprint and near_duplicate_fingerprint_version:
-            target = int(near_duplicate_fingerprint, 16)
+            target = _parse_simhash_hex(near_duplicate_fingerprint)
+            if target is None:
+                return _dedupe_candidates(candidates)[:limit]
             rows = self.session.execute(
                 select(KnowledgeDocument, DocumentVersion)
                 .join(DocumentVersion, DocumentVersion.document_id == KnowledgeDocument.id)
@@ -224,14 +373,19 @@ class DuplicateCandidateService:
                     == near_duplicate_fingerprint_version,
                     KnowledgeDocument.id != exclude_document_id,
                 )
+                .order_by(KnowledgeDocument.created_at.asc(), KnowledgeDocument.id.asc())
+                .limit(NEAR_DUPLICATE_SCAN_LIMIT)
             ).all()
             near: list[DuplicateCandidate] = []
             for document, version in rows:
                 if version.normalized_text_hash == normalized_text_hash:
                     continue
-                distance = hamming_distance(
-                    target, int(version.near_duplicate_fingerprint, 16)
+                candidate_fingerprint = _parse_simhash_hex(
+                    version.near_duplicate_fingerprint
                 )
+                if candidate_fingerprint is None:
+                    continue
+                distance = hamming_distance(target, candidate_fingerprint)
                 if distance <= NEAR_DUPLICATE_DISTANCE_THRESHOLD:
                     near.append(
                         _candidate(
@@ -326,6 +480,12 @@ def _dedupe_candidates(
             item.candidate_document_id,
         ),
     )
+
+
+def _parse_simhash_hex(value: str | None) -> int | None:
+    if value is None or not re.fullmatch(r"[0-9a-fA-F]{16}", value):
+        return None
+    return int(value, 16)
 
 
 def _is_at_or_before(value: datetime | None, now: datetime) -> bool:

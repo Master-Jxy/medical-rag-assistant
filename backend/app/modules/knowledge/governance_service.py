@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from sqlalchemy import select
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.modules.jobs.ports import JobPort
@@ -22,7 +23,11 @@ class KnowledgeGovernanceService:
                 KnowledgeDocument.status.in_(("published", "ready")),
                 DocumentVersion.review_due_at.is_not(None),
                 DocumentVersion.review_due_at <= now,
-                DocumentVersion.review_status.in_(("current", "due", "expired")),
+                DocumentVersion.review_status.in_(("current", "due")),
+                or_(
+                    DocumentVersion.expires_at.is_(None),
+                    DocumentVersion.expires_at > now,
+                ),
             )
             .with_for_update()
         ).all()

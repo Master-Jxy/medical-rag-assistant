@@ -38,6 +38,9 @@ class AssetStateConflictError(AppError):
         )
 
 
+DUPLICATE_FINGERPRINT_SCAN_BATCH_LIMIT = 100
+
+
 class KnowledgeAssetService:
     def __init__(
         self,
@@ -106,8 +109,18 @@ class KnowledgeAssetService:
         if computed_review_filter:
             total = len(rows)
         page = rows[offset : offset + limit] if tag else rows[offset : offset + limit]
+        duplicate_candidates = DuplicateCandidateService(self.session).for_documents(
+            page
+        )
         return KnowledgeAssetListResponse(
-            items=[self._to_item(document, version) for document, version in page],
+            items=[
+                self._to_item(
+                    document,
+                    version,
+                    duplicate_candidates=duplicate_candidates.get(document.id, []),
+                )
+                for document, version in page
+            ],
             total=total,
             offset=offset,
             limit=limit,
@@ -115,7 +128,14 @@ class KnowledgeAssetService:
 
     def scan_duplicate_fingerprints(self) -> dict:
         if self.jobs is None:
-            return {"job_id": None, "scanned": 0, "updated": 0, "failed": 0}
+            return {
+                "job_id": None,
+                "scanned": 0,
+                "updated": 0,
+                "failed": 0,
+                "remaining": False,
+                "batch_limit": DUPLICATE_FINGERPRINT_SCAN_BATCH_LIMIT,
+            }
         rows = self.session.execute(
             select(KnowledgeDocument, DocumentVersion)
             .join(DocumentVersion, DocumentVersion.document_id == KnowledgeDocument.id)
@@ -124,9 +144,19 @@ class KnowledgeAssetService:
                 DocumentVersion.normalized_text_hash.is_(None),
             )
             .order_by(KnowledgeDocument.created_at.asc(), KnowledgeDocument.id.asc())
+            .limit(DUPLICATE_FINGERPRINT_SCAN_BATCH_LIMIT + 1)
         ).all()
         if not rows:
-            return {"job_id": None, "scanned": 0, "updated": 0, "failed": 0}
+            return {
+                "job_id": None,
+                "scanned": 0,
+                "updated": 0,
+                "failed": 0,
+                "remaining": False,
+                "batch_limit": DUPLICATE_FINGERPRINT_SCAN_BATCH_LIMIT,
+            }
+        remaining = len(rows) > DUPLICATE_FINGERPRINT_SCAN_BATCH_LIMIT
+        rows = rows[:DUPLICATE_FINGERPRINT_SCAN_BATCH_LIMIT]
         job = self.jobs.start(
             job_type="knowledge_duplicate_scan",
             object_type="knowledge_corpus",
@@ -165,6 +195,8 @@ class KnowledgeAssetService:
                 "scanned": len(rows),
                 "updated": updated,
                 "failed": failed,
+                "remaining": remaining,
+                "batch_limit": DUPLICATE_FINGERPRINT_SCAN_BATCH_LIMIT,
             }
         except Exception:
             self.session.rollback()
@@ -290,6 +322,10 @@ class KnowledgeAssetService:
         document = self._get_document(document_id)
         version = self._get_or_create_version(document)
         now = datetime.now(timezone.utc)
+        if next_review_due_at is not None:
+            due_now = datetime.now(next_review_due_at.tzinfo or timezone.utc)
+            if next_review_due_at <= due_now:
+                raise AssetStateConflictError()
         version.expires_at = None
         version.last_reviewed_at = now
         version.review_due_at = next_review_due_at
@@ -480,11 +516,16 @@ class KnowledgeAssetService:
         )
 
     def _to_item(
-        self, document: KnowledgeDocument, version: DocumentVersion | None
+        self,
+        document: KnowledgeDocument,
+        version: DocumentVersion | None,
+        *,
+        duplicate_candidates: list[DuplicateCandidate] | None = None,
     ) -> KnowledgeAssetItem:
-        duplicate_candidates = DuplicateCandidateService(self.session).for_document(
-            document, version
-        )
+        if duplicate_candidates is None:
+            duplicate_candidates = DuplicateCandidateService(self.session).for_document(
+                document, version
+            )
         governance_status = DuplicatePolicy.governance_status(version)
         return KnowledgeAssetItem(
             document_id=document.id,
