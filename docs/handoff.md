@@ -1,6 +1,6 @@
 # 当前开发交接
 
-> 最后更新：2026-08-03
+> 最后更新：2026-08-06
 > 本文件只保留当前事实、工作区边界和一个下一任务。
 
 ## 1. 当前真实状态
@@ -130,8 +130,17 @@ Stage 23 已完成实现、无费用验证和生产发布：
 
 ## 7. 唯一下一任务
 
-**观察本次跨页面流式修复和 Stage 23 的自然运行状态，不创建生产测试数据。**
+**执行 Stage 24.0 稳定性收尾，不实现新的解析格式。**
 
-后续只在用户自然使用后核对 RAG/Agent 切页返回是否持续增量显示，并在自然出现陈旧
-pending 时检查其是否收敛为 failed、会话是否恢复 idle；没有新证据前不调用真实模型、
-不创建测试消息，也不增加后台定时器或新的恢复状态。
+先阅读 `docs/stage24-document-intelligence-and-stability-design.md` 的第 1、2、9、10 节。
+使用 Fake/stub 和现有测试复核 RAG/Agent 跨页面流式继续、后台完成未读、重新打开已读、
+陈旧 pending 恢复、明确停止和退出清理。生产仅允许读取健康、容器、迁移、静态资源和
+错误计数，不创建测试消息、不调用 Qwen/Embedding/Reranker/OCR/视觉/SMTP、不部署。
+
+工作区中的 `backend/app/modules/auth/service.py` 是受保护的用户改动，哈希仍应为
+`9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。禁止修改、
+格式化、暂存、提交、回退或覆盖；只可通过 Git 元数据说明它不属于 Stage 24。
+
+24.0 完成后更新本文件，并把唯一下一任务改为 24.1 解析契约。完整 Stage 24 路线和
+高星开源依据见 `docs/stage24-document-intelligence-and-stability-design.md` 与
+`docs/stage24-open-source-benchmark.md`。

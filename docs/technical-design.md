@@ -1,6 +1,6 @@
 # 技术设计与演进架构
 
-> 最后更新：2026-07-31
+> 最后更新：2026-08-06
 > 文档用途：说明当前真实实现、目标架构、数据契约和后续演进边界。
 > 状态标记：`[现状]` 表示代码已经具备，`[目标]` 表示尚未实现，`[迁移]` 表示后续开发时逐步调整。
 
@@ -20,6 +20,7 @@
 | 邮箱认证与基础usage账本 | 19与`docs/auth-and-model-usage-design.md` |
 | 长期记忆与用户额度 | 20与`docs/memory-and-quota-design.md` |
 | 额度策略v2 | 21与`docs/quota-policy-v2-design.md` |
+| 文档智能与 corpus_v2 | Stage 24 增补与`docs/stage24-document-intelligence-and-stability-design.md` |
 
 不要为了确认一个小任务而读取全部历史实验段落；先查对应摘要，只有定位设计依据时再展开细节。
 
@@ -1888,3 +1889,30 @@ Stage 23 已完成无费用临时 SQLite 和相关后端回归测试，并以提
 没有重建。线上四容器健康，HTTP 308、HTTPS 200、未授权 401、900 秒配置和错误日志
 检查通过。生产模型开关和数据卷保持不变。后续如需后台定时恢复、任务租约或统一
 跨 worker 调度，应作为独立阶段设计。
+# Stage 24 文档智能边界（2026-08-06 增补）
+
+Stage 24 不建立平行知识库，继续复用现有 submission/review/lifecycle/version/governance。
+新增解析层固定为：
+
+```text
+KnowledgeSubmissionService
+-> DocumentParserPort / ParserRegistry
+-> ParsedDocument(elements, assets, quality)
+-> 兼容 ParsedPreview 与管理员审核
+-> 现有 KnowledgeLifecycle 发布
+-> 切片 / Embedding / Chroma
+```
+
+第三方解析器、OCR 和视觉 SDK 只能存在于 infrastructure adapter；业务服务和数据库不
+保存第三方对象。结构化元素至少包含 kind、text、page、order、可空 bbox 和表格表示；
+图片只保存受控 storage reference 与哈希。切片器消费统一元素，引用沿用 document/page/
+chunk 来源，不因解析器变化破坏 RAG/Agent 契约。
+
+AI 元数据输出是 suggestion，不是正式文档元数据。只有管理员接受或编辑后，知识应用
+服务才更新 `document_versions` 并写审计。精确文件哈希继续硬拒绝；标准化正文哈希与
+近重复只提示合并/建新版本，不自动删除。OCR、视觉、真实 Embedding 和生产导入均通过
+独立成本与数据变更闸门。
+
+完整字段、状态机、安全限制、阶段拆分和开源依据分别见
+`docs/stage24-document-intelligence-and-stability-design.md` 与
+`docs/stage24-open-source-benchmark.md`。

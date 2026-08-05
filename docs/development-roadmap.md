@@ -772,6 +772,28 @@
    服务器只重建 backend。四容器健康，HTTP 308、HTTPS 200、未授权 401、配置 900 秒
    和错误日志检查通过；未调用真实模型。
 
+## 24. 阶段二十四：稳定性收尾与文档智能升级 `[设计完成，待实施]`
+
+完整架构、数据契约、安全闸门和验收标准见
+[`docs/stage24-document-intelligence-and-stability-design.md`](stage24-document-intelligence-and-stability-design.md)，
+开源项目、具体参考路径和许可边界见
+[`docs/stage24-open-source-benchmark.md`](stage24-open-source-benchmark.md)。
+
+1. **24.0 `[下一任务]`**：复核跨页面流式恢复、后台未读、陈旧 pending 和日志；只做
+   无费用本地/浏览器及生产只读检查，不修改受保护 auth 文件。
+2. **24.1 `[待开始]`**：建立 `DocumentParserPort`、统一 element/asset/quality 契约、
+   ParserRegistry 和现有 PDF/TXT 兼容层。
+3. **24.2 `[待开始]`**：增加 DOCX、Markdown、HTML 和带 SSRF 防护的网页快照导入。
+4. **24.3 `[待开始]`**：实现复杂 PDF 的 Docling 候选、表格/页码/图片资产输出与固定集
+   晋级，不满足门槛时继续使用 PyPDF。
+5. **24.4 `[待开始]`**：实现 OCR/视觉 Port、Fake、资源与费用限制、文档图片生命周期；
+   真实调用与启用另行授权。
+6. **24.5 `[待开始]`**：实现元数据建议状态机、管理员确认、审核 UI 和审计。
+7. **24.6 `[待开始]`**：补充标准化正文去重、近重复提示、版本沿袭与失效治理筛选。
+8. **24.7 `[待开始]`**：建立不可覆盖 v1 的 `corpus_v2` manifest、覆盖矩阵、清洗报告
+   和评估集；Embedding 和生产导入另设闸门。
+9. **24.8 `[待开始]`**：完整 L2/L3 验收并形成发布候选；未获当次授权不部署。
+
 ## 21. 每个任务的完成模板
 
 任务只有满足以下条件才能标记完成：
