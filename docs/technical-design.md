@@ -2228,3 +2228,25 @@ must all be zero and the preflight must not be in provider-execution mode. The
 summary separately estimates the upper bound that would apply only after future
 human approval. No network fetch, production upload, real model, Docling,
 OCR/Vision, SMTP, or paid provider call is performed in this stage.
+
+## Stage 24.8 Release Candidate Validation Boundary (2026-08-06)
+
+Stage 24.8 adds no product feature. It validates the Stage 24 release candidate
+and records deployment gates in `docs/release-audit-stage24-document-intelligence.md`.
+The local candidate passed full backend tests, frontend tests, SSE parser,
+frontend production build, targeted Stage 24 regression tests, security-focused
+tests, Python compile/import smoke, Alembic `0029 -> 0028 -> 0029` temporary
+SQLite roundtrip, corpus_v2 no-cost preflight, and static deployment config
+checks. Docker/Compose and Nginx executable syntax checks are environment SKIPs
+because this Windows host does not provide those CLIs. Local browser click and
+console validation is also a documented SKIP because the project has no
+available Playwright/browser automation dependency and Stage 24.8 forbids
+network downloads.
+
+The release candidate still does not deploy, push, import production data, run
+real Docling/OCR/Vision/SMTP, fetch web pages, or call Qwen/Embedding/Reranker.
+Deployment remains a separate user-authorized operation requiring a clean server
+worktree, verified backups of MySQL/app_data/chroma_data/Redis, Alembic upgrade,
+service rebuild, health checks, and rollback readiness. `corpus_v2` remains a
+planning asset: 10 placeholder documents, 0 ready documents, and 10 coverage
+gaps.

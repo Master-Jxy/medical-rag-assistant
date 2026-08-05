@@ -772,7 +772,7 @@
    服务器只重建 backend。四容器健康，HTTP 308、HTTPS 200、未授权 401、配置 900 秒
    和错误日志检查通过；未调用真实模型。
 
-## 24. Stage 24: Stability Wrap-up and Document Intelligence `[in progress: 24.7 independent validation]`
+## 24. Stage 24: Stability Wrap-up and Document Intelligence `[release candidate validated, awaiting deployment authorization]`
 
 完整架构、数据契约、安全闸门和验收标准见
 [`docs/stage24-document-intelligence-and-stability-design.md`](stage24-document-intelligence-and-stability-design.md)，
@@ -794,8 +794,8 @@
    真实调用与启用另行授权。
 7. **24.5 `[已完成]`**：persisted metadata suggestions, explicit administrator generate action, Disabled/Fake port, administrator accept/edit/reject confirmation, formal `document_versions` writes, review UI, audit, migration, and follow-up acceptance.
 8. **24.6 `[已完成并通过独立验收]`**：补充 exact/normalized/near 三层重复信号、版本沿袭、失效治理筛选、显式作为新版本发布、JobPort 治理扫描，并完成 RAG/Agent 检索资格、扫描上限与失败回滚 hardening。
-9. **24.7 `[follow-up完成，待独立验收]`**：建立不可覆盖 v1 的 `corpus_v2` manifest、覆盖矩阵、清洗/重复报告、`eval_v2` 和无费用 preflight；当前只登记待审 fixture/intake，不读取真实上传资料，不导入生产。覆盖矩阵已区分 planned 与 current，当前 10 个资料均非 ready，缺口按真实可执行覆盖计算；Embedding 和生产导入另设闸门。
-10. **24.8 `[待开始]`**：完整 L2/L3 验收并形成发布候选；未获当次授权不部署。
+9. **24.7 `[已完成并通过独立验收]`**：建立不可覆盖 v1 的 `corpus_v2` manifest、覆盖矩阵、清洗/重复报告、`eval_v2` 和无费用 preflight；当前只登记待审 fixture/intake，不读取真实上传资料，不导入生产。覆盖矩阵已区分 planned 与 current，当前 10 个资料均非 ready，缺口按真实可执行覆盖计算；Embedding 和生产导入另设闸门。
+10. **24.8 `[发布候选已验收，待用户授权部署]`**：完整后端、前端、SSE、构建、迁移往返、安全扫描、Stage24 focused matrix、部署静态预检和发布审计已完成；Docker/Nginx CLI 与本地浏览器点击因本机缺少工具且禁止下载依赖而记录 SKIP。未获当次授权不部署。
 
 ## 21. 每个任务的完成模板
 

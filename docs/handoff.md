@@ -5,37 +5,66 @@
 
 ## 1. 当前真实状态
 
-Stage 24.7 `corpus_v2` 已完成本地实现和 coverage 口径 follow-up，等待独立验收；未进入 24.8，未部署、未推送，未调用真实 Qwen、Embedding、Reranker、OCR、Vision、SMTP、Docling、生产网络或任何收费供应商。
+Stage 24.8 完整验收与发布候选已完成本地验证，等待用户单独授权部署；未推送、未部署、未修改生产，未调用真实 Qwen、Embedding、Reranker、OCR、Vision、SMTP、Docling、生产网络或任何收费供应商。
 
-本阶段新增的是可复现、不可覆盖 `corpus_v1`、当前不导入生产的离线评估资产与工具：
+Stage 24 当前候选边界：
 
-- `backend/app/evaluation/corpus_v2.py` 定义 `corpus_v2` manifest、`eval_v2`、覆盖矩阵、清洗/重复报告和无费用 preflight 的 Pydantic 契约与构建函数。
-- `backend/evaluation/corpora/corpus_v2_manifest.json` 记录 10 个待审 fixture placeholder，包含稳定 id、相对路径、来源/许可待审字段、科室、疾病主题、格式、语言、治理状态、parser 预期和表格/扫描页/图片标记。当前所有内容哈希均为 `unknown`，不得视为已下载真实资料。
-- `backend/evaluation/corpora/corpus_v2_coverage_matrix.json` 覆盖基础事实、多来源、表格、扫描/OCR、图片/视觉、拒答、版本冲突、重复、多格式和网页快照，并严格区分 `planned_count` 与 `current_count`。当前 10 个 documents 均非 ready，8/9 eval cases 为 blocked；document-driven current 全为 0，只有 refusal 的非 blocked case 可计 current=1，10 个覆盖类别均仍有 gap。
-- `backend/evaluation/corpora/corpus_v2_cleaning_dedup_report.json` 只基于 manifest metadata 生成，exact bytes、normalized text、near hint 分开记录，`auto_deleted=false`。
-- `backend/evaluation/datasets/eval_v2.json` 绑定 `corpus_v2` checksum；缺少 fixture 或需要 OCR/Vision 的题保持 `blocked`，不伪造 golden answer。
-- `backend/scripts/preflight_corpus_v2.py` 从 `backend` 目录执行 `.\.venv\Scripts\python.exe -m scripts.preflight_corpus_v2 --check`，校验 manifest/schema/checksum/引用/覆盖/预算。no-cost gate 由“当前 provider calls 全为 0 且不处于执行 provider 模式”派生，不再是常量 True。
-- `backend/evaluation/corpora/corpus_v2_intake_template.md` 是后续人工导入清单模板；若现有 27 份资料要纳入 v2，必须另行人工确认来源、许可、文件哈希和使用边界，不能在本阶段读取真实正文或编造来源。
+- 24.0 到 24.6 的稳定性、解析、多格式、网页快照、Docling fallback、OCR/Vision Fake/Disabled、元数据治理、去重/版本/失效和 RAG/Agent retrieval eligibility 已由完整后端和 focused matrix 覆盖。
+- 24.7 `corpus_v2` 是离线评估蓝图，不是生产语料扩充：10 个 placeholder documents、0 ready、10 个 coverage gaps；`planned_count` 与 `current_count` 已分离，gap 只按可执行 current 计算。
+- Docling/OCR/Vision/metadata model 仍默认关闭或 Disabled/Fake；真实供应商、真实抓取、真实导入和生产向量化必须另行授权。
+- 新审计文件：`docs/release-audit-stage24-document-intelligence.md`。它记录 PASS/SKIP、证据命令、已知限制、备份和回滚预检。
 
-`docs/development-roadmap.md` 已将 24.6 hardening 标记为已完成并通过独立验收，将 24.7 标记为 follow-up 完成、待独立验收。`docs/technical-design.md`、`docs/stage24-open-source-benchmark.md` 和 `backend/evaluation/README.md` 已记录 v2 边界、planned/current 覆盖口径、无费用闸门和开源参考思想；没有复制第三方源码，也没有新增依赖。
+`docs/development-roadmap.md` 已将 24.7 标记为已完成并通过独立验收，将 24.8 标记为“发布候选已验收，待用户授权部署”。`docs/technical-design.md` 已新增 Stage 24.8 release candidate validation boundary。
 
 ## 2. 本地验证结果
 
-本轮 Stage 24.7 已通过：
+Stage 24.8 已通过：
 
 ```text
-backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_corpus_v2.py backend\tests\test_evaluation_assets.py backend\tests\test_evaluation_dataset.py
-23 passed
+backend\.venv\Scripts\python.exe -m pytest -q backend\tests
+605 passed, 1 skipped, 140 warnings
 
-backend\.venv\Scripts\python.exe -m py_compile backend\app\evaluation\corpus_v2.py backend\scripts\preflight_corpus_v2.py backend\tests\test_corpus_v2.py
-passed
+D:\Nodejs\npm.cmd --prefix frontend test
+19 files / 79 tests passed
+
+D:\Nodejs\npm.cmd --prefix frontend run test:stream
+SSE parser test passed
+
+D:\Nodejs\npm.cmd --prefix frontend run build
+Vite production build passed
+assets: index-DlOXPwXa.css / index-CGLlwHMM.js
+
+backend\.venv\Scripts\python.exe -m alembic -c backend\alembic.ini heads
+0029_dedup_version_governance (head)
+
+Alembic 临时 SQLite roundtrip
+upgrade head -> downgrade 0028_metadata_suggestions -> upgrade head passed
+
+Python compile/import smoke
+py_compile OK: 249 files, auth service excluded
+import smoke OK: app.main, app.evaluation.corpus_v2, scripts.preflight_corpus_v2
+
+Stage24 focused matrix
+167 passed, 1 skipped, 2 warnings
+
+Security focused matrix
+37 passed, 2 warnings
 
 cd backend
 .\.venv\Scripts\python.exe -m scripts.preflight_corpus_v2 --check
 corpus_v2 OK: documents=10; cases=9; coverage_gaps=10; dedup_unknown=10; provider_calls=0
 
-backend\.venv\Scripts\python.exe -m pytest -q backend\tests
-605 passed, 1 skipped, 140 warnings
+Static deploy config
+compose yaml parsed, Dockerfiles/Nginx key directives present
+
+Tracked runtime data scan
+No tracked .env/upload/Chroma/backup/local_reviews/dist/node_modules/SQLite DB paths matched
+
+High-risk secret filename scan
+No tracked file matched DashScope/AKIA/private-key high-risk patterns
+
+Local service health smoke
+temporary SQLite backend health 200; temporary static frontend index 200; processes stopped and temp DB removed
 
 git diff --check
 passed（仅 CRLF 提示）
@@ -47,13 +76,19 @@ Protected auth hash
 9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0
 ```
 
-前端未改动，本阶段未运行完整前端、SSE 或 build；本任务只新增后端 evaluation 静态资产、脚本、测试和文档。未运行 Alembic 往返，因为没有数据库迁移。
+SKIP 项：
+
+- Docker/Compose CLI 语法：本机没有 `docker` 命令，不安装。
+- Nginx `-t`：本机没有 `nginx` 命令，不安装。
+- 本地浏览器点击/控制台验收：项目没有可用 Playwright/browser 自动化依赖；`npm exec` 会触发临时下载，因本阶段禁止网络下载/新增依赖而停止，没有伪造截图或控制台结果。
+
+提交前最终检查已记录。
 
 ## 3. 工作区与安全边界
 
 - 当前分支：`main`。
 - 本任务只允许本地提交；禁止 push、部署、生产操作、生产网络抓取、真实模型或收费调用。
-- `backend/app/modules/auth/service.py` 是受保护用户改动，禁止读取正文、修改、格式化、暂存、提交、回退或覆盖；只允许 SHA-256 校验，目标值必须保持：
+- `backend/app/modules/auth/service.py` 是受保护用户改动，禁止修改、格式化、暂存、提交、回退或覆盖；提交前后只允许 SHA-256 校验，目标值必须保持：
   `9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。
 - 不读取 `.env`、真实上传资料、Chroma 数据、数据库备份、历史大型 reports JSON 或正文日志。
 
@@ -61,15 +96,16 @@ Protected auth hash
 
 新窗口先完整阅读 `AGENTS.md` 和本文。若执行唯一下一任务，只读：
 
-- `docs/stage24-document-intelligence-and-stability-design.md` 中 `corpus_v2`、安全和验收相关段落。
-- `docs/technical-design.md` 的 Stage 24.7 Corpus V2 Evaluation Asset Boundary。
-- `docs/stage24-open-source-benchmark.md` 的 Stage 24.7 adopted references。
-- `backend/app/evaluation/corpus_v2.py`、`backend/scripts/preflight_corpus_v2.py`、`backend/evaluation/corpora/corpus_v2_manifest.json`、`backend/evaluation/datasets/eval_v2.json`、`backend/tests/test_corpus_v2.py` 及直接相关 v1 静态资产测试。
+- `docs/deployment.md`
+- `docs/release-audit-stage24-document-intelligence.md`
+- `docs/stage24-document-intelligence-and-stability-design.md` 的 24.8、安全和验收段落
+- `docs/technical-design.md` 的 Stage 24.8 Release Candidate Validation Boundary
+- 必要时读取 deploy 脚本、Compose/Nginx 配置和当前提交元数据
 
-禁止读取历史大型 reports JSON，禁止触碰受保护 auth 文件正文。
+禁止读取真实 `.env`、生产正文日志、真实上传文件、Chroma 数据或受保护 auth 文件正文。
 
 ## 5. 唯一下一任务
 
-**执行 Stage 24.7 独立验收。**
+**等待用户单独授权后执行 Stage 24 部署。**
 
-只复核 `corpus_v2` manifest/schema/checksum、覆盖矩阵、清洗/重复报告、`eval_v2` 引用、blocked/provider-dependent 语义、no-cost preflight、不可覆盖 `corpus_v1`、不读取真实资料和零真实 provider calls。验收通过后，后续任务再决定是否进入 24.8。
+部署前必须再次确认目标提交、服务器当前提交、备份目录、迁移顺序、回滚点和无真实供应商调用边界。未获得用户明确授权前，不推送、不部署、不连接生产。
