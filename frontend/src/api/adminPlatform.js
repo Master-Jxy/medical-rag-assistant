@@ -12,6 +12,14 @@ export async function rejectReview(id, reason) {
   return (await http.post(`/admin/reviews/${id}/reject`, { reason })).data
 }
 
+export async function acceptMetadataSuggestion(id, payload) {
+  return (await http.post(`/admin/reviews/${id}/metadata-suggestion/accept`, payload)).data
+}
+
+export async function rejectMetadataSuggestion(id, payload) {
+  return (await http.post(`/admin/reviews/${id}/metadata-suggestion/reject`, payload)).data
+}
+
 export async function getAssets(params = {}) {
   return (await http.get('/admin/knowledge-assets', { params })).data
 }

@@ -2070,3 +2070,40 @@ Image-only submissions produce no fake text and cannot publish into Chroma until
 an approved enrichment or manual text path yields normalized elements. Existing
 PDF/TXT/DOCX/Markdown/HTML parsing, preview truncation, review, publish,
 chunking, references, and Chroma lifecycle remain compatible.
+
+## Stage 24.5 Metadata Governance Boundary (2026-08-06)
+
+Metadata suggestions are persisted separately from formal document metadata in
+`metadata_suggestions`. A suggestion belongs to one `knowledge_submission` and
+stores only structured candidate fields, bounded evidence snippets/element
+references, bounded confidence values, parse warnings, source (`disabled`,
+`fake`, or future explicit providers), actors, timestamps, and a revision. It
+does not store full document text. The allowed state transition is
+`suggested -> accepted / edited / rejected`; confirmation uses an atomic
+status+revision update so repeated or stale administrator actions return a
+stable conflict instead of double-writing.
+
+`MetadataSuggestionPort` is the application boundary for model-like metadata
+proposal. The default adapter is disabled, and the only implemented active
+adapter is Fake for tests; Stage 24.5 does not read model keys or call real
+models, Embedding, OCR, vision, SMTP, production data, or third-party services.
+Port failures create a bounded failed suggestion and never block manual review
+or publication.
+
+Formal metadata is written only after an administrator accepts or edits a
+suggestion. Confirmed values are applied by the knowledge application service
+to `document_versions` fields: `department`, `disease_topics`,
+`document_type`, `published_year`, `source`, and `review_due_at`. If the
+submission is still pending, the confirmed fields stay on the suggestion and
+are applied inside the publication transaction when the `DocumentVersion` is
+created. Unconfirmed suggestions never update `document_versions` and never
+enter Chroma chunk metadata or RAG filters. Replacement and rollback paths copy
+the new formal fields alongside existing source/tag/category/governance fields.
+
+The administrator review UI shows suggested value, editable confirmation value,
+evidence, confidence, parse warnings, disabled/fake/failure state, loading,
+error, and conflict feedback inside the existing review card. Routers remain
+thin and call application services; Vue components collect form state and call
+the admin API only. The implementation references Docling/RAGFlow/Unstructured/
+Dify/Haystack boundary ideas around separated parse products, processing
+status, and human-confirmed governance, without copying third-party source.

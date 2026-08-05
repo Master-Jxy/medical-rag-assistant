@@ -42,6 +42,7 @@ def test_empty_database_upgrades_to_owned_conversation_schema(tmp_path) -> None:
         "alembic_version",
         "audit_events",
         "knowledge_submissions",
+        "metadata_suggestions",
         "processing_jobs",
         "document_versions",
         "agent_runs",
@@ -88,8 +89,24 @@ def test_empty_database_upgrades_to_owned_conversation_schema(tmp_path) -> None:
         "review_due_at",
         "last_reviewed_at",
         "review_status",
+        "disease_topics",
+        "document_type",
+        "published_year",
     } <= {
         column["name"] for column in inspector.get_columns("document_versions")
+    }
+    assert {
+        "submission_id",
+        "status",
+        "suggestion_source",
+        "suggested_fields",
+        "confirmed_fields",
+        "evidence",
+        "confidence",
+        "parse_warnings",
+        "revision",
+    } <= {
+        column["name"] for column in inspector.get_columns("metadata_suggestions")
     }
     assert {
         "thread_id",
@@ -715,6 +732,93 @@ def test_stage24_web_snapshot_metadata_migrates_and_downgrades(tmp_path) -> None
                 "SELECT COUNT(*) FROM knowledge_submissions "
                 "WHERE id = 'snapshot-submission'"
             )
+        ) == 1
+
+
+def test_stage24_metadata_suggestions_migrate_and_downgrade(tmp_path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'stage24-metadata.db'}"
+    config = build_alembic_config(database_url)
+    command.upgrade(config, "0027_web_snapshot_submissions")
+    engine = build_engine(database_url)
+    now = datetime.now(timezone.utc)
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users "
+                "(id, email, password_hash, is_active, role, token_version, "
+                "created_at, updated_at) VALUES "
+                "('metadata-user', 'metadata@example.com', 'hash', 1, 'user', 0, "
+                ":now, :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO documents "
+                "(id, original_name, stored_name, content_hash, size_bytes, "
+                "chunk_count, chunk_ids, uploader_id, is_system, status, created_at) "
+                "VALUES ('metadata-doc', 'old.txt', 'old.txt', :hash, 10, 1, "
+                "'[]', 'metadata-user', 0, 'published', :now)"
+            ),
+            {"hash": "a" * 64, "now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO document_versions "
+                "(id, document_id, version, replaces_document_id, source, tags, "
+                "category, department, expires_at, review_due_at, last_reviewed_at, "
+                "review_status, created_at) VALUES "
+                "('metadata-version', 'metadata-doc', 1, NULL, 'legacy', '[]', "
+                "NULL, NULL, NULL, NULL, NULL, 'current', :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO knowledge_submissions "
+                "(id, submitter_id, original_name, stored_name, content_hash, "
+                "size_bytes, status, preview_text, preview_pages, parse_warnings, "
+                "parse_quality, rejection_reason, failure_reason, document_id, "
+                "snapshot_original_url, snapshot_final_url, snapshot_fetched_at, "
+                "snapshot_response_mime, snapshot_content_sha256, created_at, "
+                "updated_at) VALUES "
+                "('metadata-submission', 'metadata-user', 'old.txt', 'old.txt', "
+                ":submission_hash, 10, 'pending_review', NULL, NULL, '[]', '{}', "
+                "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, :now, :now)"
+            ),
+            {"submission_hash": "b" * 64, "now": now},
+        )
+
+    command.upgrade(config, "head")
+    inspector = inspect(engine)
+    assert "metadata_suggestions" in set(inspector.get_table_names())
+    assert {"disease_topics", "document_type", "published_year"} <= {
+        column["name"] for column in inspector.get_columns("document_versions")
+    }
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO metadata_suggestions "
+                "(id, submission_id, document_id, status, suggestion_source, "
+                "suggested_fields, confirmed_fields, evidence, confidence, "
+                "parse_warnings, failure_reason, created_by, reviewed_by, revision, "
+                "created_at, updated_at, reviewed_at) VALUES "
+                "('metadata-suggestion', 'metadata-submission', NULL, 'suggested', "
+                "'disabled', '{}', NULL, '[]', '{}', '[]', NULL, NULL, NULL, 1, "
+                ":now, :now, NULL)"
+            ),
+            {"now": now},
+        )
+    command.downgrade(config, "0027_web_snapshot_submissions")
+    inspector = inspect(engine)
+    assert "metadata_suggestions" not in set(inspector.get_table_names())
+    assert {"disease_topics", "document_type", "published_year"}.isdisjoint(
+        {column["name"] for column in inspector.get_columns("document_versions")}
+    )
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text("SELECT COUNT(*) FROM document_versions WHERE id = 'metadata-version'")
         ) == 1
 
 

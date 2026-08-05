@@ -4,7 +4,13 @@ import { AlertTriangle, CheckCircle2, ChevronDown, FileSearch, RefreshCw, XCircl
 
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import ModalDialog from '../components/ModalDialog.vue'
-import { approveReview, getReviews, rejectReview } from '../api/adminPlatform'
+import {
+  acceptMetadataSuggestion,
+  approveReview,
+  getReviews,
+  rejectMetadataSuggestion,
+  rejectReview,
+} from '../api/adminPlatform'
 import { getApiErrorMessage } from '../api/http'
 
 const items = ref([])
@@ -15,6 +21,8 @@ const rejectTarget = ref(null)
 const rejectReason = ref('')
 const errorMessage = ref('')
 const successMessage = ref('')
+const metadataDrafts = ref({})
+const metadataActionId = ref('')
 
 const scannedRiskCount = computed(() => items.value.filter((item) => (item.parse_quality?.counts?.scanned_or_image || 0) > 0).length)
 
@@ -23,10 +31,91 @@ async function load() {
   errorMessage.value = ''
   try {
     items.value = (await getReviews({ status: 'pending_review' })).items
+    seedMetadataDrafts()
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
   } finally {
     loading.value = false
+  }
+}
+
+function seedMetadataDrafts() {
+  const next = {}
+  for (const item of items.value) {
+    next[item.submission_id] = fieldsToDraft(item.metadata_suggestion?.confirmed_fields || item.metadata_suggestion?.suggested_fields || {})
+  }
+  metadataDrafts.value = next
+}
+
+function fieldsToDraft(fields) {
+  return {
+    department: fields.department || '',
+    disease_topics: (fields.disease_topics || []).join(', '),
+    document_type: fields.document_type || '',
+    published_year: fields.published_year ? String(fields.published_year) : '',
+    source: fields.source || '',
+    review_due_at: fields.review_due_at ? String(fields.review_due_at).slice(0, 10) : '',
+  }
+}
+
+function draftToFields(item) {
+  const draft = metadataDrafts.value[item.submission_id] || fieldsToDraft({})
+  return {
+    department: draft.department.trim() || null,
+    disease_topics: draft.disease_topics.split(',').map((topic) => topic.trim()).filter(Boolean),
+    document_type: draft.document_type.trim() || null,
+    published_year: draft.published_year ? Number(draft.published_year) : null,
+    source: draft.source.trim() || null,
+    review_due_at: draft.review_due_at ? `${draft.review_due_at}T00:00:00Z` : null,
+  }
+}
+
+function displayValue(value) {
+  if (Array.isArray(value)) return value.length ? value.join(', ') : '未建议'
+  return value || '未建议'
+}
+
+function suggestionConfidence(suggestion, field) {
+  const value = suggestion?.confidence?.[field]
+  if (typeof value !== 'number') return '无'
+  return `${Math.round(value * 100)}%`
+}
+
+async function acceptSuggestion(item, useOriginal = false) {
+  const suggestion = item.metadata_suggestion
+  if (!suggestion || metadataActionId.value) return
+  metadataActionId.value = item.submission_id
+  errorMessage.value = ''
+  try {
+    await acceptMetadataSuggestion(item.submission_id, {
+      revision: suggestion.revision,
+      ...(useOriginal ? {} : { fields: draftToFields(item) }),
+    })
+    successMessage.value = useOriginal ? '元数据建议已接受。' : '元数据确认值已保存。'
+    await load()
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+  } finally {
+    metadataActionId.value = ''
+  }
+}
+
+async function rejectSuggestion(item) {
+  const suggestion = item.metadata_suggestion
+  if (!suggestion || metadataActionId.value) return
+  metadataActionId.value = item.submission_id
+  errorMessage.value = ''
+  try {
+    await rejectMetadataSuggestion(item.submission_id, {
+      revision: suggestion.revision,
+      reason: 'admin rejected metadata suggestion',
+    })
+    successMessage.value = '元数据建议已拒绝。'
+    await load()
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+  } finally {
+    metadataActionId.value = ''
   }
 }
 
@@ -102,6 +191,33 @@ onMounted(load)
           <div><p v-for="page in item.parse_quality.page_results" :key="page.page">第 {{ page.page }} 页：{{ page.kind }}，文本 {{ page.text_chars }} 字，图片对象 {{ page.image_count }}</p></div>
         </details>
         <p v-for="warning in item.parse_warnings" :key="warning" class="parse-warning"><AlertTriangle :size="14" />{{ warning }}</p>
+        <section v-if="item.metadata_suggestion && metadataDrafts[item.submission_id]" class="metadata-governance">
+          <div class="metadata-heading">
+            <div><small>METADATA</small><strong>元数据建议</strong></div>
+            <span class="status-badge" :data-status="item.metadata_suggestion.status">{{ item.metadata_suggestion.status }}</span>
+          </div>
+          <div v-if="item.metadata_suggestion.failure_reason" class="metadata-warning">
+            <AlertTriangle :size="14" />{{ item.metadata_suggestion.failure_reason }}
+          </div>
+          <div class="metadata-grid">
+            <label><span>科室</span><small>建议：{{ displayValue(item.metadata_suggestion.suggested_fields.department) }} · {{ suggestionConfidence(item.metadata_suggestion, 'department') }}</small><input v-model="metadataDrafts[item.submission_id].department" :disabled="item.metadata_suggestion.status !== 'suggested'" maxlength="100" /></label>
+            <label><span>疾病主题</span><small>建议：{{ displayValue(item.metadata_suggestion.suggested_fields.disease_topics) }} · {{ suggestionConfidence(item.metadata_suggestion, 'disease_topics') }}</small><input v-model="metadataDrafts[item.submission_id].disease_topics" :disabled="item.metadata_suggestion.status !== 'suggested'" maxlength="500" /></label>
+            <label><span>文档类型</span><small>建议：{{ displayValue(item.metadata_suggestion.suggested_fields.document_type) }} · {{ suggestionConfidence(item.metadata_suggestion, 'document_type') }}</small><input v-model="metadataDrafts[item.submission_id].document_type" :disabled="item.metadata_suggestion.status !== 'suggested'" maxlength="80" /></label>
+            <label><span>发布年份</span><small>建议：{{ displayValue(item.metadata_suggestion.suggested_fields.published_year) }} · {{ suggestionConfidence(item.metadata_suggestion, 'published_year') }}</small><input v-model="metadataDrafts[item.submission_id].published_year" :disabled="item.metadata_suggestion.status !== 'suggested'" type="number" min="1900" max="2100" /></label>
+            <label><span>来源</span><small>建议：{{ displayValue(item.metadata_suggestion.suggested_fields.source) }} · {{ suggestionConfidence(item.metadata_suggestion, 'source') }}</small><input v-model="metadataDrafts[item.submission_id].source" :disabled="item.metadata_suggestion.status !== 'suggested'" maxlength="255" /></label>
+            <label><span>复核日期</span><small>建议：{{ displayValue(item.metadata_suggestion.suggested_fields.review_due_at?.slice?.(0, 10)) }} · {{ suggestionConfidence(item.metadata_suggestion, 'review_due_at') }}</small><input v-model="metadataDrafts[item.submission_id].review_due_at" :disabled="item.metadata_suggestion.status !== 'suggested'" type="date" /></label>
+          </div>
+          <details v-if="item.metadata_suggestion.evidence.length" class="metadata-evidence">
+            <summary><ChevronDown :size="15" />证据片段（{{ item.metadata_suggestion.evidence.length }}）</summary>
+            <p v-for="evidence in item.metadata_suggestion.evidence" :key="`${evidence.field || 'all'}-${evidence.snippet}`">{{ evidence.field || '整体' }}：{{ evidence.snippet }}</p>
+          </details>
+          <p v-for="warning in item.metadata_suggestion.parse_warnings" :key="`metadata-${warning}`" class="parse-warning"><AlertTriangle :size="14" />{{ warning }}</p>
+          <div class="metadata-actions">
+            <button class="secondary-action" type="button" :disabled="item.metadata_suggestion.status !== 'suggested' || Boolean(metadataActionId)" @click="acceptSuggestion(item, true)">原样接受</button>
+            <button class="secondary-action danger" type="button" :disabled="item.metadata_suggestion.status !== 'suggested' || Boolean(metadataActionId)" @click="rejectSuggestion(item)">拒绝建议</button>
+            <button class="primary-action" type="button" :disabled="item.metadata_suggestion.status !== 'suggested' || Boolean(metadataActionId)" @click="acceptSuggestion(item)">保存确认值</button>
+          </div>
+        </section>
         <footer><small>SHA-256：{{ item.content_hash }}</small><div><button class="secondary-action danger" type="button" @click="openReject(item)"><XCircle :size="15" />拒绝</button><button class="primary-action" type="button" @click="approveTarget = item"><CheckCircle2 :size="15" />批准发布</button></div></footer>
       </article>
     </div>
@@ -152,6 +268,22 @@ onMounted(load)
 .page-quality > div { max-height: 150px; overflow: auto; padding: 0 10px 8px; }
 .page-quality p { margin: 5px 0; color: var(--text-muted); font-size: 10px; }
 .parse-warning { display: flex; align-items: flex-start; gap: 6px; margin: 9px 0 0; color: #805914; font-size: 11px; }
+.metadata-governance { margin-top: 14px; padding: 12px; border: 1px solid var(--border-default); border-radius: 6px; background: var(--bg-subtle); }
+.metadata-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.metadata-heading small { display: block; color: var(--text-muted); font-size: 10px; font-weight: 700; }
+.metadata-heading strong { color: var(--text-strong); font-size: 13px; }
+.metadata-warning { display: flex; align-items: flex-start; gap: 6px; margin-bottom: 9px; color: #805914; font-size: 11px; }
+.metadata-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.metadata-grid label { min-width: 0; display: grid; gap: 5px; color: var(--text-default); font-size: 11px; font-weight: 700; }
+.metadata-grid small { overflow: hidden; color: var(--text-muted); font-size: 10px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+.metadata-grid input { min-width: 0; height: 32px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 5px; color: var(--text-default); background: var(--bg-surface); font-size: 12px; outline: 0; }
+.metadata-grid input:focus { border-color: var(--action); box-shadow: 0 0 0 3px rgba(37,99,235,.08); }
+.metadata-grid input:disabled { opacity: .65; }
+.metadata-evidence { margin-top: 10px; border: 1px solid var(--border-default); border-radius: 6px; background: var(--bg-surface); }
+.metadata-evidence summary { display: flex; align-items: center; gap: 7px; padding: 8px 9px; color: var(--text-default); cursor: pointer; font-size: 11px; }
+.metadata-evidence[open] summary svg { transform: rotate(180deg); }
+.metadata-evidence p { margin: 0; padding: 0 9px 8px; color: var(--text-muted); font-size: 10px; line-height: 1.5; }
+.metadata-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; margin-top: 10px; }
 .review-card footer { align-items: center; }
 .review-card footer > small { max-width: 54%; overflow: hidden; color: var(--text-muted); text-overflow: ellipsis; white-space: nowrap; }
 .review-card footer > div { display: flex; gap: 7px; }
@@ -159,5 +291,6 @@ onMounted(load)
 .reason-field textarea { width: 100%; padding: 10px; border: 1px solid var(--border-strong); border-radius: 6px; outline: 0; resize: vertical; }
 .reason-field textarea:focus { border-color: var(--action); box-shadow: 0 0 0 3px rgba(37,99,235,.09); }
 .reason-field small { color: var(--text-muted); font-size: 10px; font-weight: 400; }
-@media (max-width: 640px) { .review-card footer { align-items: stretch; flex-direction: column; } .review-card footer > small { max-width: 100%; } .review-card footer > div { justify-content: flex-end; } }
+@media (max-width: 900px) { .metadata-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .metadata-grid { grid-template-columns: 1fr; } .metadata-heading { align-items: flex-start; flex-direction: column; } .review-card footer { align-items: stretch; flex-direction: column; } .review-card footer > small { max-width: 100%; } .review-card footer > div { justify-content: flex-end; } }
 </style>

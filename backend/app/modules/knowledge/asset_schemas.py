@@ -18,6 +18,9 @@ class KnowledgeAssetItem(BaseModel):
     updated_at: datetime
     category: str | None = None
     department: str | None = None
+    disease_topics: list[str] = Field(default_factory=list)
+    document_type: str | None = None
+    published_year: int | None = None
     expires_at: datetime | None = None
     review_due_at: datetime | None = None
     last_reviewed_at: datetime | None = None

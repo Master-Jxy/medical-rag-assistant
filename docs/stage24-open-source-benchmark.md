@@ -76,3 +76,27 @@
 Stage 24.4 added `Pillow==12.3.0` (HPND license) only for lightweight local
 PNG/JPEG structure and dimension validation. It did not introduce Docling,
 MinerU, Unstructured, OCR engines, vision SDKs, or online model downloads.
+
+## 6. Stage 24.5 adopted references
+
+- Docling (MIT): referenced the separation between converted `Document`
+  structures/provenance and downstream application governance. Stage 24.5 keeps
+  only bounded evidence snippets and field references in its own
+  `MetadataSuggestion` model; no Docling source or object is copied.
+- RAGFlow (Apache-2.0): referenced visible document processing/review status
+  ideas from `api/apps/services/document_api_service.py` and web document
+  status types. This project keeps the existing modular-monolith review service
+  and adds only a small suggestion state machine.
+- Unstructured (Apache-2.0): referenced the normalized Element/metadata
+  separation around partition outputs. Stage 24.5 stores candidate metadata as
+  suggestions and does not install or copy Unstructured.
+- Dify (modified Apache-2.0 with additional terms): referenced dataset document
+  governance and human management boundaries, not UI or restricted
+  implementation code.
+- Haystack (Apache-2.0): referenced `extractors/llm_metadata_extractor.py` as
+  an example of metadata extraction being a separate component from converters
+  and splitters. Stage 24.5 implements only Disabled/Fake ports and does not
+  call an LLM.
+
+No new dependency was added for Stage 24.5. Real metadata models remain outside
+this stage and would require a separate cost, privacy, and deployment gate.

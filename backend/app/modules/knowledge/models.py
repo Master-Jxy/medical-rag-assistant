@@ -123,6 +123,9 @@ class DocumentVersion(Base):
     tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     category: Mapped[str | None] = mapped_column(String(100))
     department: Mapped[str | None] = mapped_column(String(100))
+    disease_topics: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    document_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    published_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     review_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -139,4 +142,58 @@ class DocumentVersion(Base):
             "review_status IN ('current','due','in_review')",
             name="ck_document_versions_review_status",
         ),
+        CheckConstraint(
+            "published_year IS NULL OR (published_year >= 1900 AND published_year <= 2100)",
+            name="ck_document_versions_published_year",
+        ),
+    )
+
+
+class MetadataSuggestion(Base):
+    __tablename__ = "metadata_suggestions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    submission_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_submissions.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    document_id: Mapped[str | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="suggested")
+    suggestion_source: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="disabled"
+    )
+    suggested_fields: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    confirmed_fields: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    evidence: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    confidence: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    parse_warnings: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    failure_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('suggested','accepted','edited','rejected')",
+            name="ck_metadata_suggestions_status",
+        ),
+        CheckConstraint("revision > 0", name="ck_metadata_suggestions_revision"),
+        Index("ix_metadata_suggestions_submission", "submission_id"),
+        Index("ix_metadata_suggestions_status_created", "status", "created_at"),
     )

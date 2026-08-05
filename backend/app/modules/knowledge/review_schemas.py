@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.modules.knowledge.metadata_suggestions import MetadataSuggestionItem
+
 
 class ReviewItem(BaseModel):
     submission_id: str
@@ -19,6 +21,7 @@ class ReviewItem(BaseModel):
     rejection_reason: str | None
     failure_reason: str | None
     document_id: str | None
+    metadata_suggestion: MetadataSuggestionItem | None = None
     created_at: datetime
     updated_at: datetime
 

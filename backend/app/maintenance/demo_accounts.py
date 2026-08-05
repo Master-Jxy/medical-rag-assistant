@@ -12,7 +12,11 @@ from app.modules.agent.models import AgentArtifact, AgentRun, AgentStep
 from app.modules.agent.thread_models import AgentMessage, AgentThread
 from app.modules.auth.models import User
 from app.modules.auth.roles import UserRole
-from app.modules.knowledge.models import KnowledgeDocument, KnowledgeSubmission
+from app.modules.knowledge.models import (
+    KnowledgeDocument,
+    KnowledgeSubmission,
+    MetadataSuggestion,
+)
 from app.modules.memory.models import (
     ConversationSummaryMemory,
     UserMemory,
@@ -31,6 +35,8 @@ KNOWN_USER_FOREIGN_KEYS = {
     ("conversations", "user_id"),
     ("documents", "uploader_id"),
     ("knowledge_submissions", "submitter_id"),
+    ("metadata_suggestions", "created_by"),
+    ("metadata_suggestions", "reviewed_by"),
     ("model_usage_records", "user_id"),
     ("memory_extraction_runs", "user_id"),
     ("quota_periods", "user_id"),
@@ -250,6 +256,16 @@ class DemoAccountMaintenanceService:
             delete(KnowledgeSubmission).where(
                 KnowledgeSubmission.submitter_id.in_(target_ids)
             )
+        )
+        self.session.execute(
+            update(MetadataSuggestion)
+            .where(MetadataSuggestion.created_by.in_(target_ids))
+            .values(created_by=None)
+        )
+        self.session.execute(
+            update(MetadataSuggestion)
+            .where(MetadataSuggestion.reviewed_by.in_(target_ids))
+            .values(reviewed_by=None)
         )
         self.session.execute(
             update(AnswerFeedback)

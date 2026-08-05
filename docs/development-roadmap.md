@@ -772,7 +772,7 @@
    服务器只重建 backend。四容器健康，HTTP 308、HTTPS 200、未授权 401、配置 900 秒
    和错误日志检查通过；未调用真实模型。
 
-## 24. Stage 24: Stability Wrap-up and Document Intelligence `[in progress: 24.4 complete]`
+## 24. Stage 24: Stability Wrap-up and Document Intelligence `[in progress: 24.5 complete]`
 
 完整架构、数据契约、安全闸门和验收标准见
 [`docs/stage24-document-intelligence-and-stability-design.md`](stage24-document-intelligence-and-stability-design.md)，
@@ -792,8 +792,8 @@
    生产继续使用 PyPDF 基线。
 6. **24.4 `[completed]`**: OCR/Vision ports, fake/disabled adapters, resource and quota gates, image asset lifecycle, and PNG/JPEG pending-review input; real providers require separate approval.
    真实调用与启用另行授权。
-7. **24.5 `[next]`**: metadata suggestions, administrator confirmation/editing, review UI, and audit.
-8. **24.6 `[待开始]`**：补充标准化正文去重、近重复提示、版本沿袭与失效治理筛选。
+7. **24.5 `[completed]`**: persisted metadata suggestions, Disabled/Fake port, administrator accept/edit/reject confirmation, formal `document_versions` writes, review UI, audit, and migration.
+8. **24.6 `[next]`**：补充标准化正文去重、近重复提示、版本沿袭与失效治理筛选。
 9. **24.7 `[待开始]`**：建立不可覆盖 v1 的 `corpus_v2` manifest、覆盖矩阵、清洗报告
    和评估集；Embedding 和生产导入另设闸门。
 10. **24.8 `[待开始]`**：完整 L2/L3 验收并形成发布候选；未获当次授权不部署。

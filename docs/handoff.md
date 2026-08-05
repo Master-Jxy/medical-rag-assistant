@@ -5,117 +5,54 @@
 
 ## 1. 当前真实状态
 
-Stage 24.4 已完成本地开发与无模型验证，未部署、未推送，未调用真实 OCR、视觉供应商、Qwen、Embedding、Reranker、SMTP、Docling 或生产网络。
+Stage 24.5 元数据治理已完成本地开发与无模型验证，未部署、未推送，未调用真实模型、Embedding、OCR、视觉、SMTP、Docling 或生产网络/数据。
 
-24.4 在 `knowledge` 模块内新增 OCR/视觉文档理解基础设施：
+24.5 在 `knowledge` 模块内新增独立的元数据建议治理链路：
 
-- 应用层定义 `OcrPort`、`VisionDocumentPort`、结构化 request/result/error contract 与 `DocumentEnrichmentService`。
-- infrastructure 只提供 `DisabledOcrAdapter`、`DisabledVisionDocumentAdapter` 和 Fake adapter；没有真实供应商实现，没有读取密钥，没有网络调用。
-- `EnrichmentResourcePolicy` 集中约束默认关闭、显式批准、页数、图片数、单图/总字节、单图/总像素、单文档调用次数、单次超时、并发和自动重试 0。若未启用或未批准，只写入等待/跳过/受限状态，不执行供应商调用。
-- 疑似 CT、X 光、病理、放射等诊断影像会确定性标记 `restricted`，不做自动解读；24.4 范围只覆盖扫描 PDF 页、检查报告截图、药盒文字、表格截图、流程图和医学资料插图的文档理解基础设施。
-- 新增 `ControlledDocumentAssetStore`，图片资产文件只使用服务端生成 UUID 文件名保存在 `document_asset_dir` 下；parser/模型返回的路径不被信任。撤回、拒绝、发布隔离清理、公共文档删除和替换旧文档清理均有资产目录清理钩子。
-- 新增 PNG/JPEG 本地报告截图上传支持。`FileTypePolicy` 通过魔数、Pillow 结构校验、10 MB 基线和像素上限校验图片；客户端 MIME 不能绕过服务端校验。图片资料默认只进入 `pending_review` 并标记 `waiting_enrichment`，不会生成假正文，也不能在管理员确认前发布空文本。
-- `ParsedPreview` 兼容层保留原有 PDF/TXT/DOCX/Markdown/HTML 行为，同时将图片资产摘要和 enrichment 状态投射到现有 `parse_quality` JSON；未新增 API 响应字段、数据库字段或迁移。
-- 前端普通上传和管理员新增/替换 accept 已同步包含 `.png,.jpg,.jpeg`，页面布局未重做。
+- 新增 `metadata_suggestions` 持久化表和 `MetadataSuggestionService`。建议与正式文档元数据分离，状态固定为 `suggested -> accepted / edited / rejected`，并使用 `status + revision` 原子迁移处理并发审核；重复或过期确认返回稳定冲突。
+- 建议记录只保存结构化字段、受限证据片段/元素引用、逐字段置信度、解析 warning、suggestion source、创建/审核人和时间；不保存全文。证据、warning、confidence 和错误类型均做边界清洗。
+- 新增 `MetadataSuggestionPort`，默认 `disabled`，测试可用 `fake`；本阶段没有真实模型实现、没有读取密钥、没有付费或网络调用。Port 失败会生成受限失败建议，不阻塞人工审核或发布。
+- 管理员可在审核详情中原样接受、编辑后接受或拒绝建议。确认后才由 application service 写入正式 `document_versions` 字段并记录 audit；未确认建议不会污染 `document_versions`、Chroma chunk metadata 或 RAG filter。
+- `document_versions` 新增正式字段 `disease_topics`、`document_type`、`published_year`，并复用既有 `department`、`source`、`review_due_at`。已确认建议若发生在发布前，会在审核发布事务创建 `DocumentVersion` 时应用；发布后确认则直接更新已有版本。
+- 替换/回滚路径会保留新增正式元数据字段；演示账号清理维护命令已分类并清理 `metadata_suggestions.created_by/reviewed_by` 用户外键，避免安全预检误阻塞。
+- 管理员审核 UI 在现有审核卡片内新增紧凑元数据治理区，展示建议值、管理员确认值、证据、置信度、warning、失败/冲突/loading/error 状态；没有重做整体视觉。
 
-24.1-24.3 状态保持不变：24.1 已建立 `ParseRequest`、`ParsedDocument`、`ParsedElement`、`ParsedAsset`、`ParseQuality`、`DocumentParserPort` 和 `ParserRegistry`；24.2a 已支持 DOCX/Markdown/HTML 本地文件；24.2b 已支持默认关闭且 allowlist 约束的受控网页快照；24.3 已建立默认关闭、未晋级的 Docling 复杂 PDF 候选离线闸门，生产继续使用 PyPDF 基线。
+24.1-24.4 状态保持不变：24.1 解析契约、24.2a 本地 DOCX/Markdown/HTML、24.2b 受控网页快照、24.3 未晋级 Docling 候选、24.4 OCR/Vision Port+Fake+资产生命周期仍按各自默认关闭/无真实供应商边界运行。
 
-开源借鉴记录：24.4 参考 Docling picture/page provenance、Unstructured hi_res/OCR strategy、Dify file/image upload quota 和 RAGFlow parser task 状态的边界思想；没有复制第三方源码，没有引入 Docling/MinerU/Unstructured 重型栈。
-
-24.4 follow-up security/accounting patch (2026-08-06):
-- `ControlledDocumentAssetStore` now materializes only direct PNG/JPEG upload
-  assets marked `source_kind=uploaded_image_file` after revalidating source
-  magic bytes, Pillow MIME, dimensions, byte size, pixel count, and SHA-256.
-  PDF/Docling discovered image assets remain provenance-only with
-  `materialized=false` and `asset_not_materialized`; they are not copied from
-  the source PDF, do not receive fake image suffixes, and are not sent to
-  OCR/Vision ports.
-- Asset cleanup IDs are now limited to the project identifier alphabet and
-  explicitly reject `.`, `..`, blank, whitespace-wrapped, control-character,
-  path-separator, and drive-like values before recursive cleanup. Boundary
-  checks under `document_asset_dir` remain in place, and recursive cleanup
-  failures raise `DocumentStoreError` instead of being silently swallowed.
-- Enrichment call limits now count concrete port operations. One materialized
-  image plans one OCR call and one vision call; the service refuses over-limit
-  plans before any port call. OCR/Vision `ModelUsage` is aggregated and settled
-  through the existing quota gate; failures before any usage release the
-  reservation, while partial failures settle usage already spent.
-- Diagnostic image restriction now uses explicit image type/purpose categories
-  and filename tokens, so ordinary names such as `fact-sheet.png` and
-  `document.png` are not rejected merely because a word contains `ct`.
-- Publication isolation cleanup records the existing
-  `knowledge_submission.cleanup_pending` audit warning for both `OSError` and
-  `DocumentStoreError`. No real OCR, vision provider, model, network, production
-  data, deployment, or protected auth change was performed.
-
-24.4 final transaction follow-up (2026-08-06):
-- Document and submission asset cleanup now has explicit
-  stage/restore/finalize/cleanup-pending semantics. `stage_*_assets_for_delete`
-  atomically renames controlled asset directories to `.trash` before the
-  business commit; pre-commit failures restore the tombstone, while post-commit
-  finalization failures no longer enter rollback paths.
-- Post-commit asset cleanup failures write durable `.cleanup_pending/*.json`
-  markers containing only scope, object id, tombstone relative path, and error
-  type. `retry_pending_cleanups()` removes tombstones and clears markers when
-  cleanup can later succeed.
-- Public delete, managed permanent delete, replace, ordinary withdraw, reject,
-  and publication isolation cleanup now use the staged protocol at their
-  transaction boundaries. Admin review paths still record
-  `knowledge_submission.cleanup_pending` audit warnings; no broad job queue
-  refactor or production operation was performed.
-
-24.4 final security follow-up (2026-08-06):
-- `retry_pending_cleanups()` now validates cleanup markers before deleting any
-  tombstone: scope must be `submission` or `document`, `object_id` must pass the
-  safe-id policy, marker filename/payload/tombstone deletion id must match, and
-  tombstones must resolve directly under `.trash/{scope}s` with basename
-  `.{object_id}.{32hex}.deleting`. Malicious markers that point at normal
-  `documents/` or `submissions/` directories, cross scopes, use traversal,
-  wrong basenames, mismatched filenames, or symlinks are skipped and retained.
-- Post-commit marker writes are now best-effort. If tombstone deletion fails and
-  `.cleanup_pending` marker write/rename also fails, delete/replace/withdraw/
-  reject still return the already committed business success; lifecycle and
-  submission services log a non-sensitive warning, and review paths still try to
-  record `knowledge_submission.cleanup_pending`.
+开源借鉴记录：24.5 参考 Docling 的解析产物/provenance 与治理分离、RAGFlow 的文档处理状态可见性、Unstructured 的 Element/metadata 分离、Dify 的数据集治理状态、Haystack 的独立 metadata extractor 组件边界；没有复制第三方源码，没有新增依赖。
 
 ## 2. 本地验证结果
 
 已通过：
 
 ```text
-backend\.venv\Scripts\python.exe -m pytest -q backend/tests/test_document_enrichment.py backend/tests/test_document_service.py backend/tests/test_knowledge_submissions_api.py backend/tests/test_admin_reviews_api.py
-75 passed, 1 skipped, 2 warnings
+backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_metadata_suggestions.py backend\tests\test_admin_reviews_api.py backend\tests\test_migrations.py
+31 passed, 128 warnings
 
-backend\.venv\Scripts\python.exe -m pytest -q backend/tests/test_document_enrichment.py backend/tests/test_document_service.py backend/tests/test_knowledge_submissions_api.py backend/tests/test_admin_reviews_api.py
-66 passed, 2 warnings
-
-backend\.venv\Scripts\python.exe -m pytest -q backend/tests/test_document_parser_contract.py backend/tests/test_document_enrichment.py backend/tests/test_knowledge_submissions_api.py backend/tests/test_admin_reviews_api.py backend/tests/test_document_service.py
-52 passed, 2 warnings
-
-backend\.venv\Scripts\python.exe -m pytest -q backend/tests
-570 passed, 1 skipped, 120 warnings
-
-backend\.venv\Scripts\python.exe -m pytest -q backend/tests/test_document_enrichment.py
-32 passed
-
-backend\.venv\Scripts\python.exe -m pytest -q backend/tests/test_document_enrichment.py backend/tests/test_document_parser_contract.py backend/tests/test_knowledge_submissions_api.py backend/tests/test_admin_reviews_api.py backend/tests/test_document_service.py
-73 passed, 2 warnings
+D:\Nodejs\npm.cmd --prefix frontend test -- AdminReviewsView.test.js
+1 file / 2 tests passed
 
 D:\Nodejs\npm.cmd --prefix frontend test
-18 files / 74 tests passed
+19 files / 76 tests passed
+
+backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_demo_account_maintenance.py
+8 passed
+
+backend\.venv\Scripts\python.exe -m pytest -q backend\tests
+576 passed, 1 skipped, 131 warnings
 
 D:\Nodejs\npm.cmd --prefix frontend run test:stream
 SSE parser test passed
 
 D:\Nodejs\npm.cmd --prefix frontend run build
 Vite production build passed
-assets: index-Bgk7zuj3.css / index-CYNSg3p8.js
+assets: index-Dp6yTVJN.css / index-CtkNQ9bJ.js
 
 backend\.venv\Scripts\python.exe -m alembic -c backend\alembic.ini heads
-0027_web_snapshot_submissions (head)
+0028_metadata_suggestions (head)
 
 git diff --check
-passed
+passed (only Git CRLF normalization warnings)
 
 git diff --cached --check
 passed
@@ -124,33 +61,32 @@ Protected auth hash
 9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0
 ```
 
-本阶段没有新增 Alembic 迁移；完整 backend 已覆盖迁移测试，Alembic head 保持 `0027_web_snapshot_submissions`。
+迁移往返已由完整 backend 中的 `backend/tests/test_migrations.py` 覆盖，包括 `0027 -> head -> 0027` 的 Stage 24.5 往返。
 
-未执行项：没有生产健康/容器/迁移/静态资源/日志检查；本阶段不做生产操作。
+未执行项：未做生产健康/容器/迁移/静态资源/错误计数检查；本阶段不做生产操作。未调用真实模型、Embedding、OCR、视觉、SMTP、Docling、Reranker 或生产网络。
 
 ## 3. 工作区与安全边界
 
 - 当前分支：`main`。
-- 本任务只允许创建本地提交，不推送、不部署。
-- `backend/app/modules/auth/service.py` 是受保护用户改动，禁止读取正文、修改、格式化、暂存、提交、回退或覆盖。当前目标 SHA-256 必须保持：
+- 本任务只允许本地提交，不推送、不部署。
+- `backend/app/modules/auth/service.py` 是受保护用户改动，禁止读取正文、修改、格式化、暂存、提交、回退或覆盖。目标 SHA-256 必须保持：
   `9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。
 - 不读取 `.env`、真实上传资料、Chroma 数据、数据库备份或正文日志。
-- Stage 24.4 没有真实供应商、真实模型下载、付费调用、生产配置或生产数据依赖。
 
 ## 4. 新任务阅读范围
 
-新窗口先完整阅读 `AGENTS.md` 和本文件。若执行唯一下一任务 24.5，只读：
+新窗口先完整阅读 `AGENTS.md` 和本文件。若执行唯一下一任务 24.6，只读：
 
-- `docs/stage24-document-intelligence-and-stability-design.md` 的 1、2、3、4、6、9、10、11 节。
-- `docs/technical-design.md` 的 Stage 24 增补中 24.1-24.4 相关段落。
-- `docs/stage24-open-source-benchmark.md` 中 Docling、Unstructured、Dify、RAGFlow、Haystack 对应条目。
-- `knowledge` 的 ingestion contracts、parser、enrichment、asset storage、submission/review/lifecycle、governance/version 相关代码与测试。
-- usage/quota 只在元数据建议需要预算或账本边界时定向读取。
+- `docs/stage24-document-intelligence-and-stability-design.md` 的第 7、9、10、11 节。
+- `docs/technical-design.md` 的 Stage 24.1-24.5 增补中与版本、去重、失效治理、metadata formal fields 直接相关段落。
+- `docs/stage24-open-source-benchmark.md` 中 RAGFlow、Dify、Haystack、Unstructured 与知识治理/重复检测/版本状态相关条目。
+- `knowledge` 的 `models`、`metadata_suggestions`、`review_service`、`asset_service`、`lifecycle`、`governance_service`、`repository`、submission/review API 与相关测试。
+- 前端只在涉及管理员治理筛选或确认交互时读取 `AdminReviewsView.vue`、资产治理页面和对应 API/test。
 
-不要读取历史 RAG 评估大型 JSON，不进入 24.6+。
+不要读取历史 RAG 评估大型 JSON，不进入 24.7+，不触碰受保护 auth 文件。
 
 ## 5. 唯一下一任务
 
-**执行 Stage 24.5 元数据建议与管理员确认。**
+**执行 Stage 24.6 去重、版本和失效补强。**
 
-在 24.1-24.4 的结构化解析、网页快照、复杂 PDF 候选、OCR/视觉 Port 与资产生命周期基础上，只实现元数据建议状态机、管理员确认/编辑、审核 UI 和审计。AI/模型建议必须默认关闭或 Fake；不得调用真实模型、Embedding、OCR、视觉、生产数据或付费供应商。受保护 auth 文件继续保持上述哈希和边界。
+在 24.5 已确认的正式元数据字段基础上，只补标准化正文哈希、近重复提示、版本沿袭与失效治理筛选。所有自动判断只做提示，不自动删除、不自动合并、不自动发布；真实 Embedding、模型、生产数据变更和部署仍需独立闸门。

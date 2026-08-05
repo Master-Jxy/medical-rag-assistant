@@ -14,6 +14,7 @@ from app.modules.knowledge.models import (
     DocumentVersion,
     KnowledgeDocument,
     KnowledgeSubmission,
+    MetadataSuggestion,
 )
 from app.modules.jobs.models import ProcessingJob
 from app.modules.usage.models import (
@@ -42,6 +43,7 @@ __all__ = [
     "KnowledgeDocument",
     "KnowledgeSubmission",
     "DocumentVersion",
+    "MetadataSuggestion",
     "ProcessingJob",
     "ModelUsageRecord",
     "QuotaPlan",

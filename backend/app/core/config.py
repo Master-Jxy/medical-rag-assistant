@@ -110,6 +110,7 @@ class Settings(BaseSettings):
     document_enrichment_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
     document_enrichment_max_calls_per_document: int = Field(default=4, ge=0, le=30)
     document_enrichment_estimated_tokens_per_call: int = Field(default=1200, ge=0, le=10000)
+    metadata_suggestion_mode: Literal["disabled", "fake"] = "disabled"
     web_snapshot_fetch_enabled: bool = False
     web_snapshot_allowed_hosts: list[str] = Field(default_factory=list)
     web_snapshot_max_bytes: int = Field(default=3 * 1024 * 1024, gt=0, le=5 * 1024 * 1024)

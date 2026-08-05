@@ -21,6 +21,7 @@ from app.modules.knowledge.models import (
     KnowledgeDocument,
     KnowledgeSubmission,
 )
+from app.modules.knowledge.metadata_suggestions import MetadataSuggestionService
 from app.modules.knowledge.repository import SubmissionReviewRepository
 from app.modules.knowledge.review_schemas import (
     ApprovalResponse,
@@ -56,6 +57,7 @@ class KnowledgeReviewService:
         jobs: JobPort,
         repository: SubmissionReviewRepository | None = None,
         asset_store: ControlledDocumentAssetStore | None = None,
+        metadata_suggestions: MetadataSuggestionService | None = None,
     ) -> None:
         self.session = session
         self.settings = settings
@@ -64,9 +66,17 @@ class KnowledgeReviewService:
         self.jobs = jobs
         self.repository = repository or SubmissionReviewRepository(session)
         self.asset_store = asset_store or ControlledDocumentAssetStore(settings)
+        self.metadata_suggestions = metadata_suggestions or MetadataSuggestionService(
+            session, audit
+        )
 
     def list_reviews(
-        self, *, status: str | None, offset: int, limit: int
+        self,
+        *,
+        status: str | None,
+        offset: int,
+        limit: int,
+        actor_user_id: str | None = None,
     ) -> ReviewListResponse:
         statement = select(KnowledgeSubmission)
         count_statement = select(func.count()).select_from(KnowledgeSubmission)
@@ -81,15 +91,34 @@ class KnowledgeReviewService:
             .offset(offset)
             .limit(limit)
         ).all()
+        items = [
+                self._to_item(
+                    record,
+                    self.metadata_suggestions.get_or_create_for_submission(
+                        record, actor_user_id=actor_user_id
+                    ),
+                )
+                for record in records
+            ]
+        if items:
+            self.session.commit()
         return ReviewListResponse(
-            items=[self._to_item(record) for record in records],
+            items=items,
             total=self.session.scalar(count_statement) or 0,
             offset=offset,
             limit=limit,
         )
 
-    def get_review(self, submission_id: str) -> ReviewItem:
-        return self._to_item(self._get(submission_id))
+    def get_review(
+        self, submission_id: str, *, actor_user_id: str | None = None
+    ) -> ReviewItem:
+        record = self._get(submission_id)
+        suggestion = self.metadata_suggestions.get_or_create_for_submission(
+            record, actor_user_id=actor_user_id
+        )
+        item = self._to_item(record, suggestion)
+        self.session.commit()
+        return item
 
     def reject(
         self,
@@ -183,15 +212,15 @@ class KnowledgeReviewService:
             record.document_id = document.id
             record.failure_reason = None
             self.jobs.complete(job.id)
-            self.session.add(
-                DocumentVersion(
-                    id=str(uuid4()),
-                    document_id=document.id,
-                    version=1,
-                    source="user_submission",
-                    tags=[],
-                )
+            version = DocumentVersion(
+                id=str(uuid4()),
+                document_id=document.id,
+                version=1,
+                source="user_submission",
+                tags=[],
             )
+            self.metadata_suggestions.apply_confirmed_to_version(record, version)
+            self.session.add(version)
             self.audit.record(
                 AuditRecord(
                     actor_user_id=actor_user_id,
@@ -343,8 +372,7 @@ class KnowledgeReviewService:
             raise ReviewNotFoundError()
         return record
 
-    @staticmethod
-    def _to_item(record: KnowledgeSubmission) -> ReviewItem:
+    def _to_item(self, record: KnowledgeSubmission, suggestion=None) -> ReviewItem:
         return ReviewItem(
             submission_id=record.id,
             submitter_id=record.submitter_id,
@@ -359,6 +387,9 @@ class KnowledgeReviewService:
             rejection_reason=record.rejection_reason,
             failure_reason=record.failure_reason,
             document_id=record.document_id,
+            metadata_suggestion=(
+                self.metadata_suggestions.to_item(suggestion) if suggestion else None
+            ),
             created_at=record.created_at,
             updated_at=record.updated_at,
         )
