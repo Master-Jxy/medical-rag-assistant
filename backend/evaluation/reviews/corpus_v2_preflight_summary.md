@@ -4,7 +4,7 @@
 - checksum: `57e41c70e0e5eb656877db516b22cce194037c0f637b1d61bdf8f79f5d4602b0`
 - documents: 10
 - blocked cases: 8
-- coverage gaps: 4
+- coverage gaps: 10
 - estimated pages: 53-217
 - estimated chunks: 53-328
 - real provider calls now: {'embedding_calls': 0, 'llm_calls': 0, 'rerank_calls': 0, 'ocr_calls': 0, 'vision_calls': 0}

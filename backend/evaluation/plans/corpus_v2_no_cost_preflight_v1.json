@@ -5,7 +5,7 @@
   "dataset_version": "eval_v2",
   "document_count": 10,
   "blocked_case_count": 8,
-  "coverage_gap_count": 4,
+  "coverage_gap_count": 10,
   "estimated_pages_min": 53,
   "estimated_pages_max": 217,
   "estimated_chunks_min": 53,

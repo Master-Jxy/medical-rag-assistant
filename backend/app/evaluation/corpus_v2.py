@@ -195,9 +195,13 @@ class EvaluationSetV2(StrictModel):
 class CoverageItem(StrictModel):
     id: str
     minimum: int = Field(ge=0)
+    planned_count: int = Field(ge=0)
     current_count: int = Field(ge=0)
+    blocked_count: int = Field(ge=0)
     gap: int = Field(ge=0)
     evidence_document_ids: list[str]
+    planned_document_ids: list[str]
+    executable_case_ids: list[str]
     blocked_case_ids: list[str]
 
 
@@ -356,26 +360,43 @@ def build_coverage_matrix(
     manifest: CorpusV2Manifest,
     evaluation_set: EvaluationSetV2,
 ) -> CoverageMatrix:
-    document_ids_by_need: dict[str, set[str]] = defaultdict(set)
+    planned_document_ids_by_need: dict[str, set[str]] = defaultdict(set)
+    ready_document_ids_by_need: dict[str, set[str]] = defaultdict(set)
     for document in manifest.documents:
-        document_ids_by_need["basic_fact"].add(document.id)
-        document_ids_by_need["multi_format"].add(document.id)
+        planned_document_ids_by_need["basic_fact"].add(document.id)
+        planned_document_ids_by_need["multi_format"].add(document.id)
+        if _is_ready_document(document):
+            ready_document_ids_by_need["basic_fact"].add(document.id)
+            ready_document_ids_by_need["multi_format"].add(document.id)
         if document.has_table:
-            document_ids_by_need["table"].add(document.id)
+            planned_document_ids_by_need["table"].add(document.id)
+            if _is_ready_document(document):
+                ready_document_ids_by_need["table"].add(document.id)
         if document.has_scanned_pages:
-            document_ids_by_need["scan_ocr"].add(document.id)
+            planned_document_ids_by_need["scan_ocr"].add(document.id)
+            if _is_ready_document(document):
+                ready_document_ids_by_need["scan_ocr"].add(document.id)
         if document.has_images:
-            document_ids_by_need["image_vision"].add(document.id)
+            planned_document_ids_by_need["image_vision"].add(document.id)
+            if _is_ready_document(document):
+                ready_document_ids_by_need["image_vision"].add(document.id)
         if document.document_type == "web_snapshot":
-            document_ids_by_need["web_snapshot"].add(document.id)
-    case_ids_by_category: dict[str, set[str]] = defaultdict(set)
+            planned_document_ids_by_need["web_snapshot"].add(document.id)
+            if _is_ready_document(document):
+                ready_document_ids_by_need["web_snapshot"].add(document.id)
+    planned_case_ids_by_category: dict[str, set[str]] = defaultdict(set)
+    executable_case_ids_by_category: dict[str, set[str]] = defaultdict(set)
     blocked_by_category: dict[str, set[str]] = defaultdict(set)
     for case in evaluation_set.cases:
-        case_ids_by_category[case.category].add(case.case_id)
+        planned_case_ids_by_category[case.category].add(case.case_id)
+        if case.expected_behavior != "blocked":
+            executable_case_ids_by_category[case.category].add(case.case_id)
         if case.expected_behavior == "blocked":
             blocked_by_category[case.category].add(case.case_id)
         if "duplicate" in case.tags:
-            case_ids_by_category["duplicate"].add(case.case_id)
+            planned_case_ids_by_category["duplicate"].add(case.case_id)
+            if case.expected_behavior != "blocked":
+                executable_case_ids_by_category["duplicate"].add(case.case_id)
             if case.expected_behavior == "blocked":
                 blocked_by_category["duplicate"].add(case.case_id)
 
@@ -383,11 +404,19 @@ def build_coverage_matrix(
     gaps: list[str] = []
     for key, minimum in MATRIX_REQUIREMENTS.items():
         if key in {"multi_source", "refusal", "version_conflict", "duplicate"}:
-            current = len(case_ids_by_category.get(key, set()))
+            planned = len(planned_case_ids_by_category.get(key, set()))
+            executable_case_ids = sorted(executable_case_ids_by_category.get(key, set()))
+            current = len(executable_case_ids)
+            blocked = len(blocked_by_category.get(key, set()))
             evidence_ids: list[str] = []
+            planned_document_ids: list[str] = []
         else:
-            current = len(document_ids_by_need.get(key, set()))
-            evidence_ids = sorted(document_ids_by_need.get(key, set()))
+            planned_document_ids = sorted(planned_document_ids_by_need.get(key, set()))
+            evidence_ids = sorted(ready_document_ids_by_need.get(key, set()))
+            planned = len(planned_document_ids)
+            current = len(evidence_ids)
+            blocked = max(0, planned - current)
+            executable_case_ids = []
         gap = max(0, minimum - current)
         if gap:
             gaps.append(key)
@@ -395,9 +424,13 @@ def build_coverage_matrix(
             CoverageItem(
                 id=key,
                 minimum=minimum,
+                planned_count=planned,
                 current_count=current,
+                blocked_count=blocked,
                 gap=gap,
                 evidence_document_ids=evidence_ids,
+                planned_document_ids=planned_document_ids,
+                executable_case_ids=executable_case_ids,
                 blocked_case_ids=sorted(blocked_by_category.get(key, set())),
             )
         )
@@ -487,6 +520,8 @@ def build_preflight_summary(
     manifest: CorpusV2Manifest,
     evaluation_set: EvaluationSetV2,
     coverage: CoverageMatrix,
+    provider_calls: ProviderCallBudget | None = None,
+    execute_provider_calls: bool = False,
 ) -> CorpusV2PreflightSummary:
     validation = validate_corpus_v2_assets(manifest, evaluation_set)
     pages_min = sum(document.estimated_pages_min for document in manifest.documents)
@@ -503,6 +538,7 @@ def build_preflight_summary(
         ),
     )
     embedding_tokens = chunks_max * 1_000
+    current_provider_calls = provider_calls or ProviderCallBudget(**ZERO_PROVIDER_CALLS)
     return CorpusV2PreflightSummary(
         schema_version="corpus_v2_no_cost_preflight_v1",
         corpus_version=manifest.corpus_version,
@@ -517,10 +553,13 @@ def build_preflight_summary(
         estimated_chunks_max=chunks_max,
         estimated_embedding_token_upper_bound=embedding_tokens,
         estimated_embedding_cost_cny_upper_bound=round(embedding_tokens * 0.0007 / 1000, 6),
-        provider_calls=ProviderCallBudget(**ZERO_PROVIDER_CALLS),
+        provider_calls=current_provider_calls,
         would_require_provider_calls_after_approval=provider_after_approval,
         validation_warnings=list(validation.warnings),
-        no_cost_gate_passed=True,
+        no_cost_gate_passed=is_no_cost_gate_passed(
+            current_provider_calls,
+            execute_provider_calls=execute_provider_calls,
+        ),
     )
 
 
@@ -566,3 +605,19 @@ def _hash_groups(
         for ids in grouped.values()
         if len(ids) > 1
     ]
+
+
+def _is_ready_document(document: CorpusV2Document) -> bool:
+    return (
+        document.ingestion_status == "ready"
+        and document.governance.status == "current"
+        and document.content_sha256 != "unknown"
+    )
+
+
+def is_no_cost_gate_passed(
+    provider_calls: ProviderCallBudget,
+    *,
+    execute_provider_calls: bool,
+) -> bool:
+    return not execute_provider_calls and not any(provider_calls.model_dump().values())

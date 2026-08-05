@@ -6,9 +6,12 @@
     {
       "id": "basic_fact",
       "minimum": 2,
-      "current_count": 10,
-      "gap": 0,
-      "evidence_document_ids": [
+      "planned_count": 10,
+      "current_count": 0,
+      "blocked_count": 10,
+      "gap": 2,
+      "evidence_document_ids": [],
+      "planned_document_ids": [
         "cv2_cardiology_guideline_pdf",
         "cv2_diabetes_docx",
         "cv2_duplicate_candidate_docx",
@@ -20,6 +23,7 @@
         "cv2_report_image_png",
         "cv2_scan_pdf_ocr"
       ],
+      "executable_case_ids": [],
       "blocked_case_ids": [
         "eval2_001",
         "eval2_008"
@@ -28,9 +32,13 @@
     {
       "id": "multi_source",
       "minimum": 2,
-      "current_count": 2,
-      "gap": 0,
+      "planned_count": 2,
+      "current_count": 0,
+      "blocked_count": 2,
+      "gap": 2,
       "evidence_document_ids": [],
+      "planned_document_ids": [],
+      "executable_case_ids": [],
       "blocked_case_ids": [
         "eval2_002",
         "eval2_009"
@@ -39,12 +47,16 @@
     {
       "id": "table",
       "minimum": 2,
-      "current_count": 2,
-      "gap": 0,
-      "evidence_document_ids": [
+      "planned_count": 2,
+      "current_count": 0,
+      "blocked_count": 2,
+      "gap": 2,
+      "evidence_document_ids": [],
+      "planned_document_ids": [
         "cv2_lab_table_markdown",
         "cv2_medication_table_html"
       ],
+      "executable_case_ids": [],
       "blocked_case_ids": [
         "eval2_003"
       ]
@@ -52,11 +64,15 @@
     {
       "id": "scan_ocr",
       "minimum": 2,
-      "current_count": 1,
-      "gap": 1,
-      "evidence_document_ids": [
+      "planned_count": 1,
+      "current_count": 0,
+      "blocked_count": 1,
+      "gap": 2,
+      "evidence_document_ids": [],
+      "planned_document_ids": [
         "cv2_scan_pdf_ocr"
       ],
+      "executable_case_ids": [],
       "blocked_case_ids": [
         "eval2_004"
       ]
@@ -64,11 +80,15 @@
     {
       "id": "image_vision",
       "minimum": 2,
-      "current_count": 1,
-      "gap": 1,
-      "evidence_document_ids": [
+      "planned_count": 1,
+      "current_count": 0,
+      "blocked_count": 1,
+      "gap": 2,
+      "evidence_document_ids": [],
+      "planned_document_ids": [
         "cv2_report_image_png"
       ],
+      "executable_case_ids": [],
       "blocked_case_ids": [
         "eval2_005"
       ]
@@ -76,17 +96,27 @@
     {
       "id": "refusal",
       "minimum": 2,
+      "planned_count": 1,
       "current_count": 1,
+      "blocked_count": 0,
       "gap": 1,
       "evidence_document_ids": [],
+      "planned_document_ids": [],
+      "executable_case_ids": [
+        "eval2_006"
+      ],
       "blocked_case_ids": []
     },
     {
       "id": "version_conflict",
       "minimum": 2,
-      "current_count": 1,
-      "gap": 1,
+      "planned_count": 1,
+      "current_count": 0,
+      "blocked_count": 1,
+      "gap": 2,
       "evidence_document_ids": [],
+      "planned_document_ids": [],
+      "executable_case_ids": [],
       "blocked_case_ids": [
         "eval2_007"
       ]
@@ -94,9 +124,13 @@
     {
       "id": "duplicate",
       "minimum": 1,
-      "current_count": 1,
-      "gap": 0,
+      "planned_count": 1,
+      "current_count": 0,
+      "blocked_count": 1,
+      "gap": 1,
       "evidence_document_ids": [],
+      "planned_document_ids": [],
+      "executable_case_ids": [],
       "blocked_case_ids": [
         "eval2_009"
       ]
@@ -104,9 +138,12 @@
     {
       "id": "multi_format",
       "minimum": 4,
-      "current_count": 10,
-      "gap": 0,
-      "evidence_document_ids": [
+      "planned_count": 10,
+      "current_count": 0,
+      "blocked_count": 10,
+      "gap": 4,
+      "evidence_document_ids": [],
+      "planned_document_ids": [
         "cv2_cardiology_guideline_pdf",
         "cv2_diabetes_docx",
         "cv2_duplicate_candidate_docx",
@@ -118,23 +155,34 @@
         "cv2_report_image_png",
         "cv2_scan_pdf_ocr"
       ],
+      "executable_case_ids": [],
       "blocked_case_ids": []
     },
     {
       "id": "web_snapshot",
       "minimum": 1,
-      "current_count": 1,
-      "gap": 0,
-      "evidence_document_ids": [
+      "planned_count": 1,
+      "current_count": 0,
+      "blocked_count": 1,
+      "gap": 1,
+      "evidence_document_ids": [],
+      "planned_document_ids": [
         "cv2_public_web_snapshot"
       ],
+      "executable_case_ids": [],
       "blocked_case_ids": []
     }
   ],
   "gaps": [
+    "basic_fact",
+    "multi_source",
+    "table",
     "scan_ocr",
     "image_vision",
     "refusal",
-    "version_conflict"
+    "version_conflict",
+    "duplicate",
+    "multi_format",
+    "web_snapshot"
   ]
 }

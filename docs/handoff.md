@@ -5,19 +5,19 @@
 
 ## 1. 当前真实状态
 
-Stage 24.7 `corpus_v2` 已完成本地实现，等待独立验收；未进入 24.8，未部署、未推送，未调用真实 Qwen、Embedding、Reranker、OCR、Vision、SMTP、Docling、生产网络或任何收费供应商。
+Stage 24.7 `corpus_v2` 已完成本地实现和 coverage 口径 follow-up，等待独立验收；未进入 24.8，未部署、未推送，未调用真实 Qwen、Embedding、Reranker、OCR、Vision、SMTP、Docling、生产网络或任何收费供应商。
 
 本阶段新增的是可复现、不可覆盖 `corpus_v1`、当前不导入生产的离线评估资产与工具：
 
 - `backend/app/evaluation/corpus_v2.py` 定义 `corpus_v2` manifest、`eval_v2`、覆盖矩阵、清洗/重复报告和无费用 preflight 的 Pydantic 契约与构建函数。
 - `backend/evaluation/corpora/corpus_v2_manifest.json` 记录 10 个待审 fixture placeholder，包含稳定 id、相对路径、来源/许可待审字段、科室、疾病主题、格式、语言、治理状态、parser 预期和表格/扫描页/图片标记。当前所有内容哈希均为 `unknown`，不得视为已下载真实资料。
-- `backend/evaluation/corpora/corpus_v2_coverage_matrix.json` 覆盖基础事实、多来源、表格、扫描/OCR、图片/视觉、拒答、版本冲突、重复、多格式和网页快照；当前仍有 `scan_ocr`、`image_vision`、`refusal`、`version_conflict` 缺口。
+- `backend/evaluation/corpora/corpus_v2_coverage_matrix.json` 覆盖基础事实、多来源、表格、扫描/OCR、图片/视觉、拒答、版本冲突、重复、多格式和网页快照，并严格区分 `planned_count` 与 `current_count`。当前 10 个 documents 均非 ready，8/9 eval cases 为 blocked；document-driven current 全为 0，只有 refusal 的非 blocked case 可计 current=1，10 个覆盖类别均仍有 gap。
 - `backend/evaluation/corpora/corpus_v2_cleaning_dedup_report.json` 只基于 manifest metadata 生成，exact bytes、normalized text、near hint 分开记录，`auto_deleted=false`。
 - `backend/evaluation/datasets/eval_v2.json` 绑定 `corpus_v2` checksum；缺少 fixture 或需要 OCR/Vision 的题保持 `blocked`，不伪造 golden answer。
-- `backend/scripts/preflight_corpus_v2.py` 从 `backend` 目录执行 `.\.venv\Scripts\python.exe -m scripts.preflight_corpus_v2 --check`，校验 manifest/schema/checksum/引用/覆盖/预算，当前真实 provider calls 强制为 0。
+- `backend/scripts/preflight_corpus_v2.py` 从 `backend` 目录执行 `.\.venv\Scripts\python.exe -m scripts.preflight_corpus_v2 --check`，校验 manifest/schema/checksum/引用/覆盖/预算。no-cost gate 由“当前 provider calls 全为 0 且不处于执行 provider 模式”派生，不再是常量 True。
 - `backend/evaluation/corpora/corpus_v2_intake_template.md` 是后续人工导入清单模板；若现有 27 份资料要纳入 v2，必须另行人工确认来源、许可、文件哈希和使用边界，不能在本阶段读取真实正文或编造来源。
 
-`docs/development-roadmap.md` 已将 24.6 hardening 标记为已完成并通过独立验收，将 24.7 标记为已完成、待独立验收。`docs/technical-design.md`、`docs/stage24-open-source-benchmark.md` 和 `backend/evaluation/README.md` 已记录 v2 边界、无费用闸门和开源参考思想；没有复制第三方源码，也没有新增依赖。
+`docs/development-roadmap.md` 已将 24.6 hardening 标记为已完成并通过独立验收，将 24.7 标记为 follow-up 完成、待独立验收。`docs/technical-design.md`、`docs/stage24-open-source-benchmark.md` 和 `backend/evaluation/README.md` 已记录 v2 边界、planned/current 覆盖口径、无费用闸门和开源参考思想；没有复制第三方源码，也没有新增依赖。
 
 ## 2. 本地验证结果
 
@@ -25,17 +25,17 @@ Stage 24.7 `corpus_v2` 已完成本地实现，等待独立验收；未进入 24
 
 ```text
 backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_corpus_v2.py backend\tests\test_evaluation_assets.py backend\tests\test_evaluation_dataset.py
-22 passed
+23 passed
 
 backend\.venv\Scripts\python.exe -m py_compile backend\app\evaluation\corpus_v2.py backend\scripts\preflight_corpus_v2.py backend\tests\test_corpus_v2.py
 passed
 
 cd backend
 .\.venv\Scripts\python.exe -m scripts.preflight_corpus_v2 --check
-corpus_v2 OK: documents=10; cases=9; coverage_gaps=4; dedup_unknown=10; provider_calls=0
+corpus_v2 OK: documents=10; cases=9; coverage_gaps=10; dedup_unknown=10; provider_calls=0
 
 backend\.venv\Scripts\python.exe -m pytest -q backend\tests
-604 passed, 1 skipped, 140 warnings
+605 passed, 1 skipped, 140 warnings
 
 git diff --check
 passed（仅 CRLF 提示）

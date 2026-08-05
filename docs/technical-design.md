@@ -2202,20 +2202,29 @@ read under the task boundary, all v2 documents are marked
 `pending_review`/`fixture_placeholder` with `content_sha256="unknown"` until a
 human intake step verifies the source, license, and file hash.
 
-The coverage matrix is deterministic and records minimum/current/gap counts for
-basic facts, multi-source questions, tables, scanned/OCR inputs, image/vision
-inputs, refusals, version conflicts, duplicate candidates, multi-format files,
-and web snapshots. `eval_v2` uses a versioned schema with explicit
-`expected_behavior`; provider-dependent OCR/Vision cases must remain
-`blocked`, and unanswered fixture placeholders may not invent golden answers.
+The coverage matrix is deterministic and separates planned coverage from
+currently executable coverage. `planned_count` records the collection blueprint
+including placeholder documents and blocked cases. `current_count` is the only
+field used for gap calculation: document-driven categories count only documents
+with `ingestion_status="ready"`, `governance.status="current"`, and a concrete
+content SHA-256; case-driven categories count only cases whose
+`expected_behavior` is not `blocked`. `blocked_count`, `planned_document_ids`,
+`evidence_document_ids`, `executable_case_ids`, and `blocked_case_ids` keep the
+reason visible without overstating readiness. With the initial Stage 24.7
+placeholder manifest, all 10 document-driven coverage items have current count
+0; only the refusal case is executable, so the no-cost preflight reports 10
+coverage gaps. `eval_v2` uses a versioned schema with explicit
+`expected_behavior`; provider-dependent OCR/Vision cases must remain `blocked`,
+and unanswered fixture placeholders may not invent golden answers.
 
 Cleaning and duplicate reporting is metadata-only. Exact duplicate, normalized
 duplicate, and near-duplicate hints remain separate outputs; unknown file
 content is reported as pending, and the report always records
 `auto_deleted=false`. The no-cost preflight CLI
 `python -m scripts.preflight_corpus_v2 --check` validates manifest/schema,
-dataset references, coverage, deterministic report checksums, and a budget gate.
-Current provider calls are forced to zero for Embedding, LLM, Rerank, OCR, and
-Vision; the summary separately estimates the upper bound that would apply only
-after future human approval. No network fetch, production upload, real model,
-Docling, OCR/Vision, SMTP, or paid provider call is performed in this stage.
+dataset references, coverage, deterministic report checksums, and a budget
+gate. The no-cost gate is derived from two conditions: current provider calls
+must all be zero and the preflight must not be in provider-execution mode. The
+summary separately estimates the upper bound that would apply only after future
+human approval. No network fetch, production upload, real model, Docling,
+OCR/Vision, SMTP, or paid provider call is performed in this stage.

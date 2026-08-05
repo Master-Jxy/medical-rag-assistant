@@ -9,6 +9,7 @@ from app.evaluation.corpus_v2 import (
     CorpusV2Manifest,
     CorpusV2PreflightSummary,
     EvaluationSetV2,
+    ProviderCallBudget,
     build_cleaning_dedup_report,
     build_coverage_matrix,
     build_preflight_summary,
@@ -132,6 +133,27 @@ def test_unknown_license_and_blocked_cases_are_reported_without_provider_calls()
     assert preflight.would_require_provider_calls_after_approval.vision_calls > 0
 
 
+def test_no_cost_gate_fails_for_any_current_provider_call() -> None:
+    manifest, evaluation_set = load_assets()
+    coverage = build_coverage_matrix(manifest, evaluation_set)
+
+    preflight = build_preflight_summary(
+        manifest,
+        evaluation_set,
+        coverage,
+        provider_calls=ProviderCallBudget(embedding_calls=1),
+    )
+    executing_preflight = build_preflight_summary(
+        manifest,
+        evaluation_set,
+        coverage,
+        execute_provider_calls=True,
+    )
+
+    assert preflight.no_cost_gate_passed is False
+    assert executing_preflight.no_cost_gate_passed is False
+
+
 def test_provider_dependent_cases_must_remain_blocked() -> None:
     payload = evaluation_payload()["cases"][4]
     payload["expected_behavior"] = "answer"
@@ -155,15 +177,33 @@ def test_coverage_matrix_records_current_gaps() -> None:
     coverage = build_coverage_matrix(manifest, evaluation_set)
 
     assert coverage.gaps == [
+        "basic_fact",
+        "multi_source",
+        "table",
         "scan_ocr",
         "image_vision",
         "refusal",
         "version_conflict",
+        "duplicate",
+        "multi_format",
+        "web_snapshot",
     ]
     by_id = {item.id: item for item in coverage.items}
-    assert by_id["multi_format"].current_count == 10
-    assert by_id["web_snapshot"].current_count == 1
-    assert by_id["scan_ocr"].gap == 1
+    assert by_id["multi_format"].planned_count == 10
+    assert by_id["multi_format"].current_count == 0
+    assert by_id["multi_format"].blocked_count == 10
+    assert by_id["multi_format"].gap == 4
+    assert by_id["multi_format"].evidence_document_ids == []
+    assert len(by_id["multi_format"].planned_document_ids) == 10
+    assert by_id["web_snapshot"].planned_count == 1
+    assert by_id["web_snapshot"].current_count == 0
+    assert by_id["web_snapshot"].gap == 1
+    assert by_id["multi_source"].planned_count == 2
+    assert by_id["multi_source"].current_count == 0
+    assert by_id["multi_source"].blocked_count == 2
+    assert by_id["refusal"].planned_count == 1
+    assert by_id["refusal"].current_count == 1
+    assert by_id["refusal"].executable_case_ids == ["eval2_006"]
 
 
 def test_dedup_report_is_deterministic_metadata_only_and_does_not_delete() -> None:
