@@ -312,3 +312,42 @@ def test_reference_pdf_can_be_parsed_without_embedding(tmp_path) -> None:
     finally:
         session.close()
         engine.dispose()
+
+
+def test_html_replacement_database_failure_restores_old_file_and_vectors(
+    tmp_path, monkeypatch
+) -> None:
+    service, vector_store, session, engine, owner, _ = build_service(tmp_path)
+    try:
+        uploaded = asyncio.run(
+            service.process_upload(
+                owner.id,
+                make_upload("原始.txt", "原始资料内容。".encode()),
+            )
+        )
+        old_record = session.get(KnowledgeDocument, uploaded.document_id)
+        old_path = service.settings.upload_dir / old_record.stored_name
+        old_ids = set(vector_store.entries)
+
+        def fail_commit_once():
+            raise RuntimeError("模拟替换数据库失败")
+
+        monkeypatch.setattr(session, "commit", fail_commit_once)
+        with pytest.raises(DocumentStoreError):
+            asyncio.run(
+                service.lifecycle.replace_document(
+                    uploaded.document_id,
+                    make_upload(
+                        "替换.html",
+                        "<html><body><h1>替换标题</h1><p>替换内容</p></body></html>".encode(),
+                    ),
+                    actor_user_id=owner.id,
+                )
+            )
+
+        assert old_path.exists()
+        assert set(vector_store.entries) == old_ids
+        assert session.get(KnowledgeDocument, uploaded.document_id) is not None
+    finally:
+        session.close()
+        engine.dispose()

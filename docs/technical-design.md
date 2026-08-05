@@ -142,13 +142,14 @@ frontend/src/
 ### 4.2 文档上传
 
 ```text
-KnowledgeView 选择 PDF/TXT
+KnowledgeView 选择 PDF/TXT/DOCX/Markdown/HTML
 -> documents.js 发送 multipart/form-data
 -> Bearer JWT 解析当前用户
 -> UploadProtectionService 消费用户频率额度并获取带 TTL 的并发占位
 -> documents.py 校验请求
--> DocumentService 校验格式、大小和 SHA-256
--> 保存文件并解析文本
+-> FileTypePolicy 校验后缀和内容签名/UTF-8，MIME 只作辅助信号
+-> DocumentService 校验大小和 SHA-256
+-> 保存文件并经 ParserRegistry 解析为统一元素
 -> 文本切片
 -> DashScope 生成 Embedding
 -> VectorStoreService 写入 Chroma
@@ -1915,6 +1916,19 @@ chunk 来源，不因解析器变化破坏 RAG/Agent 契约。
 行为不变；registry 只按显式 suffix/MIME 能力选择解析器，无匹配格式返回稳定解析失败。
 本实现借鉴 Unstructured 的统一 Element 模型和 Haystack 的 Converter/Splitter 组件边界，
 也参考 Docling 的统一转换出口思想；没有复制第三方源码，没有安装或启用重型解析依赖。
+
+24.2a 在 `knowledge` 内新增统一 `FileTypePolicy`，普通 submission 和管理员 lifecycle
+共用同一套文件类型校验：PDF 必须匹配 `%PDF-` 魔数，DOCX 必须是 ZIP 且包含必要 OOXML
+条目并拒绝宏和外部关系，TXT/Markdown/HTML 必须无 NUL 且为 UTF-8。客户端 MIME 只作为
+展示和响应辅助信号，不能绕过服务端内容校验。ParserRegistry 增加轻量本地 adapter：
+`python-docx==1.2.0`（MIT，用于 DOCX 结构读取）、`markdown-it-py==4.2.0`（MIT classifier，
+用于 Markdown token 化）和 `beautifulsoup4==4.15.0`（MIT，用于 HTML 正文清洗）。DOCX、
+Markdown 和 HTML 输出标题、段落、列表与表格元素；HTML 删除 script/style/form/iframe/
+object/embed/noscript 等非正文或危险节点，不执行任何内容。发布 lifecycle 将
+`ParsedDocument.elements` 转换为现有 LangChain `Document`/切片输入，并保留
+document_id、file_name、source、hash、visibility、document_type 和 kb_version 元数据。
+24.2a 参考 Unstructured file partition 和 Haystack converter/splitter 边界，没有复制源码，
+没有新增网页 URL、OCR、视觉、元数据模型、数据库迁移或重型解析栈。
 
 AI 元数据输出是 suggestion，不是正式文档元数据。只有管理员接受或编辑后，知识应用
 服务才更新 `document_versions` 并写审计。精确文件哈希继续硬拒绝；标准化正文哈希与

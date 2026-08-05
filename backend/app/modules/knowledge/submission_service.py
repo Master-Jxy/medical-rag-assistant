@@ -17,11 +17,11 @@ from app.core.exceptions import (
     UnsupportedFileTypeError,
 )
 from app.modules.knowledge.models import KnowledgeDocument, KnowledgeSubmission
+from app.modules.knowledge.ingestion import FileTypePolicy
 from app.modules.knowledge.parser import ParserPort
 from app.modules.knowledge.schemas import SubmissionCreateResponse
 from app.services.upload_protection_service import UploadProtectionService
 
-ALLOWED_SUFFIXES = {".pdf", ".txt"}
 READ_BLOCK_SIZE = 1024 * 1024
 
 
@@ -64,8 +64,7 @@ class KnowledgeSubmissionService:
     ) -> KnowledgeSubmission:
         original_name = Path(upload_file.filename or "").name
         suffix = Path(original_name).suffix.lower()
-        if suffix not in ALLOWED_SUFFIXES:
-            raise UnsupportedFileTypeError()
+        FileTypePolicy.get(suffix)
         self.settings.submission_dir.mkdir(parents=True, exist_ok=True)
         submission_id = str(uuid4())
         temporary = self.settings.submission_dir / f".{submission_id}.uploading"
@@ -97,6 +96,7 @@ class KnowledgeSubmissionService:
             )
             if duplicate:
                 raise DuplicateDocumentError()
+            file_type = FileTypePolicy.validate_path(temporary, suffix)
             temporary.replace(final_path)
             record = KnowledgeSubmission(
                 id=submission_id,
@@ -111,7 +111,7 @@ class KnowledgeSubmissionService:
             self.session.add(record)
             self.session.commit()
             try:
-                preview = self.parser.parse(final_path, suffix)
+                preview = self.parser.parse(final_path, file_type.suffix)
                 record.preview_text = preview.text
                 record.preview_pages = preview.page_count
                 record.parse_warnings = list(preview.warnings)

@@ -1,4 +1,4 @@
-"""通过系统文档生命周期批量导入本地 PDF/TXT，按内容哈希幂等跳过。"""
+"""通过系统文档生命周期批量导入本地受支持格式，按内容哈希幂等跳过。"""
 
 import argparse
 import asyncio
@@ -14,17 +14,19 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app.core.exceptions import DuplicateDocumentError  # noqa: E402
 from app.db.session import get_engine  # noqa: E402
+from app.modules.knowledge.ingestion import FileTypePolicy  # noqa: E402
 from app.services.admin_document_service import AdminDocumentService  # noqa: E402
 
 
 async def import_directory(directory: Path, service: AdminDocumentService) -> int:
+    supported_suffixes = set(FileTypePolicy.supported_suffixes())
     files = sorted(
         path
         for path in directory.iterdir()
-        if path.is_file() and path.suffix.lower() in {".pdf", ".txt"}
+        if path.is_file() and path.suffix.lower() in supported_suffixes
     )
     if not files:
-        print(f"No PDF or TXT files found in: {directory}")
+        print(f"No supported files found in: {directory}")
         return 1
 
     imported = 0
@@ -56,7 +58,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Import a folder as system documents into the RAG knowledge base"
     )
-    parser.add_argument("directory", type=Path, help="Directory containing PDF/TXT files")
+    parser.add_argument(
+        "directory",
+        type=Path,
+        help="Directory containing supported PDF/TXT/DOCX/Markdown/HTML files",
+    )
     parser.add_argument(
         "--confirm",
         action="store_true",

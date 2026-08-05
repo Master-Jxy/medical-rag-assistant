@@ -8,6 +8,7 @@ from app.modules.knowledge.ingestion.contracts import (
     ParsedDocument,
     ParsedElement,
 )
+from app.modules.knowledge.ingestion.file_types import FileTypeInfo, FileTypePolicy
 from app.modules.knowledge.ingestion.registry import ParserRegistration, ParserRegistry
 
 __all__ = [
@@ -17,6 +18,8 @@ __all__ = [
     "ParsedAsset",
     "ParsedDocument",
     "ParsedElement",
+    "FileTypeInfo",
+    "FileTypePolicy",
     "ParserRegistration",
     "ParserRegistry",
 ]

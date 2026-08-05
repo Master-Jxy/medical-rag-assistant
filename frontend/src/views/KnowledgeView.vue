@@ -6,7 +6,9 @@ import { getDocuments, uploadDocument } from '../api/documents'
 import { getApiErrorMessage } from '../api/http'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
-const ALLOWED_SUFFIXES = ['.pdf', '.txt']
+const ACCEPTED_DOCUMENT_FORMATS = '.pdf,.txt,.docx,.md,.markdown,.html,.htm'
+const ALLOWED_SUFFIXES = ACCEPTED_DOCUMENT_FORMATS.split(',')
+const FORMAT_LABEL = 'PDF、TXT、DOCX、Markdown 或 HTML'
 
 const documents = ref([])
 const listLoading = ref(false)
@@ -42,7 +44,7 @@ function validateAndSelect(file) {
 
   const lowerName = file.name.toLowerCase()
   if (!ALLOWED_SUFFIXES.some((suffix) => lowerName.endsWith(suffix))) {
-    errorMessage.value = '只支持 PDF 和 TXT 文件。'
+    errorMessage.value = `只支持 ${FORMAT_LABEL} 文件。`
     return
   }
   if (file.size > MAX_FILE_SIZE) {
@@ -128,10 +130,10 @@ onMounted(loadDocuments)
     <section class="upload-card">
       <div class="section-title">
         <div><UploadCloud :size="18" /><h2>提交新资料</h2></div>
-        <small>PDF / TXT · 最大 10 MB</small>
+        <small>{{ FORMAT_LABEL }} · 最大 10 MB</small>
       </div>
 
-      <input ref="fileInput" type="file" accept=".pdf,.txt" hidden @change="handleFileInput" />
+      <input ref="fileInput" type="file" :accept="ACCEPTED_DOCUMENT_FORMATS" hidden @change="handleFileInput" />
       <div
         class="drop-zone"
         :class="{ active: dragActive }"
@@ -177,7 +179,7 @@ onMounted(loadDocuments)
 
       <div v-if="listLoading && !documents.length" class="loading-state">正在读取知识库…</div>
       <div v-else-if="!documents.length" class="empty-state">
-        <div>空</div><strong>知识库中还没有上传文档</strong><p>上传第一份 PDF 或 TXT 后，文档会显示在这里。</p>
+        <div>空</div><strong>知识库中还没有上传文档</strong><p>上传第一份支持格式文件后，文档会显示在这里。</p>
       </div>
       <div v-else class="document-list">
         <div class="table-head"><span>文档</span><span>大小</span><span>片段</span><span>上传时间</span><span>操作</span></div>

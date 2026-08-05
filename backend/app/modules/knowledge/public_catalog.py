@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
+from app.modules.knowledge.ingestion import FileTypePolicy
 from app.modules.knowledge.models import DocumentVersion, KnowledgeDocument
 from app.modules.knowledge.parser import LocalDocumentParser, ParserPort
 from app.modules.knowledge.public_ports import (
@@ -100,5 +101,8 @@ class PublishedKnowledgeCatalogService:
         path = (root / document.stored_name).resolve()
         if root not in path.parents or not path.is_file():
             return None
-        mime_type = "application/pdf" if path.suffix.lower() == ".pdf" else "text/plain"
+        try:
+            mime_type = FileTypePolicy.mime_type_for_suffix(path.suffix.lower())
+        except Exception:
+            return None
         return PublishedDocumentFile(document.id, document.original_name, mime_type, path.read_bytes())

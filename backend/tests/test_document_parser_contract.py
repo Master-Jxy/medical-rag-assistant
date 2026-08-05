@@ -1,11 +1,14 @@
 """Stage 24.1: normalized document parser contract and compatibility."""
 
+from io import BytesIO
 from pathlib import Path
 
 import pytest
+from docx import Document as DocxDocument
 
 from app.core.exceptions import DocumentParseError
 from app.modules.knowledge.ingestion import (
+    FileTypePolicy,
     ParseQuality,
     ParseRequest,
     ParsedDocument,
@@ -14,6 +17,23 @@ from app.modules.knowledge.ingestion import (
     ParserRegistry,
 )
 from app.modules.knowledge.parser import LocalDocumentParser, ParsedPreview
+
+
+def write_docx(path: Path) -> bytes:
+    document = DocxDocument()
+    document.add_heading("护理计划", level=1)
+    document.add_paragraph("每日记录症状变化。")
+    document.add_paragraph("按时复诊", style="List Bullet")
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "项目"
+    table.cell(0, 1).text = "说明"
+    table.cell(1, 0).text = "血压"
+    table.cell(1, 1).text = "每日测量"
+    buffer = BytesIO()
+    document.save(buffer)
+    data = buffer.getvalue()
+    path.write_bytes(data)
+    return data
 
 
 class DummyParser:
@@ -96,6 +116,77 @@ def test_local_parser_returns_normalized_document_and_legacy_preview(tmp_path) -
             ],
         },
     )
+
+
+def test_file_type_policy_rejects_spoofed_binary_and_damaged_docx(tmp_path) -> None:
+    fake_pdf = tmp_path / "fake.pdf"
+    fake_pdf.write_text("not a pdf", encoding="utf-8")
+    with pytest.raises(DocumentParseError, match="PDF"):
+        FileTypePolicy.validate_path(fake_pdf, ".pdf")
+
+    text_with_nul = tmp_path / "bad.md"
+    text_with_nul.write_bytes(b"title\x00body")
+    with pytest.raises(DocumentParseError, match="空字节"):
+        FileTypePolicy.validate_path(text_with_nul, ".md")
+
+    damaged_docx = tmp_path / "bad.docx"
+    damaged_docx.write_bytes(b"not a zip")
+    with pytest.raises(DocumentParseError, match="DOCX"):
+        FileTypePolicy.validate_path(damaged_docx, ".docx")
+
+
+def test_docx_parser_preserves_title_list_and_table_semantics(tmp_path) -> None:
+    path = tmp_path / "sample.docx"
+    write_docx(path)
+    FileTypePolicy.validate_path(path, ".docx")
+
+    parsed = LocalDocumentParser().parse_document(ParseRequest(path=path, suffix=".docx"))
+
+    assert [element.kind for element in parsed.elements] == [
+        "title",
+        "paragraph",
+        "list",
+        "table",
+    ]
+    assert "护理计划" in parsed.text
+    assert parsed.elements[-1].table_html.startswith("<table>")
+    assert parsed.quality.counts["table"] == 1
+
+
+def test_markdown_parser_preserves_heading_list_and_table_semantics(tmp_path) -> None:
+    path = tmp_path / "sample.md"
+    path.write_text(
+        "# 随访记录\n\n- 记录血压\n\n| 指标 | 结果 |\n| --- | --- |\n| 血压 | 稳定 |\n",
+        encoding="utf-8",
+    )
+    FileTypePolicy.validate_path(path, ".md")
+
+    parsed = LocalDocumentParser().parse_document(ParseRequest(path=path, suffix=".md"))
+
+    assert [element.kind for element in parsed.elements] == ["title", "list", "table"]
+    assert parsed.elements[0].text == "随访记录"
+    assert "血压 | 稳定" in parsed.elements[-1].text
+
+
+def test_html_parser_removes_dangerous_nodes_and_keeps_body_semantics(tmp_path) -> None:
+    path = tmp_path / "sample.html"
+    path.write_text(
+        """
+        <html><head><style>body{display:none}</style><script>alert(1)</script></head>
+        <body><h1>康复资料</h1><p>安全正文</p><form><input value="secret"></form>
+        <iframe src="https://example.com"></iframe><table onclick="evil()"><tr><td>项目</td><td>说明</td></tr></table></body></html>
+        """,
+        encoding="utf-8",
+    )
+    FileTypePolicy.validate_path(path, ".html")
+
+    parsed = LocalDocumentParser().parse_document(ParseRequest(path=path, suffix=".html"))
+
+    assert [element.kind for element in parsed.elements] == ["title", "paragraph", "table"]
+    assert "alert" not in parsed.text
+    assert "secret" not in parsed.text
+    assert "iframe" not in parsed.text
+    assert "onclick" not in (parsed.elements[-1].table_html or "")
 
 
 def test_legacy_preview_is_projected_from_structured_document() -> None:

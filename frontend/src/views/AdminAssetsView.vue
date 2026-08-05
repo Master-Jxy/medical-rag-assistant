@@ -53,6 +53,9 @@ const GOVERNANCE_OPTIONS = [
 const DEFAULT_TAGS = ['医学指南', '疾病科普', '诊疗路径', '药物资料', '检验检查', '医学影像', '健康管理']
 const DEFAULT_CATEGORIES = ['疾病知识', '诊疗规范', '药物与用药', '检验与检查', '医学影像', '健康教育']
 const DEFAULT_DEPARTMENTS = ['全科', '心血管内科', '神经内科', '呼吸内科', '消化内科', '内分泌科', '外科', '影像科']
+const ACCEPTED_DOCUMENT_FORMATS = '.pdf,.txt,.docx,.md,.markdown,.html,.htm'
+const ALLOWED_SUFFIXES = ACCEPTED_DOCUMENT_FORMATS.split(',')
+const FORMAT_LABEL = 'PDF、TXT、DOCX、Markdown 或 HTML'
 
 const items = ref([])
 const total = ref(0)
@@ -224,9 +227,9 @@ async function confirmAction() {
 
 function validateFile(file) {
   if (!file) return false
-  const validType = ['.pdf', '.txt'].some((suffix) => file.name.toLowerCase().endsWith(suffix))
+  const validType = ALLOWED_SUFFIXES.some((suffix) => file.name.toLowerCase().endsWith(suffix))
   if (!validType || file.size > 10 * 1024 * 1024) {
-    errorMessage.value = '请选择不超过 10 MB 的 PDF 或 TXT 文件。'
+    errorMessage.value = `请选择不超过 10 MB 的 ${FORMAT_LABEL} 文件。`
     return false
   }
   return true
@@ -309,9 +312,9 @@ onMounted(load)
     </div>
 
     <details class="system-upload-panel">
-      <summary><span><UploadCloud :size="17" /></span><div><strong>新增系统资料</strong><small>管理员直接维护的 PDF / TXT 会进入公共知识库</small></div><span class="summary-action">展开上传</span></summary>
+      <summary><span><UploadCloud :size="17" /></span><div><strong>新增系统资料</strong><small>管理员直接维护的支持格式文件会进入公共知识库</small></div><span class="summary-action">展开上传</span></summary>
       <div class="upload-body">
-        <label class="file-picker"><input type="file" accept=".pdf,.txt" @change="selectCreateFile" /><span><FileText :size="14" />{{ selectedFile?.name || '选择 PDF / TXT，最大 10 MB' }}</span></label>
+        <label class="file-picker"><input type="file" :accept="ACCEPTED_DOCUMENT_FORMATS" @change="selectCreateFile" /><span><FileText :size="14" />{{ selectedFile?.name || '选择支持格式文件，最大 10 MB' }}</span></label>
         <button class="primary-action" type="button" :disabled="!selectedFile || creating" @click="createDocument">{{ creating ? '正在入库…' : '确认入库' }}</button>
       </div>
     </details>
@@ -341,7 +344,7 @@ onMounted(load)
         <div class="asset-actions">
           <button class="icon-action" type="button" title="编辑治理信息" @click="openEdit(item)"><Pencil :size="15" /></button>
           <button v-if="item.review_status === 'in_review'" class="icon-action success" type="button" title="完成复核" @click="openReview(item)"><CalendarCheck :size="15" /></button>
-          <label class="icon-action file-action" title="整体替换"><input type="file" accept=".pdf,.txt" :disabled="Boolean(replacingId)" @change="replaceDocument(item, $event)" /><Replace :size="15" /></label>
+          <label class="icon-action file-action" title="整体替换"><input type="file" :accept="ACCEPTED_DOCUMENT_FORMATS" :disabled="Boolean(replacingId)" @change="replaceDocument(item, $event)" /><Replace :size="15" /></label>
           <button v-if="item.status === 'published'" class="icon-action" type="button" title="下线资产" @click="requestAction(item, 'archive')"><Archive :size="15" /></button>
           <button v-else-if="item.status === 'archived'" class="icon-action" type="button" title="重新发布" @click="requestAction(item, 'republish')"><RotateCcw :size="15" /></button>
           <button class="icon-action danger" type="button" title="永久删除知识资产" @click="requestAction(item, 'delete')"><Trash2 :size="15" /></button>

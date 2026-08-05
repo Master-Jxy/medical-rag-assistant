@@ -1,15 +1,20 @@
 """无模型文档预解析Port与本地适配器。"""
 
 from dataclasses import dataclass
+from html import escape
 from pathlib import Path
 from typing import Protocol
 
+from bs4 import BeautifulSoup
+from docx import Document as DocxDocument
 from langchain_community.document_loaders import PyPDFLoader
+from markdown_it import MarkdownIt
 from pypdf import PdfReader
 
 from app.core.exceptions import DocumentParseError
 from app.modules.knowledge.ingestion import (
     DocumentParserPort,
+    FileTypePolicy,
     ParseQuality,
     ParseRequest,
     ParsedDocument,
@@ -156,15 +161,290 @@ class LocalStructuredDocumentParser:
         return results, warnings
 
 
+class DocxStructuredDocumentParser:
+    name = "local_docx"
+
+    def parse(self, request: ParseRequest) -> ParsedDocument:
+        try:
+            document = DocxDocument(str(request.path))
+        except Exception as exc:
+            raise DocumentParseError("无法解析DOCX文档") from exc
+        elements: list[ParsedElement] = []
+        order = 0
+        for child in document.element.body:
+            if child.tag.endswith("}p"):
+                paragraph = next(
+                    item for item in document.paragraphs if item._p is child
+                )
+                text = paragraph.text.strip()
+                if not text:
+                    continue
+                order += 1
+                style_name = (paragraph.style.name or "").lower()
+                is_list = paragraph._p.pPr is not None and paragraph._p.pPr.numPr is not None
+                kind = (
+                    "title"
+                    if style_name.startswith("heading") or style_name.startswith("标题")
+                    else "list"
+                    if is_list or "list" in style_name
+                    else "paragraph"
+                )
+                elements.append(
+                    ParsedElement(
+                        element_id=f"docx-{order}",
+                        kind=kind,
+                        text=text,
+                        page_no=None,
+                        order=order,
+                        metadata={"style": paragraph.style.name or ""},
+                    )
+                )
+            elif child.tag.endswith("}tbl"):
+                table = next(item for item in document.tables if item._tbl is child)
+                rows = [
+                    [cell.text.strip() for cell in row.cells]
+                    for row in table.rows
+                    if any(cell.text.strip() for cell in row.cells)
+                ]
+                if not rows:
+                    continue
+                order += 1
+                text = "\n".join(" | ".join(cell for cell in row) for row in rows)
+                html_rows = "".join(
+                    "<tr>"
+                    + "".join(f"<td>{escape(cell)}</td>" for cell in row)
+                    + "</tr>"
+                    for row in rows
+                )
+                elements.append(
+                    ParsedElement(
+                        element_id=f"docx-{order}",
+                        kind="table",
+                        text=text,
+                        page_no=None,
+                        order=order,
+                        table_html=f"<table>{html_rows}</table>",
+                    )
+                )
+        if not elements:
+            raise DocumentParseError()
+        return _build_document(request, self.name, tuple(elements))
+
+
+class MarkdownStructuredDocumentParser:
+    name = "local_markdown"
+
+    def __init__(self) -> None:
+        self.markdown = MarkdownIt("commonmark").enable("table")
+
+    def parse(self, request: ParseRequest) -> ParsedDocument:
+        text = _read_utf8(request.path)
+        tokens = self.markdown.parse(text)
+        elements: list[ParsedElement] = []
+        order = 0
+        index = 0
+        while index < len(tokens):
+            token = tokens[index]
+            if token.type in {"heading_open", "paragraph_open"}:
+                inline = tokens[index + 1] if index + 1 < len(tokens) else None
+                content = (inline.content if inline and inline.type == "inline" else "").strip()
+                if content:
+                    order += 1
+                    kind = "title" if token.type == "heading_open" else "paragraph"
+                    elements.append(
+                        ParsedElement(
+                            element_id=f"markdown-{order}",
+                            kind=kind,
+                            text=content,
+                            page_no=1,
+                            order=order,
+                            metadata={"markup": token.tag},
+                        )
+                    )
+            elif token.type == "list_item_open":
+                parts: list[str] = []
+                depth = token.level
+                index += 1
+                while index < len(tokens) and not (
+                    tokens[index].type == "list_item_close"
+                    and tokens[index].level == depth
+                ):
+                    if tokens[index].type == "inline" and tokens[index].content.strip():
+                        parts.append(tokens[index].content.strip())
+                    index += 1
+                content = " ".join(parts).strip()
+                if content:
+                    order += 1
+                    elements.append(
+                        ParsedElement(
+                            element_id=f"markdown-{order}",
+                            kind="list",
+                            text=content,
+                            page_no=1,
+                            order=order,
+                        )
+                    )
+            elif token.type == "table_open":
+                table_text, table_html, index = _consume_markdown_table(tokens, index)
+                if table_text:
+                    order += 1
+                    elements.append(
+                        ParsedElement(
+                            element_id=f"markdown-{order}",
+                            kind="table",
+                            text=table_text,
+                            page_no=1,
+                            order=order,
+                            table_html=table_html,
+                        )
+                    )
+            index += 1
+        if not elements:
+            raise DocumentParseError()
+        return _build_document(request, self.name, tuple(elements), page_count=1)
+
+
+class HtmlStructuredDocumentParser:
+    name = "local_html"
+    dangerous_tags = {"script", "style", "form", "iframe", "object", "embed", "noscript"}
+
+    def parse(self, request: ParseRequest) -> ParsedDocument:
+        soup = BeautifulSoup(_read_utf8(request.path), "html.parser")
+        for tag in soup.find_all(self.dangerous_tags):
+            tag.decompose()
+        for tag in soup.find_all(True):
+            tag.attrs = {}
+        root = soup.body or soup
+        elements: list[ParsedElement] = []
+        order = 0
+        for node in root.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "table"]):
+            if any(parent.name == "table" for parent in node.parents) and node.name != "table":
+                continue
+            text = node.get_text(" ", strip=True)
+            if not text:
+                continue
+            order += 1
+            kind = (
+                "title"
+                if node.name and node.name.startswith("h")
+                else "list"
+                if node.name == "li"
+                else "table"
+                if node.name == "table"
+                else "paragraph"
+            )
+            elements.append(
+                ParsedElement(
+                    element_id=f"html-{order}",
+                    kind=kind,
+                    text=text,
+                    page_no=1,
+                    order=order,
+                    table_html=str(node) if kind == "table" else None,
+                    metadata={"tag": node.name or ""},
+                )
+            )
+        if not elements:
+            raise DocumentParseError()
+        return _build_document(request, self.name, tuple(elements), page_count=1)
+
+
+def _read_utf8(path: Path) -> str:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise DocumentParseError("文本文件必须使用UTF-8编码") from exc
+    if not text.strip():
+        raise DocumentParseError()
+    return text
+
+
+def _build_document(
+    request: ParseRequest,
+    parser_name: str,
+    elements: tuple[ParsedElement, ...],
+    *,
+    page_count: int | None = None,
+    warnings: tuple[str, ...] = (),
+) -> ParsedDocument:
+    counts = {
+        kind: sum(element.kind == kind for element in elements)
+        for kind in ("title", "paragraph", "list", "table")
+    }
+    return ParsedDocument(
+        document_metadata={
+            "file_name": request.file_name or request.path.name,
+            "suffix": request.normalized_suffix,
+            "page_count": page_count or max(
+                (element.page_no or 0 for element in elements), default=1
+            ),
+            "parser": parser_name,
+        },
+        elements=elements,
+        assets=(),
+        warnings=warnings,
+        quality=ParseQuality(
+            status="warning" if warnings else "pass",
+            counts=counts,
+            page_results=(),
+            warnings=warnings,
+            parser_name=parser_name,
+        ),
+    )
+
+
+def _consume_markdown_table(tokens, start: int) -> tuple[str, str, int]:
+    rows: list[list[str]] = []
+    current_row: list[str] | None = None
+    index = start + 1
+    while index < len(tokens) and tokens[index].type != "table_close":
+        token = tokens[index]
+        if token.type == "tr_open":
+            current_row = []
+        elif token.type == "tr_close":
+            if current_row and any(current_row):
+                rows.append(current_row)
+            current_row = None
+        elif token.type == "inline" and current_row is not None:
+            current_row.append(token.content.strip())
+        index += 1
+    text = "\n".join(" | ".join(cell for cell in row) for row in rows)
+    html_rows = "".join(
+        "<tr>" + "".join(f"<td>{escape(cell)}</td>" for cell in row) + "</tr>"
+        for row in rows
+    )
+    return text, f"<table>{html_rows}</table>" if rows else "", index
+
+
 def build_default_parser_registry() -> ParserRegistry:
+    local_pdf_txt = LocalStructuredDocumentParser()
+    markdown = MarkdownStructuredDocumentParser()
     return ParserRegistry(
         [
             ParserRegistration(
                 name=LocalStructuredDocumentParser.name,
-                parser=LocalStructuredDocumentParser(),
+                parser=local_pdf_txt,
                 suffixes=(".pdf", ".txt"),
                 mime_types=("application/pdf", "text/plain"),
-            )
+            ),
+            ParserRegistration(
+                name=DocxStructuredDocumentParser.name,
+                parser=DocxStructuredDocumentParser(),
+                suffixes=(".docx",),
+                mime_types=(FileTypePolicy.mime_type_for_suffix(".docx"),),
+            ),
+            ParserRegistration(
+                name=MarkdownStructuredDocumentParser.name,
+                parser=markdown,
+                suffixes=(".md", ".markdown"),
+                mime_types=("text/markdown",),
+            ),
+            ParserRegistration(
+                name=HtmlStructuredDocumentParser.name,
+                parser=HtmlStructuredDocumentParser(),
+                suffixes=(".html", ".htm"),
+                mime_types=("text/html",),
+            ),
         ]
     )
 

@@ -77,4 +77,23 @@ describe('KnowledgeView 文档权限', () => {
     expect(wrapper.text()).toContain('已提交，等待管理员审核')
     expect(wrapper.text()).not.toContain('已成功入库')
   })
+
+  it('允许选择新增的本地文件格式并拒绝未知格式', async () => {
+    const wrapper = mountKnowledge()
+    await flushPromises()
+
+    const input = wrapper.get('input[type="file"]')
+    expect(input.attributes('accept')).toContain('.docx')
+    expect(input.attributes('accept')).toContain('.html')
+
+    const html = new File(['<h1>资料</h1>'], '资料.html', { type: 'text/html' })
+    Object.defineProperty(input.element, 'files', { value: [html], configurable: true })
+    await input.trigger('change')
+    expect(wrapper.text()).toContain('资料.html')
+
+    const exe = new File(['bad'], 'bad.exe', { type: 'application/octet-stream' })
+    Object.defineProperty(input.element, 'files', { value: [exe], configurable: true })
+    await input.trigger('change')
+    expect(wrapper.text()).toContain('只支持 PDF、TXT、DOCX、Markdown 或 HTML 文件')
+  })
 })

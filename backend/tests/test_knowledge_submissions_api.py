@@ -140,3 +140,89 @@ def test_submission_entry_uses_structured_parser_compatibility(tmp_path) -> None
     finally:
         app.dependency_overrides.clear()
         engine.dispose()
+
+
+def test_markdown_submission_gets_structured_preview_without_publication(tmp_path) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'markdown-submissions.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    owner = create_test_user(factory, "markdown-submission-owner")
+    settings = Settings(_env_file=None, submission_dir=tmp_path / "isolated")
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    def override_service():
+        with factory() as session:
+            yield KnowledgeSubmissionService(session, settings, LocalDocumentParser())
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
+    app.dependency_overrides[get_submission_service] = override_service
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/v1/knowledge/submissions",
+                files={
+                    "file": (
+                        "随访.md",
+                        "# 随访记录\n\n| 项目 | 说明 |\n| --- | --- |\n| 血压 | 每日测量 |\n".encode(),
+                        "application/pdf",
+                    )
+                },
+                headers=auth_headers(owner.id),
+            )
+            assert created.status_code == 202
+            submission_id = created.json()["submission_id"]
+
+        with factory() as session:
+            saved = session.get(KnowledgeSubmission, submission_id)
+            assert saved is not None
+            assert saved.status == "pending_review"
+            assert "随访记录" in saved.preview_text
+            assert saved.parse_quality["counts"]["title"] == 1
+            assert saved.parse_quality["counts"]["table"] == 1
+            assert session.scalar(
+                select(func.count()).select_from(KnowledgeDocument)
+            ) == 0
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def test_spoofed_submission_extension_fails_after_content_validation(tmp_path) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'spoofed-submissions.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    owner = create_test_user(factory, "spoofed-submission-owner")
+    settings = Settings(_env_file=None, submission_dir=tmp_path / "isolated")
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    def override_service():
+        with factory() as session:
+            yield KnowledgeSubmissionService(session, settings, LocalDocumentParser())
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
+    app.dependency_overrides[get_submission_service] = override_service
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/knowledge/submissions",
+                files={"file": ("伪装.pdf", b"not a pdf", "application/pdf")},
+                headers=auth_headers(owner.id),
+            )
+            assert response.status_code == 422
+            assert response.json()["error"]["code"] == "DOCUMENT_PARSE_ERROR"
+        with factory() as session:
+            assert session.scalar(
+                select(func.count()).select_from(KnowledgeSubmission)
+            ) == 0
+        assert not list(settings.submission_dir.glob("*"))
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()

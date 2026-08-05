@@ -91,7 +91,11 @@ class AgentMessageConflictError(AppError):
 
 class UnsupportedFileTypeError(AppError):
     def __init__(self) -> None:
-        super().__init__("仅支持 PDF 和 TXT 文件", code="UNSUPPORTED_FILE_TYPE", status_code=400)
+        super().__init__(
+            "仅支持 PDF、TXT、DOCX、Markdown 和 HTML 文件",
+            code="UNSUPPORTED_FILE_TYPE",
+            status_code=400,
+        )
 
 
 class FileTooLargeError(AppError):

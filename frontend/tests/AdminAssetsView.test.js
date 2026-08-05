@@ -82,6 +82,9 @@ describe('统一知识资产页面', () => {
     await wrapper.find('.upload-body .primary-action').trigger('click')
     await flushPromises()
     expect(documentApi.createSystemDocument).toHaveBeenCalledWith(file)
+
+    expect(wrapper.get('.file-picker input').attributes('accept')).toContain('.docx')
+    expect(wrapper.get('.file-picker input').attributes('accept')).toContain('.html')
   })
 
   it('系统资料和用户审核资料都提供整份替换与永久删除', async () => {
@@ -99,6 +102,7 @@ describe('统一知识资产页面', () => {
     await userReplaceInput.trigger('change')
     await flushPromises()
     expect(documentApi.replaceAdminDocument).toHaveBeenCalledWith('user-1', replacement)
+    expect(userReplaceInput.attributes('accept')).toContain('.md')
 
     await wrapper.findAll('button[title="永久删除知识资产"]')[1].trigger('click')
     await wrapper.get('.confirm-dialog .dialog-button.danger').trigger('click')

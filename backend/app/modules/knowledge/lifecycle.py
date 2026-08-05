@@ -7,7 +7,6 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import UploadFile
-from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sqlalchemy import select
@@ -26,6 +25,12 @@ from app.core.exceptions import (
 )
 from app.infrastructure.vector_store import VectorStoreService
 from app.modules.audit.ports import AuditPort, AuditRecord
+from app.modules.knowledge.ingestion import (
+    FileTypePolicy,
+    ParseRequest,
+    ParsedDocument,
+    ParsedElement,
+)
 from app.modules.knowledge.models import (
     DocumentVersion,
     KnowledgeDocument,
@@ -35,8 +40,8 @@ from app.modules.knowledge.repository import (
     DocumentLockConflictError,
     DocumentRepository,
 )
+from app.modules.knowledge.parser import LocalDocumentParser
 
-ALLOWED_SUFFIXES = {".pdf", ".txt"}
 READ_BLOCK_SIZE = 1024 * 1024
 
 
@@ -62,6 +67,7 @@ class DocumentLifecycleService:
         self.settings = settings
         self.vector_store = vector_store
         self.repository = repository or DocumentRepository(session)
+        self.parser = LocalDocumentParser()
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap,
@@ -437,8 +443,7 @@ class DocumentLifecycleService:
     ) -> PreparedDocument:
         original_name = Path(upload_file.filename or "").name
         suffix = Path(original_name).suffix.lower()
-        if suffix not in ALLOWED_SUFFIXES:
-            raise UnsupportedFileTypeError()
+        FileTypePolicy.get(suffix)
 
         self.settings.upload_dir.mkdir(parents=True, exist_ok=True)
         document_id = str(uuid4())
@@ -448,9 +453,10 @@ class DocumentLifecycleService:
         vectors_added = False
         try:
             file_hash, file_size = await self._save_and_hash(upload_file, temporary_path)
+            file_type = FileTypePolicy.validate_path(temporary_path, suffix)
             if self.repository.get_by_hash(file_hash) is not None:
                 raise DuplicateDocumentError()
-            documents = self._load_documents(temporary_path, suffix)
+            documents = self._load_documents(temporary_path, file_type.suffix)
             chunks = self._split_documents(
                 documents, document_id, original_name, file_hash
             )
@@ -499,7 +505,8 @@ class DocumentLifecycleService:
         suffix = path.suffix.lower()
         if not path.is_file():
             raise DocumentStoreError()
-        documents = self._load_documents(path, suffix)
+        file_type = FileTypePolicy.validate_path(path, suffix)
+        documents = self._load_documents(path, file_type.suffix)
         chunks = self._split_documents(
             documents,
             record.id,
@@ -694,15 +701,43 @@ class DocumentLifecycleService:
 
     def _load_documents(self, path: Path, suffix: str) -> list[Document]:
         try:
-            if suffix == ".pdf":
-                documents = PyPDFLoader(str(path)).load()
-            else:
-                documents = [Document(page_content=path.read_text(encoding="utf-8"))]
+            parsed = self.parser.parse_document(
+                ParseRequest(path=path, suffix=suffix, file_name=path.name)
+            )
+            documents = self._parsed_to_documents(parsed)
         except Exception as exc:
+            if isinstance(exc, DocumentParseError):
+                raise
             raise DocumentParseError("无法解析文档，请确认文件内容和编码正确") from exc
         if not documents or not any(document.page_content.strip() for document in documents):
             raise DocumentParseError()
         return documents
+
+    @staticmethod
+    def _parsed_to_documents(parsed: ParsedDocument) -> list[Document]:
+        documents: list[Document] = []
+        for element in parsed.elements:
+            content = DocumentLifecycleService._element_text(element)
+            if not content.strip():
+                continue
+            metadata = {
+                "element_id": element.element_id,
+                "element_kind": element.kind,
+            }
+            if element.page_no is not None:
+                metadata["page"] = element.page_no
+            documents.append(Document(page_content=content, metadata=metadata))
+        return documents
+
+    @staticmethod
+    def _element_text(element: ParsedElement) -> str:
+        if element.kind == "title":
+            return f"# {element.text}"
+        if element.kind == "list":
+            return f"- {element.text}"
+        if element.kind == "table":
+            return element.text
+        return element.text
 
     def _split_documents(
         self,

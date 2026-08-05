@@ -31,7 +31,7 @@ def get_submission_service(
 
 @router.post("", response_model=SubmissionCreateResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_submission(
-    file: UploadFile = File(description="不超过10 MB的PDF或UTF-8 TXT文件"),
+    file: UploadFile = File(description="不超过10 MB的PDF、TXT、DOCX、Markdown或HTML文件"),
     current_user: UserResponse = Depends(get_current_user),
     service: KnowledgeSubmissionService = Depends(get_submission_service),
 ) -> SubmissionCreateResponse:

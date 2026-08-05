@@ -5,14 +5,29 @@
 
 ## 1. 当前真实状态
 
-Stage 24.1 解析契约已经完成本地开发与无模型验证，未部署、未调用真实模型或 Embedding。
-本次只在 `knowledge` 模块内新增结构化解析契约与 registry，并为现有
-`LocalDocumentParser` 增加兼容适配；PDF/TXT 上传、预览截断、质量警告、审核发布、
-切片和 Chroma 外部行为保持不变。未新增 DOCX、Markdown、HTML、网页、OCR 或视觉实现，
-未安装重型依赖，未改 API 响应、数据库或生产配置。
+Stage 24.2a 本地文件格式已经完成本地开发与无模型验证，未部署、未调用真实模型或
+Embedding。24.2a 只实现 DOCX、Markdown、HTML 本地文件支持并保留 PDF/TXT：在
+`knowledge` 模块内新增统一 `FileTypePolicy`，普通资料提交和管理员 lifecycle 共用同一套
+后缀与内容校验；PDF 校验魔数，DOCX 校验 ZIP/OOXML 必要条目并拒绝宏和外部关系，
+TXT/Markdown/HTML 拒绝 NUL 并要求 UTF-8，客户端 MIME 只作为辅助信号。
+
+24.2a 复用 24.1 的 `ParseRequest`、`ParsedDocument`、`ParsedElement`、`ParseQuality`、
+`DocumentParserPort` 和 `ParserRegistry`。新增轻量本地 parser adapter：DOCX 输出标题、
+段落、列表与表格，Markdown 保留标题/段落/列表/表格语义，HTML 删除 script/style/form/
+iframe/object/embed/noscript 等非正文或危险节点后输出标题、段落、列表与表格，不执行任何
+内容。发布 lifecycle 将 `ParsedDocument.elements` 转换为现有 LangChain `Document`/切片
+输入，并保留 document_id、file_name、source/hash、visibility、document_type 和
+knowledge_base_version 元数据；PDF/TXT 切片和引用行为保持回归通过。
+
+本次锁定轻量依赖并记录用途/许可：`python-docx==1.2.0`（MIT，用于 DOCX 结构读取）、
+`markdown-it-py==4.2.0`（MIT classifier，用于 Markdown token 化）、`beautifulsoup4==4.15.0`
+（MIT，用于 HTML 正文清洗）。未引入 Docling、MinerU、OCR、视觉、网页 URL 抓取、元数据
+模型、数据库迁移、API 响应变更或生产配置变更。
 
 24.1 借鉴边界：Docling 的统一转换出口思想、Unstructured 的统一 Element 模型、Haystack
 的 Converter/Splitter 组件分层；没有复制第三方源码，也没有把第三方对象传入业务服务。
+24.2a 继续借鉴 Unstructured file partition 与 Haystack converter/splitter 的组件边界；
+没有复制第三方源码，也没有让第三方对象泄漏到应用服务。
 
 Stage 24.0 稳定性收尾已经完成本地无模型复核，未修改业务代码，未实现 24.1 及之后的
 解析能力。复核范围只覆盖 RAG/Agent 跨页面流式继续、后台未读与重新打开已读、陈旧
@@ -58,33 +73,30 @@ Stage 22 的 22.1～22.8 已完成并发布，功能提交为 `5c02056`，随后
 ## 2. 本地验证结果
 
 ```text
-backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_document_parser_contract.py backend\tests\test_parser_experiments.py backend\tests\test_knowledge_submissions_api.py backend\tests\test_admin_reviews_api.py
-12 passed, 2 warnings
+backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_document_parser_contract.py backend\tests\test_knowledge_submissions_api.py backend\tests\test_admin_reviews_api.py backend\tests\test_admin_document_api.py backend\tests\test_document_service.py
+28 passed, 2 warnings
 
 backend\.venv\Scripts\python.exe -m pytest -q backend/tests
-481 passed, 113 warnings
+490 passed, 113 warnings
 
-backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_conversation_recovery.py backend\tests\test_conversations_api.py backend\tests\test_conversation_stream_chat.py backend\tests\test_agent_conversation_api.py
-23 passed, 2 warnings
+D:\Nodejs\npm.cmd --prefix frontend test -- KnowledgeView.test.js AdminAssetsView.test.js
+2 files / 5 tests passed
 
 D:\Nodejs\npm.cmd --prefix frontend test
-18 files / 72 tests passed
-
-D:\Nodejs\npm.cmd --prefix frontend test -- ChatView.test.js AgentView.test.js ConversationStreamRegistry.test.js ApiAuth.test.js
-4 files / 33 tests passed
+18 files / 73 tests passed
 
 D:\Nodejs\npm.cmd --prefix frontend run test:stream
 SSE parser test passed
 
 D:\Nodejs\npm.cmd --prefix frontend run build
 Vite production build passed
-assets: index-COHvwHZI.css / index-BliWlH2I.js
+assets: index-BLbkt_rf.css / index-DMAlE1if.js
 
-backend\.venv\Scripts\python.exe -m alembic -c backend\alembic.ini heads
-0026_stage22_runtime_contract (head)
+backend\.venv\Scripts\python.exe backend\scripts\import_documents.py --help
+passed; help lists supported PDF/TXT/DOCX/Markdown/HTML files
 
 git diff --check
-passed; only expected Windows line-ending notices
+passed
 
 Protected auth hash
 9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0
@@ -93,6 +105,8 @@ Protected auth hash
 Stage 24.0 未做生产数据写入或线上生成验证。当前仓库没有安全、明确的真实公网 IP/SSH
 目标可用于本任务的只读生产连接，因此生产健康、容器、迁移、静态资源和错误计数检查
 本轮跳过；禁止猜测连接信息。未调用 Qwen、Embedding、Reranker、OCR、视觉或 SMTP。
+Stage 24.2a 同样没有执行生产数据操作、生产健康检查、真实网页抓取或任何外网/内网边界
+验证；测试 fixture 均为本地生成的非医学资料。
 
 浏览器无模型/无持久化 stub 验收通过：桌面和 390px 移动端均完成 RAG/Agent 并发、独立
 停止、后台未读、重新打开清除未读、运行中删除禁用、四种 Agent 模式、固定输入器和溢出
@@ -152,20 +166,20 @@ Stage 23 已完成实现、无费用验证和生产发布：
 
 ## 6. 新任务阅读范围
 
-新开发窗口先完整阅读 `AGENTS.md` 和本文件。若执行 24.2，只读
-`docs/stage24-document-intelligence-and-stability-design.md` 的 1、2、3、4、9、10、11 节，
-再定向读取 `knowledge` 解析契约、上传白名单、MIME/签名校验、资料提交、审核预览、
-前端上传提示和相关测试。不要读取历史 RAG 评估 JSON，不调用真实模型，不读取真实密钥，
-不修改受保护 auth Service。
+新开发窗口先完整阅读 `AGENTS.md` 和本文件。若执行 24.2b，只读
+`docs/stage24-document-intelligence-and-stability-design.md` 的 1、2、4、9、10、11 节，
+再定向读取 `knowledge` 解析契约、FileTypePolicy、资料提交、审核发布生命周期、网页
+抓取/网络安全相关入口和相关测试。不要读取历史 RAG 评估 JSON，不调用真实模型，不读取
+真实密钥，不修改受保护 auth Service。
 
 ## 7. 唯一下一任务
 
-**执行 Stage 24.2 DOCX、Markdown、HTML 与网页快照导入。**
+**执行 Stage 24.2b 受控网页快照导入。**
 
-先实现本地 DOCX、Markdown、HTML 文件解析，再实现带 SSRF 防护的 URL 抓取与不可变
-网页快照。必须复用 24.1 的 normalized parser 契约和 ParserRegistry，更新上传白名单、
-MIME/签名校验、审核预览和前端接受格式提示。不得触发 Embedding，不发布真实资料；
-真实网页抓取、生产导入或任何外网/内网边界验证都必须先做无副作用预检并取得当次确认。
+在 24.2a 本地文件格式基础上，只实现带 SSRF 防护的 URL 抓取与不可变网页快照。必须复用
+24.1 normalized parser 契约、ParserRegistry 和 24.2a 的 HTML 清洗边界；不得重做本地
+DOCX/Markdown/HTML 文件链路。不得触发 Embedding，不发布真实资料；真实网页抓取、生产
+导入或任何外网/内网边界验证都必须先做无副作用预检并取得当次确认。
 
 工作区中的 `backend/app/modules/auth/service.py` 仍是受保护的用户改动，哈希应保持为
 `9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。禁止修改、

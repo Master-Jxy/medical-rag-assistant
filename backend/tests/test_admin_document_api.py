@@ -58,7 +58,13 @@ def test_admin_document_routes_reject_spoofing_and_complete_crud(tmp_path) -> No
 
             created = client.post(
                 "/api/v1/admin/documents",
-                files={"file": ("系统.txt", "系统内容".encode(), "text/plain")},
+                files={
+                    "file": (
+                        "系统.html",
+                        "<html><body><h1>系统标题</h1><p>系统内容</p></body></html>".encode(),
+                        "text/html",
+                    )
+                },
                 headers=auth_headers(admin.id),
             )
             assert created.status_code == 201
@@ -67,7 +73,7 @@ def test_admin_document_routes_reject_spoofing_and_complete_crud(tmp_path) -> No
 
             replaced = client.put(
                 f"/api/v1/admin/documents/{old_id}/replace",
-                files={"file": ("系统新版.txt", "新版系统内容".encode(), "text/plain")},
+                files={"file": ("系统新版.md", "# 新版系统内容".encode(), "text/markdown")},
                 headers=auth_headers(admin.id),
             )
             assert replaced.status_code == 200
