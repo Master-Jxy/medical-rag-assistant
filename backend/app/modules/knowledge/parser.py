@@ -8,6 +8,15 @@ from langchain_community.document_loaders import PyPDFLoader
 from pypdf import PdfReader
 
 from app.core.exceptions import DocumentParseError
+from app.modules.knowledge.ingestion import (
+    DocumentParserPort,
+    ParseQuality,
+    ParseRequest,
+    ParsedDocument,
+    ParsedElement,
+    ParserRegistration,
+    ParserRegistry,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,13 +26,30 @@ class ParsedPreview:
     warnings: tuple[str, ...] = ()
     quality: dict[str, object] | None = None
 
+    @classmethod
+    def from_document(cls, document: ParsedDocument) -> "ParsedPreview":
+        text = document.text
+        warnings = list(document.warnings)
+        if len(text) > 8000:
+            warnings.append("预览已截断")
+        return cls(
+            text=text[:8000],
+            page_count=document.page_count,
+            warnings=tuple(dict.fromkeys(warnings)),
+            quality=document.quality.to_legacy_dict(),
+        )
+
 
 class ParserPort(Protocol):
     def parse(self, path: Path, suffix: str) -> ParsedPreview: ...
 
 
-class LocalDocumentParser:
-    def parse(self, path: Path, suffix: str) -> ParsedPreview:
+class LocalStructuredDocumentParser:
+    name = "local_pdf_txt"
+
+    def parse(self, request: ParseRequest) -> ParsedDocument:
+        path = request.path
+        suffix = request.normalized_suffix
         try:
             pages = (
                 PyPDFLoader(str(path)).load()
@@ -52,8 +78,36 @@ class LocalDocumentParser:
             kind: sum(item["kind"] == kind for item in page_results)
             for kind in ("text", "table_like", "scanned_or_image")
         }
-        quality = {"status": "warning" if warnings else "pass", "counts": counts, "page_results": page_results}
-        return ParsedPreview(combined[:8000], len(pages), tuple(dict.fromkeys(warnings)), quality)
+        deduped_warnings = tuple(dict.fromkeys(warnings))
+        elements = tuple(
+            ParsedElement(
+                element_id=f"element-{index}",
+                kind="paragraph",
+                text=text,
+                page_no=index,
+                order=index,
+                metadata={"source": "local", "suffix": suffix},
+            )
+            for index, text in enumerate(cleaned, start=1)
+        )
+        return ParsedDocument(
+            document_metadata={
+                "file_name": request.file_name or path.name,
+                "suffix": suffix,
+                "page_count": len(pages),
+                "parser": self.name,
+            },
+            elements=elements,
+            assets=(),
+            warnings=deduped_warnings,
+            quality=ParseQuality(
+                status="warning" if deduped_warnings else "pass",
+                counts=counts,
+                page_results=tuple(page_results),
+                warnings=deduped_warnings,
+                parser_name=self.name,
+            ),
+        )
 
     @staticmethod
     def _inspect_pdf_pages(
@@ -100,3 +154,30 @@ class LocalDocumentParser:
                 "PDF逐页质量检查失败，不能安全进入审核"
             ) from exc
         return results, warnings
+
+
+def build_default_parser_registry() -> ParserRegistry:
+    return ParserRegistry(
+        [
+            ParserRegistration(
+                name=LocalStructuredDocumentParser.name,
+                parser=LocalStructuredDocumentParser(),
+                suffixes=(".pdf", ".txt"),
+                mime_types=("application/pdf", "text/plain"),
+            )
+        ]
+    )
+
+
+class LocalDocumentParser:
+    def __init__(self, registry: ParserRegistry | None = None) -> None:
+        self.registry = registry or build_default_parser_registry()
+
+    def parse_document(self, request: ParseRequest) -> ParsedDocument:
+        return self.registry.parse(request)
+
+    def parse(self, path: Path, suffix: str) -> ParsedPreview:
+        document = self.parse_document(
+            ParseRequest(path=path, suffix=suffix, file_name=path.name)
+        )
+        return ParsedPreview.from_document(document)

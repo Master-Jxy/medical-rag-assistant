@@ -10,7 +10,7 @@ from app.db.session import build_engine, get_db_session
 from app.main import app
 from app.modules.auth.tokens import get_token_service
 from app.modules.knowledge.models import KnowledgeDocument, KnowledgeSubmission
-from app.modules.knowledge.parser import ParsedPreview
+from app.modules.knowledge.parser import LocalDocumentParser, ParsedPreview
 from app.modules.knowledge.submission_service import KnowledgeSubmissionService
 from app.api.knowledge_submissions import get_submission_service
 from tests.auth_helpers import TEST_TOKEN_SERVICE, auth_headers, create_test_user
@@ -79,6 +79,64 @@ def test_submit_parse_list_and_withdraw_are_isolated_without_publication(tmp_pat
                 select(func.count()).select_from(KnowledgeDocument)
             ) == 0
         assert not list(settings.submission_dir.glob("*"))
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def test_submission_entry_uses_structured_parser_compatibility(tmp_path) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'structured-submissions.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    owner = create_test_user(factory, "structured-submission-owner")
+    settings = Settings(_env_file=None, submission_dir=tmp_path / "isolated")
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    def override_service():
+        with factory() as session:
+            yield KnowledgeSubmissionService(session, settings, LocalDocumentParser())
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
+    app.dependency_overrides[get_submission_service] = override_service
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/v1/knowledge/submissions",
+                files={"file": ("结构化.txt", "医学资料".encode(), "text/plain")},
+                headers=auth_headers(owner.id),
+            )
+            assert created.status_code == 202
+            submission_id = created.json()["submission_id"]
+
+        with factory() as session:
+            saved = session.get(KnowledgeSubmission, submission_id)
+            assert saved is not None
+            assert saved.preview_text == "医学资料"
+            assert saved.preview_pages == 1
+            assert saved.parse_warnings == []
+            assert saved.parse_quality == {
+                "status": "pass",
+                "counts": {
+                    "text": 1,
+                    "table_like": 0,
+                    "scanned_or_image": 0,
+                },
+                "page_results": [
+                    {
+                        "page": 1,
+                        "kind": "text",
+                        "text_chars": 4,
+                        "image_count": 0,
+                    }
+                ],
+            }
+            assert session.scalar(
+                select(func.count()).select_from(KnowledgeDocument)
+            ) == 0
     finally:
         app.dependency_overrides.clear()
         engine.dispose()

@@ -1908,6 +1908,14 @@ KnowledgeSubmissionService
 图片只保存受控 storage reference 与哈希。切片器消费统一元素，引用沿用 document/page/
 chunk 来源，不因解析器变化破坏 RAG/Agent 契约。
 
+24.1 已在 `app/modules/knowledge/ingestion/` 落地 `ParseRequest`、
+`ParsedDocument`、`ParsedElement`、`ParsedAsset`、`ParseQuality`、
+`DocumentParserPort` 和 `ParserRegistry`。现有 `LocalDocumentParser` 通过兼容适配器
+继续返回 `ParsedPreview`，PDF/TXT 提交预览、质量警告、审核发布、切片和 Chroma 外部
+行为不变；registry 只按显式 suffix/MIME 能力选择解析器，无匹配格式返回稳定解析失败。
+本实现借鉴 Unstructured 的统一 Element 模型和 Haystack 的 Converter/Splitter 组件边界，
+也参考 Docling 的统一转换出口思想；没有复制第三方源码，没有安装或启用重型解析依赖。
+
 AI 元数据输出是 suggestion，不是正式文档元数据。只有管理员接受或编辑后，知识应用
 服务才更新 `document_versions` 并写审计。精确文件哈希继续硬拒绝；标准化正文哈希与
 近重复只提示合并/建新版本，不自动删除。OCR、视觉、真实 Embedding 和生产导入均通过

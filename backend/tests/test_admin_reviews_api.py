@@ -129,6 +129,10 @@ def test_admin_can_reject_or_publish_and_normal_user_cannot_review(tmp_path) -> 
             published = session.get(KnowledgeSubmission, approved_id)
             assert published.document_id is not None
             assert session.get(KnowledgeDocument, published.document_id) is not None
+            chunk_text = " ".join(
+                item["document"] for item in vectors.entries.values()
+            )
+            assert "审核资料b" in chunk_text
             job = session.scalar(
                 select(ProcessingJob).where(ProcessingJob.object_id == approved_id)
             )

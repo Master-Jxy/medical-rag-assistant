@@ -5,6 +5,15 @@
 
 ## 1. 当前真实状态
 
+Stage 24.1 解析契约已经完成本地开发与无模型验证，未部署、未调用真实模型或 Embedding。
+本次只在 `knowledge` 模块内新增结构化解析契约与 registry，并为现有
+`LocalDocumentParser` 增加兼容适配；PDF/TXT 上传、预览截断、质量警告、审核发布、
+切片和 Chroma 外部行为保持不变。未新增 DOCX、Markdown、HTML、网页、OCR 或视觉实现，
+未安装重型依赖，未改 API 响应、数据库或生产配置。
+
+24.1 借鉴边界：Docling 的统一转换出口思想、Unstructured 的统一 Element 模型、Haystack
+的 Converter/Splitter 组件分层；没有复制第三方源码，也没有把第三方对象传入业务服务。
+
 Stage 24.0 稳定性收尾已经完成本地无模型复核，未修改业务代码，未实现 24.1 及之后的
 解析能力。复核范围只覆盖 RAG/Agent 跨页面流式继续、后台未读与重新打开已读、陈旧
 pending 恢复、明确停止、退出/401 清理、构建输出和测试控制台错误。现有覆盖充分，
@@ -49,8 +58,11 @@ Stage 22 的 22.1～22.8 已完成并发布，功能提交为 `5c02056`，随后
 ## 2. 本地验证结果
 
 ```text
+backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_document_parser_contract.py backend\tests\test_parser_experiments.py backend\tests\test_knowledge_submissions_api.py backend\tests\test_admin_reviews_api.py
+12 passed, 2 warnings
+
 backend\.venv\Scripts\python.exe -m pytest -q backend/tests
-477 passed, 113 warnings
+481 passed, 113 warnings
 
 backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_conversation_recovery.py backend\tests\test_conversations_api.py backend\tests\test_conversation_stream_chat.py backend\tests\test_agent_conversation_api.py
 23 passed, 2 warnings
@@ -140,19 +152,20 @@ Stage 23 已完成实现、无费用验证和生产发布：
 
 ## 6. 新任务阅读范围
 
-新开发窗口先完整阅读 `AGENTS.md` 和本文件。若执行 24.1，只读
+新开发窗口先完整阅读 `AGENTS.md` 和本文件。若执行 24.2，只读
 `docs/stage24-document-intelligence-and-stability-design.md` 的 1、2、3、4、9、10、11 节，
-再定向读取解析、资料提交、审核发布相关源码和测试。不要读取历史 RAG 评估 JSON，
-不调用真实模型，不读取真实密钥，不修改受保护 auth Service。
+再定向读取 `knowledge` 解析契约、上传白名单、MIME/签名校验、资料提交、审核预览、
+前端上传提示和相关测试。不要读取历史 RAG 评估 JSON，不调用真实模型，不读取真实密钥，
+不修改受保护 auth Service。
 
 ## 7. 唯一下一任务
 
-**执行 Stage 24.1 解析契约，只建立统一解析结果与兼容适配，不新增 DOCX/网页/OCR/视觉实现。**
+**执行 Stage 24.2 DOCX、Markdown、HTML 与网页快照导入。**
 
-先在 `knowledge` 解析边界新增 normalized document/element/asset/quality 契约和
-ParserRegistry，再为现有 LocalDocumentParser 增加兼容适配器，保持 PDF/TXT 上传、审核、
-发布和 Chroma 写入的外部行为不变。只跑解析与资料提交相关测试，加一项审核入口回归；
-禁止真实 Qwen、Embedding、Reranker、OCR、视觉或 SMTP，禁止改动生产配置或部署。
+先实现本地 DOCX、Markdown、HTML 文件解析，再实现带 SSRF 防护的 URL 抓取与不可变
+网页快照。必须复用 24.1 的 normalized parser 契约和 ParserRegistry，更新上传白名单、
+MIME/签名校验、审核预览和前端接受格式提示。不得触发 Embedding，不发布真实资料；
+真实网页抓取、生产导入或任何外网/内网边界验证都必须先做无副作用预检并取得当次确认。
 
 工作区中的 `backend/app/modules/auth/service.py` 仍是受保护的用户改动，哈希应保持为
 `9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。禁止修改、
