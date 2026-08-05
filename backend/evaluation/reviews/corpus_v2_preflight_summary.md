@@ -1,0 +1,51 @@
+# corpus_v2 no-cost preflight
+
+- corpus: `corpus_v2`
+- checksum: `57e41c70e0e5eb656877db516b22cce194037c0f637b1d61bdf8f79f5d4602b0`
+- documents: 10
+- blocked cases: 8
+- coverage gaps: 4
+- estimated pages: 53-217
+- estimated chunks: 53-328
+- real provider calls now: {'embedding_calls': 0, 'llm_calls': 0, 'rerank_calls': 0, 'ocr_calls': 0, 'vision_calls': 0}
+- provider calls after future approval: {'embedding_calls': 328, 'llm_calls': 1, 'rerank_calls': 9, 'ocr_calls': 1, 'vision_calls': 1}
+- no-cost gate: True
+
+## Warnings
+- cv2_cardiology_guideline_pdf: content hash pending review
+- cv2_cardiology_guideline_pdf: license unknown
+- cv2_cardiology_guideline_pdf: source URL pending review
+- cv2_diabetes_docx: content hash pending review
+- cv2_diabetes_docx: license unknown
+- cv2_diabetes_docx: source URL pending review
+- cv2_duplicate_candidate_docx: content hash pending review
+- cv2_duplicate_candidate_docx: license unknown
+- cv2_duplicate_candidate_docx: source URL pending review
+- cv2_duplicate_candidate_md: content hash pending review
+- cv2_duplicate_candidate_md: license unknown
+- cv2_duplicate_candidate_md: source URL pending review
+- cv2_expired_version_pdf: content hash pending review
+- cv2_expired_version_pdf: source URL pending review
+- cv2_lab_table_markdown: content hash pending review
+- cv2_lab_table_markdown: license unknown
+- cv2_lab_table_markdown: source URL pending review
+- cv2_medication_table_html: content hash pending review
+- cv2_medication_table_html: license unknown
+- cv2_medication_table_html: source URL pending review
+- cv2_public_web_snapshot: content hash pending review
+- cv2_public_web_snapshot: license unknown
+- cv2_public_web_snapshot: source URL pending review
+- cv2_report_image_png: content hash pending review
+- cv2_report_image_png: license unknown
+- cv2_report_image_png: source URL pending review
+- cv2_scan_pdf_ocr: content hash pending review
+- cv2_scan_pdf_ocr: license unknown
+- cv2_scan_pdf_ocr: source URL pending review
+- eval2_001: blocked (source fixture not reviewed)
+- eval2_002: blocked (multi-source fixtures pending review)
+- eval2_003: blocked (table fixture pending review)
+- eval2_004: blocked (OCR provider calls are prohibited in Stage 24.7)
+- eval2_005: blocked (Vision/OCR provider calls are prohibited in Stage 24.7)
+- eval2_007: blocked (versioned sources pending human review)
+- eval2_008: blocked (web snapshot fixture not fetched or reviewed)
+- eval2_009: blocked (duplicate fixtures pending content review)

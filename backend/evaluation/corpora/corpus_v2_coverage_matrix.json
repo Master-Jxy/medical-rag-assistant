@@ -1,0 +1,140 @@
+{
+  "schema_version": "corpus_v2_coverage_matrix_v1",
+  "corpus_version": "corpus_v2",
+  "corpus_checksum": "57e41c70e0e5eb656877db516b22cce194037c0f637b1d61bdf8f79f5d4602b0",
+  "items": [
+    {
+      "id": "basic_fact",
+      "minimum": 2,
+      "current_count": 10,
+      "gap": 0,
+      "evidence_document_ids": [
+        "cv2_cardiology_guideline_pdf",
+        "cv2_diabetes_docx",
+        "cv2_duplicate_candidate_docx",
+        "cv2_duplicate_candidate_md",
+        "cv2_expired_version_pdf",
+        "cv2_lab_table_markdown",
+        "cv2_medication_table_html",
+        "cv2_public_web_snapshot",
+        "cv2_report_image_png",
+        "cv2_scan_pdf_ocr"
+      ],
+      "blocked_case_ids": [
+        "eval2_001",
+        "eval2_008"
+      ]
+    },
+    {
+      "id": "multi_source",
+      "minimum": 2,
+      "current_count": 2,
+      "gap": 0,
+      "evidence_document_ids": [],
+      "blocked_case_ids": [
+        "eval2_002",
+        "eval2_009"
+      ]
+    },
+    {
+      "id": "table",
+      "minimum": 2,
+      "current_count": 2,
+      "gap": 0,
+      "evidence_document_ids": [
+        "cv2_lab_table_markdown",
+        "cv2_medication_table_html"
+      ],
+      "blocked_case_ids": [
+        "eval2_003"
+      ]
+    },
+    {
+      "id": "scan_ocr",
+      "minimum": 2,
+      "current_count": 1,
+      "gap": 1,
+      "evidence_document_ids": [
+        "cv2_scan_pdf_ocr"
+      ],
+      "blocked_case_ids": [
+        "eval2_004"
+      ]
+    },
+    {
+      "id": "image_vision",
+      "minimum": 2,
+      "current_count": 1,
+      "gap": 1,
+      "evidence_document_ids": [
+        "cv2_report_image_png"
+      ],
+      "blocked_case_ids": [
+        "eval2_005"
+      ]
+    },
+    {
+      "id": "refusal",
+      "minimum": 2,
+      "current_count": 1,
+      "gap": 1,
+      "evidence_document_ids": [],
+      "blocked_case_ids": []
+    },
+    {
+      "id": "version_conflict",
+      "minimum": 2,
+      "current_count": 1,
+      "gap": 1,
+      "evidence_document_ids": [],
+      "blocked_case_ids": [
+        "eval2_007"
+      ]
+    },
+    {
+      "id": "duplicate",
+      "minimum": 1,
+      "current_count": 1,
+      "gap": 0,
+      "evidence_document_ids": [],
+      "blocked_case_ids": [
+        "eval2_009"
+      ]
+    },
+    {
+      "id": "multi_format",
+      "minimum": 4,
+      "current_count": 10,
+      "gap": 0,
+      "evidence_document_ids": [
+        "cv2_cardiology_guideline_pdf",
+        "cv2_diabetes_docx",
+        "cv2_duplicate_candidate_docx",
+        "cv2_duplicate_candidate_md",
+        "cv2_expired_version_pdf",
+        "cv2_lab_table_markdown",
+        "cv2_medication_table_html",
+        "cv2_public_web_snapshot",
+        "cv2_report_image_png",
+        "cv2_scan_pdf_ocr"
+      ],
+      "blocked_case_ids": []
+    },
+    {
+      "id": "web_snapshot",
+      "minimum": 1,
+      "current_count": 1,
+      "gap": 0,
+      "evidence_document_ids": [
+        "cv2_public_web_snapshot"
+      ],
+      "blocked_case_ids": []
+    }
+  ],
+  "gaps": [
+    "scan_ocr",
+    "image_vision",
+    "refusal",
+    "version_conflict"
+  ]
+}

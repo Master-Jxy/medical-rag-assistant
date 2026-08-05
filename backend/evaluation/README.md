@@ -30,6 +30,13 @@
 - `plans/rag_v1_2_preflight_v1.json`：当前版本化运行计划；绑定公开价格、冻结产物和执行硬上限，真实执行仍要求再次确认。
 - `reviews/human_review_capture_v1_decisions.json`：40题人工行为与关键事实决策，不含回答正文。
 - `reviews/human_review_capture_v1_summary.md`：自动评分和人工语义复核差异及已知局限。
+- `corpora/corpus_v2_manifest.json`：Stage 24.7 的待审 `corpus_v2` manifest；只保存 fixture placeholder、来源/许可待审状态、治理字段和解析预期，不读取或复制生产资料正文。
+- `corpora/corpus_v2_coverage_matrix.json`：基础事实、多来源、表格、扫描/OCR、图片/视觉、拒答、版本冲突、重复、多格式和网页快照覆盖矩阵。
+- `corpora/corpus_v2_cleaning_dedup_report.json`：metadata-only 清洗/重复报告，exact bytes、normalized text、near hint 分开记录，`auto_deleted=false`。
+- `corpora/corpus_v2_intake_template.md`：后续人工导入清单模板；未审来源一律保持 `unknown/pending_review`。
+- `datasets/eval_v2.json`：与 `corpus_v2` checksum 绑定的评估集；缺少 fixture 或需要 OCR/Vision 的题保持 `blocked`，不伪造 golden answer。
+- `schemas/corpus_v2_manifest.schema.json`、`schemas/evaluation_set_v2.schema.json`、`schemas/corpus_v2_preflight_summary.schema.json`：v2 manifest、评估集和无费用预检摘要的版本化契约。
+- `plans/corpus_v2_no_cost_preflight_v1.json` 与 `reviews/corpus_v2_preflight_summary.md`：零真实供应商调用的预检摘要；当前 Embedding、LLM、Rerank、OCR、Vision 调用数均为 0。
 
 评估题的 `expected_source_document_ids` 必须引用 `corpus_v1` 中存在的文档 ID；`expected_key_facts` 只写用于评分的简短事实，不复制整篇文档。评估运行结果以后保存到独立报告，不写入 MySQL 用户会话。
 
@@ -45,6 +52,7 @@
 .venv\Scripts\python.exe -m scripts.run_rag_v1_2_comparison
 .venv\Scripts\python.exe -m scripts.run_mock_retrieval_ranking
 .venv\Scripts\python.exe -m scripts.run_real_retrieval_ranking
+.venv\Scripts\python.exe -m scripts.preflight_corpus_v2 --check
 ```
 
 静态校验会检查 `corpus_checksum`、总数、分类配额、题号和问题去重、来源存在性、单/多文档来源数量、连续追问历史、拒答无来源，以及回答题的来源和关键事实。语料内容变化但版本名不变时也会拒绝运行。

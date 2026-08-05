@@ -1,0 +1,170 @@
+{
+  "$defs": {
+    "EvaluationCaseV2": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "pattern": "^eval2_[0-9]{3}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "basic_fact",
+            "multi_source",
+            "table",
+            "scan_ocr",
+            "image_vision",
+            "refusal",
+            "version_conflict"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "question": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "expected_behavior": {
+          "enum": [
+            "answer",
+            "refuse",
+            "blocked"
+          ],
+          "title": "Expected Behavior",
+          "type": "string"
+        },
+        "expected_source_document_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Expected Source Document Ids",
+          "type": "array"
+        },
+        "expected_evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceReference"
+          },
+          "title": "Expected Evidence",
+          "type": "array"
+        },
+        "scoring_rules": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Scoring Rules",
+          "type": "array"
+        },
+        "requires_external_provider": {
+          "default": false,
+          "title": "Requires External Provider",
+          "type": "boolean"
+        },
+        "blocked_reason": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Blocked Reason"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "case_id",
+        "category",
+        "question",
+        "expected_behavior",
+        "expected_source_document_ids",
+        "expected_evidence",
+        "scoring_rules"
+      ],
+      "title": "EvaluationCaseV2",
+      "type": "object"
+    },
+    "EvidenceReference": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "pattern": "^cv2_[a-z0-9_]+$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "evidence_key": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Evidence Key",
+          "type": "string"
+        },
+        "note": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "evidence_key",
+        "note"
+      ],
+      "title": "EvidenceReference",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "evaluation_set_v2",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "dataset_version": {
+      "const": "eval_v2",
+      "title": "Dataset Version",
+      "type": "string"
+    },
+    "corpus_version": {
+      "const": "corpus_v2",
+      "title": "Corpus Version",
+      "type": "string"
+    },
+    "corpus_checksum": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Corpus Checksum",
+      "type": "string"
+    },
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/EvaluationCaseV2"
+      },
+      "maxItems": 80,
+      "minItems": 1,
+      "title": "Cases",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "dataset_version",
+    "corpus_version",
+    "corpus_checksum",
+    "cases"
+  ],
+  "title": "EvaluationSetV2",
+  "type": "object"
+}

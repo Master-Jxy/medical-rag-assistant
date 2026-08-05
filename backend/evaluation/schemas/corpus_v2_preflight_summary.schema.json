@@ -1,0 +1,142 @@
+{
+  "$defs": {
+    "ProviderCallBudget": {
+      "additionalProperties": false,
+      "properties": {
+        "embedding_calls": {
+          "default": 0,
+          "title": "Embedding Calls",
+          "type": "integer"
+        },
+        "llm_calls": {
+          "default": 0,
+          "title": "Llm Calls",
+          "type": "integer"
+        },
+        "rerank_calls": {
+          "default": 0,
+          "title": "Rerank Calls",
+          "type": "integer"
+        },
+        "ocr_calls": {
+          "default": 0,
+          "title": "Ocr Calls",
+          "type": "integer"
+        },
+        "vision_calls": {
+          "default": 0,
+          "title": "Vision Calls",
+          "type": "integer"
+        }
+      },
+      "title": "ProviderCallBudget",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "corpus_v2_no_cost_preflight_v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "corpus_version": {
+      "const": "corpus_v2",
+      "title": "Corpus Version",
+      "type": "string"
+    },
+    "corpus_checksum": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Corpus Checksum",
+      "type": "string"
+    },
+    "dataset_version": {
+      "const": "eval_v2",
+      "title": "Dataset Version",
+      "type": "string"
+    },
+    "document_count": {
+      "minimum": 0,
+      "title": "Document Count",
+      "type": "integer"
+    },
+    "blocked_case_count": {
+      "minimum": 0,
+      "title": "Blocked Case Count",
+      "type": "integer"
+    },
+    "coverage_gap_count": {
+      "minimum": 0,
+      "title": "Coverage Gap Count",
+      "type": "integer"
+    },
+    "estimated_pages_min": {
+      "minimum": 0,
+      "title": "Estimated Pages Min",
+      "type": "integer"
+    },
+    "estimated_pages_max": {
+      "minimum": 0,
+      "title": "Estimated Pages Max",
+      "type": "integer"
+    },
+    "estimated_chunks_min": {
+      "minimum": 0,
+      "title": "Estimated Chunks Min",
+      "type": "integer"
+    },
+    "estimated_chunks_max": {
+      "minimum": 0,
+      "title": "Estimated Chunks Max",
+      "type": "integer"
+    },
+    "estimated_embedding_token_upper_bound": {
+      "minimum": 0,
+      "title": "Estimated Embedding Token Upper Bound",
+      "type": "integer"
+    },
+    "estimated_embedding_cost_cny_upper_bound": {
+      "minimum": 0,
+      "title": "Estimated Embedding Cost Cny Upper Bound",
+      "type": "number"
+    },
+    "provider_calls": {
+      "$ref": "#/$defs/ProviderCallBudget"
+    },
+    "would_require_provider_calls_after_approval": {
+      "$ref": "#/$defs/ProviderCallBudget"
+    },
+    "validation_warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Validation Warnings",
+      "type": "array"
+    },
+    "no_cost_gate_passed": {
+      "title": "No Cost Gate Passed",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "corpus_version",
+    "corpus_checksum",
+    "dataset_version",
+    "document_count",
+    "blocked_case_count",
+    "coverage_gap_count",
+    "estimated_pages_min",
+    "estimated_pages_max",
+    "estimated_chunks_min",
+    "estimated_chunks_max",
+    "estimated_embedding_token_upper_bound",
+    "estimated_embedding_cost_cny_upper_bound",
+    "provider_calls",
+    "would_require_provider_calls_after_approval",
+    "validation_warnings",
+    "no_cost_gate_passed"
+  ],
+  "title": "CorpusV2PreflightSummary",
+  "type": "object"
+}

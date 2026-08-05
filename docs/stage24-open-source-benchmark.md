@@ -124,3 +124,31 @@ this stage and would require a separate cost, privacy, and deployment gate.
 No new dependency was added for Stage 24.6. Exact duplicate, normalized hash,
 and near-duplicate SimHash are implemented with the Python standard library and
 project-owned code.
+
+## 8. Stage 24.7 adopted references
+
+- RAGFlow (Apache-2.0): referenced dataset/document processing status and
+  parser task observability ideas from `api/apps/services/document_api_service.py`
+  and `rag/svr/task_executor.py`. Stage 24.7 keeps only offline manifest,
+  coverage, and preflight status records; it does not copy task code or import
+  data into production.
+- Dify (modified Apache-2.0 with additional terms): referenced the separation
+  between dataset assets, processing rules, and human governance. No Dify UI,
+  restricted service implementation, or source code was copied.
+- Unstructured (Apache-2.0): referenced file partition coverage thinking and
+  the value of tracking tables, scanned pages, and images as separate fixture
+  properties. This project stores only its own manifest metadata and does not
+  install or copy Unstructured.
+- Docling (MIT): referenced Document/provenance/table concepts as categories
+  that future fixtures should cover. Stage 24.7 does not run Docling and does
+  not include Docling objects in assets.
+- Haystack (Apache-2.0): referenced the converter/evaluation component
+  boundary: corpora and evaluation sets are versioned assets, while converters,
+  splitters, and retrievers are evaluated separately. No Haystack code or
+  dependency was added.
+
+No new dependency was added for Stage 24.7. The corpus contracts, coverage
+matrix, cleaning/dedup report, and no-cost preflight are implemented with
+Pydantic, Python standard library hashing/JSON handling, and project-owned
+code. The checked-in `corpus_v2` entries are fixture placeholders pending
+human source/license review; they are not copied third-party medical documents.

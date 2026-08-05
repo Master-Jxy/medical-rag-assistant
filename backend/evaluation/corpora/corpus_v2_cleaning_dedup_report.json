@@ -1,0 +1,31 @@
+{
+  "schema_version": "corpus_v2_cleaning_dedup_report_v1",
+  "corpus_version": "corpus_v2",
+  "corpus_checksum": "57e41c70e0e5eb656877db516b22cce194037c0f637b1d61bdf8f79f5d4602b0",
+  "generated_from": "manifest_metadata_only",
+  "algorithms": {
+    "exact": "bytes_sha256",
+    "normalized": "normalized_text_sha256_v1",
+    "near": "simhash64_v1",
+    "near_threshold": 8
+  },
+  "exact_duplicate_groups": [],
+  "normalized_duplicate_groups": [],
+  "near_duplicate_hints": [],
+  "skipped_unknown_content_ids": [
+    "cv2_cardiology_guideline_pdf",
+    "cv2_diabetes_docx",
+    "cv2_duplicate_candidate_docx",
+    "cv2_duplicate_candidate_md",
+    "cv2_expired_version_pdf",
+    "cv2_lab_table_markdown",
+    "cv2_medication_table_html",
+    "cv2_public_web_snapshot",
+    "cv2_report_image_png",
+    "cv2_scan_pdf_ocr"
+  ],
+  "warnings": [
+    "content unavailable: exact/normalized signals remain pending"
+  ],
+  "auto_deleted": false
+}

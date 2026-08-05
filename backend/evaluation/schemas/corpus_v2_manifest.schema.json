@@ -1,0 +1,364 @@
+{
+  "$defs": {
+    "CorpusV2Document": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^cv2_[a-z0-9_]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "file_name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "File Name",
+          "type": "string"
+        },
+        "relative_path": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "source_url": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Source Url",
+          "type": "string"
+        },
+        "source_organization": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Source Organization",
+          "type": "string"
+        },
+        "license": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "License",
+          "type": "string"
+        },
+        "usage_boundary": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Usage Boundary",
+          "type": "string"
+        },
+        "publication_date": {
+          "pattern": "^(\\d{4}-\\d{2}-\\d{2}|unknown)$",
+          "title": "Publication Date",
+          "type": "string"
+        },
+        "fetched_at": {
+          "pattern": "^(\\d{4}-\\d{2}-\\d{2}|pending_review)$",
+          "title": "Fetched At",
+          "type": "string"
+        },
+        "department": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Department",
+          "type": "string"
+        },
+        "disease_topics": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Disease Topics",
+          "type": "array"
+        },
+        "document_type": {
+          "enum": [
+            "pdf",
+            "docx",
+            "markdown",
+            "html",
+            "web_snapshot",
+            "image",
+            "txt"
+          ],
+          "title": "Document Type",
+          "type": "string"
+        },
+        "language": {
+          "enum": [
+            "zh-CN",
+            "en",
+            "unknown"
+          ],
+          "title": "Language",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^([0-9a-f]{64}|unknown)$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "normalized_text_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalized Text Sha256"
+        },
+        "near_duplicate_fingerprint": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{16}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Near Duplicate Fingerprint"
+        },
+        "parser_expected": {
+          "$ref": "#/$defs/ParserExpectation"
+        },
+        "has_table": {
+          "default": false,
+          "title": "Has Table",
+          "type": "boolean"
+        },
+        "has_scanned_pages": {
+          "default": false,
+          "title": "Has Scanned Pages",
+          "type": "boolean"
+        },
+        "has_images": {
+          "default": false,
+          "title": "Has Images",
+          "type": "boolean"
+        },
+        "governance": {
+          "$ref": "#/$defs/CorpusV2Governance"
+        },
+        "ingestion_status": {
+          "enum": [
+            "fixture_placeholder",
+            "pending_review",
+            "ready"
+          ],
+          "title": "Ingestion Status",
+          "type": "string"
+        },
+        "estimated_pages_min": {
+          "minimum": 0,
+          "title": "Estimated Pages Min",
+          "type": "integer"
+        },
+        "estimated_pages_max": {
+          "minimum": 0,
+          "title": "Estimated Pages Max",
+          "type": "integer"
+        },
+        "estimated_chunks_min": {
+          "minimum": 0,
+          "title": "Estimated Chunks Min",
+          "type": "integer"
+        },
+        "estimated_chunks_max": {
+          "minimum": 0,
+          "title": "Estimated Chunks Max",
+          "type": "integer"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "id",
+        "file_name",
+        "relative_path",
+        "source_url",
+        "source_organization",
+        "license",
+        "usage_boundary",
+        "publication_date",
+        "fetched_at",
+        "department",
+        "disease_topics",
+        "document_type",
+        "language",
+        "content_sha256",
+        "parser_expected",
+        "governance",
+        "ingestion_status",
+        "estimated_pages_min",
+        "estimated_pages_max",
+        "estimated_chunks_min",
+        "estimated_chunks_max"
+      ],
+      "title": "CorpusV2Document",
+      "type": "object"
+    },
+    "CorpusV2Governance": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "current",
+            "due",
+            "expired",
+            "pending_review"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "review_due_at": {
+          "anyOf": [
+            {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Review Due At"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "CorpusV2Governance",
+      "type": "object"
+    },
+    "ParserExpectation": {
+      "additionalProperties": false,
+      "properties": {
+        "parser_name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Parser Name",
+          "type": "string"
+        },
+        "parser_version": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Parser Version",
+          "type": "string"
+        },
+        "requires_ocr": {
+          "default": false,
+          "title": "Requires Ocr",
+          "type": "boolean"
+        },
+        "requires_vision": {
+          "default": false,
+          "title": "Requires Vision",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "parser_name",
+        "parser_version"
+      ],
+      "title": "ParserExpectation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "corpus_manifest_v2",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "corpus_version": {
+      "const": "corpus_v2",
+      "title": "Corpus Version",
+      "type": "string"
+    },
+    "generated_on": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "title": "Generated On",
+      "type": "string"
+    },
+    "checksum_algorithm": {
+      "const": "sha256",
+      "title": "Checksum Algorithm",
+      "type": "string"
+    },
+    "corpus_checksum": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Corpus Checksum",
+      "type": "string"
+    },
+    "prior_corpus_version": {
+      "const": "corpus_v1",
+      "title": "Prior Corpus Version",
+      "type": "string"
+    },
+    "overwrite_policy": {
+      "const": "never_overwrite_corpus_v1",
+      "title": "Overwrite Policy",
+      "type": "string"
+    },
+    "document_count": {
+      "minimum": 0,
+      "title": "Document Count",
+      "type": "integer"
+    },
+    "documents": {
+      "items": {
+        "$ref": "#/$defs/CorpusV2Document"
+      },
+      "title": "Documents",
+      "type": "array"
+    },
+    "intake_policy": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Intake Policy",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "corpus_version",
+    "generated_on",
+    "checksum_algorithm",
+    "corpus_checksum",
+    "prior_corpus_version",
+    "overwrite_policy",
+    "document_count",
+    "documents",
+    "intake_policy"
+  ],
+  "title": "CorpusV2Manifest",
+  "type": "object"
+}

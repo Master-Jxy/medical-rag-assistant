@@ -1,0 +1,415 @@
+{
+  "schema_version": "corpus_manifest_v2",
+  "corpus_version": "corpus_v2",
+  "generated_on": "2026-08-06",
+  "checksum_algorithm": "sha256",
+  "corpus_checksum": "57e41c70e0e5eb656877db516b22cce194037c0f637b1d61bdf8f79f5d4602b0",
+  "prior_corpus_version": "corpus_v1",
+  "overwrite_policy": "never_overwrite_corpus_v1",
+  "document_count": 10,
+  "documents": [
+    {
+      "id": "cv2_cardiology_guideline_pdf",
+      "file_name": "cardiology-guideline-placeholder.pdf",
+      "relative_path": "fixtures/corpus_v2/cardiology-guideline-placeholder.pdf",
+      "source_url": "unknown",
+      "source_organization": "pending_review",
+      "license": "unknown",
+      "usage_boundary": "pending human source/license review; not approved for production import",
+      "publication_date": "unknown",
+      "fetched_at": "pending_review",
+      "department": "cardiology",
+      "disease_topics": [
+        "hypertension",
+        "heart failure"
+      ],
+      "document_type": "pdf",
+      "language": "zh-CN",
+      "content_sha256": "unknown",
+      "normalized_text_sha256": null,
+      "near_duplicate_fingerprint": null,
+      "parser_expected": {
+        "parser_name": "local_pdf_or_docling_candidate",
+        "parser_version": "stage24_parser_contract_v1",
+        "requires_ocr": false,
+        "requires_vision": false
+      },
+      "has_table": false,
+      "has_scanned_pages": false,
+      "has_images": false,
+      "governance": {
+        "status": "pending_review",
+        "review_due_at": "2026-09-30",
+        "expires_at": null
+      },
+      "ingestion_status": "pending_review",
+      "estimated_pages_min": 20,
+      "estimated_pages_max": 60,
+      "estimated_chunks_min": 15,
+      "estimated_chunks_max": 80,
+      "notes": null
+    },
+    {
+      "id": "cv2_diabetes_docx",
+      "file_name": "diabetes-education-placeholder.docx",
+      "relative_path": "fixtures/corpus_v2/diabetes-education-placeholder.docx",
+      "source_url": "unknown",
+      "source_organization": "pending_review",
+      "license": "unknown",
+      "usage_boundary": "pending human source/license review; not approved for production import",
+      "publication_date": "unknown",
+      "fetched_at": "pending_review",
+      "department": "endocrinology",
+      "disease_topics": [
+        "diabetes"
+      ],
+      "document_type": "docx",
+      "language": "zh-CN",
+      "content_sha256": "unknown",
+      "normalized_text_sha256": null,
+      "near_duplicate_fingerprint": null,
+      "parser_expected": {
+        "parser_name": "python_docx_adapter",
+        "parser_version": "stage24_parser_contract_v1",
+        "requires_ocr": false,
+        "requires_vision": false
+      },
+      "has_table": false,
+      "has_scanned_pages": false,
+      "has_images": false,
+      "governance": {
+        "status": "pending_review",
+        "review_due_at": "2026-09-30",
+        "expires_at": null
+      },
+      "ingestion_status": "pending_review",
+      "estimated_pages_min": 5,
+      "estimated_pages_max": 20,
+      "estimated_chunks_min": 8,
+      "estimated_chunks_max": 30,
+      "notes": null
+    },
+    {
+      "id": "cv2_lab_table_markdown",
+      "file_name": "lab-reference-table-placeholder.md",
+      "relative_path": "fixtures/corpus_v2/lab-reference-table-placeholder.md",
+      "source_url": "unknown",
+      "source_organization": "pending_review",
+      "license": "unknown",
+      "usage_boundary": "pending human source/license review; not approved for production import",
+      "publication_date": "unknown",
+      "fetched_at": "pending_review",
+      "department": "laboratory medicine",
+      "disease_topics": [
+        "lab reference ranges"
+      ],
+      "document_type": "markdown",
+      "language": "zh-CN",
+      "content_sha256": "unknown",
+      "normalized_text_sha256": null,
+      "near_duplicate_fingerprint": null,
+      "parser_expected": {
+        "parser_name": "markdown_it_adapter",
+        "parser_version": "stage24_parser_contract_v1",
+        "requires_ocr": false,
+        "requires_vision": false
+      },
+      "has_table": true,
+      "has_scanned_pages": false,
+      "has_images": false,
+      "governance": {
+        "status": "pending_review",
+        "review_due_at": "2026-09-30",
+        "expires_at": null
+      },
+      "ingestion_status": "pending_review",
+      "estimated_pages_min": 2,
+      "estimated_pages_max": 8,
+      "estimated_chunks_min": 4,
+      "estimated_chunks_max": 18,
+      "notes": null
+    },
+    {
+      "id": "cv2_medication_table_html",
+      "file_name": "medication-safety-table-placeholder.html",
+      "relative_path": "fixtures/corpus_v2/medication-safety-table-placeholder.html",
+      "source_url": "unknown",
+      "source_organization": "pending_review",
+      "license": "unknown",
+      "usage_boundary": "pending human source/license review; not approved for production import",
+      "publication_date": "unknown",
+      "fetched_at": "pending_review",
+      "department": "pharmacy",
+      "disease_topics": [
+        "medication safety"
+      ],
+      "document_type": "html",
+      "language": "zh-CN",
+      "content_sha256": "unknown",
+      "normalized_text_sha256": null,
+      "near_duplicate_fingerprint": null,
+      "parser_expected": {
+        "parser_name": "beautifulsoup_html_adapter",
+        "parser_version": "stage24_parser_contract_v1",
+        "requires_ocr": false,
+        "requires_vision": false
+      },
+      "has_table": true,
+      "has_scanned_pages": false,
+      "has_images": false,
+      "governance": {
+        "status": "pending_review",
+        "review_due_at": "2026-09-30",
+        "expires_at": null
+      },
+      "ingestion_status": "pending_review",
+      "estimated_pages_min": 2,
+      "estimated_pages_max": 10,
+      "estimated_chunks_min": 4,
+      "estimated_chunks_max": 20,
+      "notes": null
+    },
+    {
+      "id": "cv2_scan_pdf_ocr",
+      "file_name": "scanned-followup-placeholder.pdf",
+      "relative_path": "fixtures/corpus_v2/scanned-followup-placeholder.pdf",
+      "source_url": "unknown",
+      "source_organization": "pending_review",
+      "license": "unknown",
+      "usage_boundary": "pending human source/license review; not approved for production import",
+      "publication_date": "unknown",
+      "fetched_at": "pending_review",
+      "department": "radiology records",
+      "disease_topics": [
+        "scanned report"
+      ],
+      "document_type": "pdf",
+      "language": "zh-CN",
+      "content_sha256": "unknown",
+      "normalized_text_sha256": null,
+      "near_duplicate_fingerprint": null,
+      "parser_expected": {
+        "parser_name": "ocr_enrichment_pending",
+        "parser_version": "stage24_parser_contract_v1",
+        "requires_ocr": true,
+        "requires_vision": false
+      },
+      "has_table": false,
+      "has_scanned_pages": true,
+      "has_images": false,
+      "governance": {
+        "status": "pending_review",
+        "review_due_at": "2026-09-30",
+        "expires_at": null
+      },
+      "ingestion_status": "pending_review",
+      "estimated_pages_min": 4,
+      "estimated_pages_max": 30,
+      "estimated_chunks_min": 0,
+      "estimated_chunks_max": 40,
+      "notes": null
+    },
+    {
+      "id": "cv2_report_image_png",
+      "file_name": "lab-report-image-placeholder.png",
+      "relative_path": "fixtures/corpus_v2/lab-report-image-placeholder.png",
+      "source_url": "unknown",
+      "source_organization": "pending_review",
+      "license": "unknown",
+      "usage_boundary": "pending human source/license review; not approved for production import",
+      "publication_date": "unknown",
+      "fetched_at": "pending_review",
+      "department": "laboratory medicine",
+      "disease_topics": [
+        "report screenshot"
+      ],
+      "document_type": "image",
+      "language": "zh-CN",
+      "content_sha256": "unknown",
+      "normalized_text_sha256": null,
+      "near_duplicate_fingerprint": null,
+      "parser_expected": {
+        "parser_name": "image_enrichment_pending",
+        "parser_version": "stage24_parser_contract_v1",
+        "requires_ocr": false,
+        "requires_vision": true
+      },
+      "has_table": false,
+      "has_scanned_pages": false,
+      "has_images": true,
+      "governance": {
+        "status": "pending_review",
+        "review_due_at": "2026-09-30",
+        "expires_at": null
+      },
+      "ingestion_status": "pending_review",
+      "estimated_pages_min": 1,
+      "estimated_pages_max": 1,
+      "estimated_chunks_min": 0,
+      "estimated_chunks_max": 8,
+      "notes": null
+    },
+    {
+      "id": "cv2_public_web_snapshot",
+      "file_name": "hospital-education-snapshot-placeholder.html",
+      "relative_path": "fixtures/corpus_v2/hospital-education-snapshot-placeholder.html",
+      "source_url": "unknown",
+      "source_organization": "pending_review",
+      "license": "unknown",
+      "usage_boundary": "pending human source/license review; not approved for production import",
+      "publication_date": "unknown",
+      "fetched_at": "pending_review",
+      "department": "public health education",
+      "disease_topics": [
+        "web snapshot",
+        "patient education"
+      ],
+      "document_type": "web_snapshot",
+      "language": "zh-CN",
+      "content_sha256": "unknown",
+      "normalized_text_sha256": null,
+      "near_duplicate_fingerprint": null,
+      "parser_expected": {
+        "parser_name": "web_snapshot_html_adapter",
+        "parser_version": "stage24_parser_contract_v1",
+        "requires_ocr": false,
+        "requires_vision": false
+      },
+      "has_table": false,
+      "has_scanned_pages": false,
+      "has_images": false,
+      "governance": {
+        "status": "pending_review",
+        "review_due_at": "2026-09-30",
+        "expires_at": null
+      },
+      "ingestion_status": "pending_review",
+      "estimated_pages_min": 1,
+      "estimated_pages_max": 12,
+      "estimated_chunks_min": 2,
+      "estimated_chunks_max": 24,
+      "notes": null
+    },
+    {
+      "id": "cv2_expired_version_pdf",
+      "file_name": "expired-guideline-placeholder.pdf",
+      "relative_path": "fixtures/corpus_v2/expired-guideline-placeholder.pdf",
+      "source_url": "unknown",
+      "source_organization": "pending_review",
+      "license": "pending_license_review",
+      "usage_boundary": "pending human source/license review; not approved for production import",
+      "publication_date": "unknown",
+      "fetched_at": "pending_review",
+      "department": "cardiology",
+      "disease_topics": [
+        "outdated guideline"
+      ],
+      "document_type": "pdf",
+      "language": "zh-CN",
+      "content_sha256": "unknown",
+      "normalized_text_sha256": null,
+      "near_duplicate_fingerprint": null,
+      "parser_expected": {
+        "parser_name": "local_pdf_or_docling_candidate",
+        "parser_version": "stage24_parser_contract_v1",
+        "requires_ocr": false,
+        "requires_vision": false
+      },
+      "has_table": false,
+      "has_scanned_pages": false,
+      "has_images": false,
+      "governance": {
+        "status": "expired",
+        "review_due_at": null,
+        "expires_at": "2026-08-01"
+      },
+      "ingestion_status": "pending_review",
+      "estimated_pages_min": 10,
+      "estimated_pages_max": 40,
+      "estimated_chunks_min": 8,
+      "estimated_chunks_max": 60,
+      "notes": "intentionally represents an outdated version conflict candidate"
+    },
+    {
+      "id": "cv2_duplicate_candidate_docx",
+      "file_name": "duplicate-topic-a-placeholder.docx",
+      "relative_path": "fixtures/corpus_v2/duplicate-topic-a-placeholder.docx",
+      "source_url": "unknown",
+      "source_organization": "pending_review",
+      "license": "unknown",
+      "usage_boundary": "pending human source/license review; not approved for production import",
+      "publication_date": "unknown",
+      "fetched_at": "pending_review",
+      "department": "pharmacy",
+      "disease_topics": [
+        "medication safety"
+      ],
+      "document_type": "docx",
+      "language": "zh-CN",
+      "content_sha256": "unknown",
+      "normalized_text_sha256": null,
+      "near_duplicate_fingerprint": null,
+      "parser_expected": {
+        "parser_name": "python_docx_adapter",
+        "parser_version": "stage24_parser_contract_v1",
+        "requires_ocr": false,
+        "requires_vision": false
+      },
+      "has_table": false,
+      "has_scanned_pages": false,
+      "has_images": false,
+      "governance": {
+        "status": "pending_review",
+        "review_due_at": "2026-09-30",
+        "expires_at": null
+      },
+      "ingestion_status": "pending_review",
+      "estimated_pages_min": 4,
+      "estimated_pages_max": 18,
+      "estimated_chunks_min": 6,
+      "estimated_chunks_max": 24,
+      "notes": null
+    },
+    {
+      "id": "cv2_duplicate_candidate_md",
+      "file_name": "duplicate-topic-b-placeholder.md",
+      "relative_path": "fixtures/corpus_v2/duplicate-topic-b-placeholder.md",
+      "source_url": "unknown",
+      "source_organization": "pending_review",
+      "license": "unknown",
+      "usage_boundary": "pending human source/license review; not approved for production import",
+      "publication_date": "unknown",
+      "fetched_at": "pending_review",
+      "department": "pharmacy",
+      "disease_topics": [
+        "medication safety"
+      ],
+      "document_type": "markdown",
+      "language": "zh-CN",
+      "content_sha256": "unknown",
+      "normalized_text_sha256": null,
+      "near_duplicate_fingerprint": null,
+      "parser_expected": {
+        "parser_name": "markdown_it_adapter",
+        "parser_version": "stage24_parser_contract_v1",
+        "requires_ocr": false,
+        "requires_vision": false
+      },
+      "has_table": false,
+      "has_scanned_pages": false,
+      "has_images": false,
+      "governance": {
+        "status": "pending_review",
+        "review_due_at": "2026-09-30",
+        "expires_at": null
+      },
+      "ingestion_status": "pending_review",
+      "estimated_pages_min": 4,
+      "estimated_pages_max": 18,
+      "estimated_chunks_min": 6,
+      "estimated_chunks_max": 24,
+      "notes": null
+    }
+  ],
+  "intake_policy": "Stage 24.7 only records synthetic fixture placeholders and human intake targets; no production import, no network fetch, and no corpus_v1 overwrite."
+}
