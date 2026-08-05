@@ -87,6 +87,7 @@ def build_service(tmp_path, *, max_size: int = 1024 * 1024):
     settings = Settings(
         _env_file=None,
         upload_dir=tmp_path / "uploads",
+        document_asset_dir=tmp_path / "assets",
         document_registry_path=tmp_path / "documents.json",
         max_upload_size_bytes=max_size,
         chunk_size=30,
@@ -155,6 +156,31 @@ def test_txt_upload_is_saved_split_and_registered_in_mysql(tmp_path) -> None:
         assert vector_store.added_documents[0].metadata["chunk_id"].endswith(":0")
         assert len(list((tmp_path / "uploads").glob("*.txt"))) == 1
         assert not (tmp_path / "documents.json").exists()
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_lifecycle_delete_removes_document_asset_sidecars(tmp_path) -> None:
+    service, vector_store, session, engine, owner, _ = build_service(tmp_path)
+    try:
+        uploaded = asyncio.run(
+            service.process_upload(
+                owner.id,
+                make_upload("asset-cleanup.txt", "asset cleanup content".encode()),
+            )
+        )
+        record = session.get(KnowledgeDocument, uploaded.document_id)
+        chunk_ids = list(record.chunk_ids)
+        asset_dir = service.settings.document_asset_dir / "documents" / record.id
+        asset_dir.mkdir(parents=True, exist_ok=True)
+        (asset_dir / "asset.txt").write_text("sidecar", encoding="utf-8")
+
+        deleted_id = service.lifecycle.delete_document(record)
+
+        assert deleted_id == uploaded.document_id
+        assert not asset_dir.exists()
+        assert set(vector_store.deleted_ids) == set(chunk_ids)
     finally:
         session.close()
         engine.dispose()

@@ -772,7 +772,7 @@
    服务器只重建 backend。四容器健康，HTTP 308、HTTPS 200、未授权 401、配置 900 秒
    和错误日志检查通过；未调用真实模型。
 
-## 24. 阶段二十四：稳定性收尾与文档智能升级 `[进行中：24.3完成]`
+## 24. Stage 24: Stability Wrap-up and Document Intelligence `[in progress: 24.4 complete]`
 
 完整架构、数据契约、安全闸门和验收标准见
 [`docs/stage24-document-intelligence-and-stability-design.md`](stage24-document-intelligence-and-stability-design.md)，
@@ -790,9 +790,9 @@
 5. **24.3 `[已完成离线闸门，未晋级]`**：实现默认关闭的 Docling 复杂 PDF 候选、
    表格/页码/图片资产输出、PyPDF 确定性回退和固定集晋级比较；当前未运行真实 Docling，
    生产继续使用 PyPDF 基线。
-6. **24.4 `[下一任务]`**：实现 OCR/视觉 Port、Fake、资源与费用限制、文档图片生命周期；
+6. **24.4 `[completed]`**: OCR/Vision ports, fake/disabled adapters, resource and quota gates, image asset lifecycle, and PNG/JPEG pending-review input; real providers require separate approval.
    真实调用与启用另行授权。
-7. **24.5 `[待开始]`**：实现元数据建议状态机、管理员确认、审核 UI 和审计。
+7. **24.5 `[next]`**: metadata suggestions, administrator confirmation/editing, review UI, and audit.
 8. **24.6 `[待开始]`**：补充标准化正文去重、近重复提示、版本沿袭与失效治理筛选。
 9. **24.7 `[待开始]`**：建立不可覆盖 v1 的 `corpus_v2` manifest、覆盖矩阵、清洗报告
    和评估集；Embedding 和生产导入另设闸门。

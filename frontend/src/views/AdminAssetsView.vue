@@ -53,9 +53,9 @@ const GOVERNANCE_OPTIONS = [
 const DEFAULT_TAGS = ['医学指南', '疾病科普', '诊疗路径', '药物资料', '检验检查', '医学影像', '健康管理']
 const DEFAULT_CATEGORIES = ['疾病知识', '诊疗规范', '药物与用药', '检验与检查', '医学影像', '健康教育']
 const DEFAULT_DEPARTMENTS = ['全科', '心血管内科', '神经内科', '呼吸内科', '消化内科', '内分泌科', '外科', '影像科']
-const ACCEPTED_DOCUMENT_FORMATS = '.pdf,.txt,.docx,.md,.markdown,.html,.htm'
+const ACCEPTED_DOCUMENT_FORMATS = '.pdf,.txt,.docx,.md,.markdown,.html,.htm,.png,.jpg,.jpeg'
 const ALLOWED_SUFFIXES = ACCEPTED_DOCUMENT_FORMATS.split(',')
-const FORMAT_LABEL = 'PDF、TXT、DOCX、Markdown 或 HTML'
+const FORMAT_LABEL = 'PDF/TXT/DOCX/Markdown/HTML/PNG/JPEG'
 
 const items = ref([])
 const total = ref(0)

@@ -10,6 +10,7 @@ from app.core.config import Settings
 from app.core.exceptions import AppError, DocumentStoreError
 from app.modules.audit.ports import AuditPort, AuditRecord
 from app.modules.jobs.ports import JobPort
+from app.modules.knowledge.asset_storage import ControlledDocumentAssetStore
 from app.modules.knowledge.lifecycle import DocumentLifecycleService
 from app.modules.knowledge.models import (
     DocumentVersion,
@@ -47,6 +48,7 @@ class KnowledgeReviewService:
         audit: AuditPort,
         jobs: JobPort,
         repository: SubmissionReviewRepository | None = None,
+        asset_store: ControlledDocumentAssetStore | None = None,
     ) -> None:
         self.session = session
         self.settings = settings
@@ -54,6 +56,7 @@ class KnowledgeReviewService:
         self.audit = audit
         self.jobs = jobs
         self.repository = repository or SubmissionReviewRepository(session)
+        self.asset_store = asset_store or ControlledDocumentAssetStore(settings)
 
     def list_reviews(
         self, *, status: str | None, offset: int, limit: int
@@ -105,6 +108,7 @@ class KnowledgeReviewService:
             )
         )
         self.session.commit()
+        self.asset_store.cleanup_submission_assets(record.id)
         self.session.refresh(record)
         return ApprovalResponse(submission=self._to_item(record))
 
@@ -154,6 +158,7 @@ class KnowledgeReviewService:
                     uploader_id=record.submitter_id,
                     is_system=False,
                 )
+            self.asset_store.promote_submission_assets(record.id, document.id)
             record = self._get(submission_id)
             record.status = "published"
             record.document_id = document.id
@@ -235,6 +240,7 @@ class KnowledgeReviewService:
 
         try:
             isolated_path.unlink(missing_ok=True)
+            self.asset_store.cleanup_submission_assets(record.id)
         except OSError as exc:
             try:
                 self.audit.record(

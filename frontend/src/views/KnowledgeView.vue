@@ -6,9 +6,9 @@ import { getDocuments, importWebSnapshot, uploadDocument } from '../api/document
 import { getApiErrorMessage } from '../api/http'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
-const ACCEPTED_DOCUMENT_FORMATS = '.pdf,.txt,.docx,.md,.markdown,.html,.htm'
+const ACCEPTED_DOCUMENT_FORMATS = '.pdf,.txt,.docx,.md,.markdown,.html,.htm,.png,.jpg,.jpeg'
 const ALLOWED_SUFFIXES = ACCEPTED_DOCUMENT_FORMATS.split(',')
-const FORMAT_LABEL = 'PDF、TXT、DOCX、Markdown 或 HTML'
+const FORMAT_LABEL = 'PDF/TXT/DOCX/Markdown/HTML/PNG/JPEG'
 
 const documents = ref([])
 const listLoading = ref(false)

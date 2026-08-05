@@ -52,3 +52,27 @@
 - 含附加商业条款、AGPL 或来源不清的实现只做黑盒/架构参考。
 - 新依赖必须记录版本、许可证、镜像体积、内存需求和是否适合 2 核 2G 服务器。
 - 每个 Stage 24 子任务在交接中写明“参考了哪个项目的哪个路径、采用了什么、没有复制什么”。
+## 5. Stage 24.4 adopted references
+
+- Docling (MIT): referenced `docling_core/types/doc/document.py` and
+  `docling_core/types/doc/base.py` for the idea of page/picture provenance.
+  The project keeps only its own `ParsedAsset` contract and does not copy
+  Docling code or pass Docling objects into application services.
+- Unstructured (Apache-2.0): referenced `unstructured/partition/pdf.py` and
+  `unstructured/partition/image.py` for the boundary between file partition,
+  hi-res/OCR strategy selection, and normalized elements. No Unstructured code
+  or dependency was copied or installed.
+- Dify (modified Apache-2.0 with additional terms): referenced
+  `api/services/dataset_service.py` and
+  `api/tests/unit_tests/services/test_dataset_service_document.py` for file/image
+  upload quotas and dataset document status thinking. No restricted source,
+  UI, or product behavior was copied.
+- RAGFlow (Apache-2.0): referenced `rag/svr/task_executor.py`,
+  `api/apps/services/document_api_service.py`, and
+  `web/src/interfaces/database/document.ts` for parser task status and
+  administrator-visible failure state ideas. No task executor implementation or
+  distributed queue was copied.
+
+Stage 24.4 added `Pillow==12.3.0` (HPND license) only for lightweight local
+PNG/JPEG structure and dimension validation. It did not introduce Docling,
+MinerU, Unstructured, OCR engines, vision SDKs, or online model downloads.

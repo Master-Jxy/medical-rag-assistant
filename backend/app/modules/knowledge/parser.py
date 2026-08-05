@@ -1,5 +1,6 @@
 """无模型文档预解析Port与本地适配器。"""
 
+import hashlib
 from dataclasses import dataclass
 from html import escape
 from pathlib import Path
@@ -10,6 +11,7 @@ from bs4 import BeautifulSoup
 from docx import Document as DocxDocument
 from langchain_community.document_loaders import PyPDFLoader
 from markdown_it import MarkdownIt
+from PIL import Image, UnidentifiedImageError
 from pypdf import PdfReader
 
 from app.core.exceptions import DocumentParseError
@@ -18,6 +20,7 @@ from app.modules.knowledge.ingestion import (
     FileTypePolicy,
     ParseQuality,
     ParseRequest,
+    ParsedAsset,
     ParsedDocument,
     ParsedElement,
     ParserRegistration,
@@ -36,13 +39,33 @@ class ParsedPreview:
     def from_document(cls, document: ParsedDocument) -> "ParsedPreview":
         text = document.text
         warnings = list(document.warnings)
+        quality = document.quality.to_legacy_dict()
         if len(text) > 8000:
             warnings.append("预览已截断")
+        if document.assets:
+            quality["assets"] = [
+                {
+                    "asset_id": asset.asset_id,
+                    "kind": asset.kind,
+                    "page_no": asset.page_no,
+                    "mime_type": asset.mime_type,
+                    "sha256": asset.sha256,
+                    "metadata": {
+                        key: value
+                        for key, value in dict(asset.metadata).items()
+                        if key not in {"storage_ref", "path"}
+                    },
+                }
+                for asset in document.assets
+            ]
+        enrichment = document.document_metadata.get("enrichment")
+        if isinstance(enrichment, dict):
+            quality["enrichment"] = dict(enrichment)
         return cls(
             text=text[:8000],
             page_count=document.page_count,
             warnings=tuple(dict.fromkeys(warnings)),
-            quality=document.quality.to_legacy_dict(),
+            quality=quality,
         )
 
 
@@ -422,6 +445,80 @@ class HtmlStructuredDocumentParser:
         return _build_document(request, self.name, tuple(elements), page_count=1)
 
 
+class ImageStructuredDocumentParser:
+    name = "local_image"
+
+    def parse(self, request: ParseRequest) -> ParsedDocument:
+        try:
+            with Image.open(request.path) as image:
+                width, height = image.size
+                mime_type = image.get_format_mimetype() or FileTypePolicy.mime_type_for_suffix(
+                    request.normalized_suffix
+                )
+        except (UnidentifiedImageError, OSError) as exc:
+            raise DocumentParseError("Invalid image document") from exc
+        data = request.path.read_bytes()
+        digest = hashlib.sha256(data).hexdigest()
+        byte_size = len(data)
+        pixel_count = width * height
+        file_name = request.file_name or request.path.name
+        warning = "Image document is waiting for OCR/Vision enrichment before publication."
+        asset = ParsedAsset(
+            asset_id="image-1",
+            kind="uploaded_image",
+            page_no=1,
+            mime_type=mime_type,
+            storage_ref="discovered://uploaded-image",
+            sha256=digest,
+            metadata={
+                "file_name": file_name,
+                "width": width,
+                "height": height,
+                "pixel_count": pixel_count,
+                "byte_size": byte_size,
+                "purpose": "document_understanding",
+                "materialized": False,
+            },
+        )
+        return ParsedDocument(
+            document_metadata={
+                "file_name": file_name,
+                "suffix": request.normalized_suffix,
+                "page_count": 1,
+                "parser": self.name,
+                "enrichment": {
+                    "status": "waiting_enrichment",
+                    "reason": "image_input",
+                    "asset_count": 1,
+                },
+            },
+            elements=(),
+            assets=(asset,),
+            warnings=(warning,),
+            quality=ParseQuality(
+                status="warning",
+                counts={
+                    "text": 0,
+                    "table_like": 0,
+                    "scanned_or_image": 1,
+                    "asset": 1,
+                },
+                page_results=(
+                    {
+                        "page": 1,
+                        "kind": "scanned_or_image",
+                        "text_chars": 0,
+                        "image_count": 1,
+                        "width": width,
+                        "height": height,
+                    },
+                ),
+                warnings=(warning,),
+                parser_name=self.name,
+            ),
+        )
+
+
 def _read_utf8(path: Path) -> str:
     try:
         text = path.read_text(encoding="utf-8")
@@ -549,6 +646,12 @@ def build_default_parser_registry(
                 parser=HtmlStructuredDocumentParser(),
                 suffixes=(".html", ".htm"),
                 mime_types=("text/html",),
+            ),
+            ParserRegistration(
+                name=ImageStructuredDocumentParser.name,
+                parser=ImageStructuredDocumentParser(),
+                suffixes=(".png", ".jpg", ".jpeg"),
+                mime_types=("image/png", "image/jpeg"),
             ),
         ]
     )

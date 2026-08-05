@@ -16,7 +16,7 @@ router = APIRouter(prefix="/admin/documents", tags=["管理员知识资产"])
 @router.post("", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)
 async def create_system_document(
     request: Request,
-    file: UploadFile = File(description="不超过 10 MB 的 PDF、TXT、DOCX、Markdown 或 HTML 文件"),
+    file: UploadFile = File(description="PDF/TXT/DOCX/Markdown/HTML or PNG/JPEG document, max 10 MB"),
     admin: UserResponse = Depends(require_admin),
     service: AdminDocumentService = Depends(get_admin_document_service),
 ) -> DocumentUploadResponse:
@@ -45,7 +45,7 @@ def delete_document(
 async def replace_document(
     document_id: str,
     request: Request,
-    file: UploadFile = File(description="用于整体替换的 PDF、TXT、DOCX、Markdown 或 HTML 文件"),
+    file: UploadFile = File(description="Replacement PDF/TXT/DOCX/Markdown/HTML or PNG/JPEG document"),
     admin: UserResponse = Depends(require_admin),
     service: AdminDocumentService = Depends(get_admin_document_service),
 ) -> DocumentUploadResponse:

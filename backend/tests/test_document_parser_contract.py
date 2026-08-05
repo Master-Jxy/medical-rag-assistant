@@ -7,6 +7,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
 from docx import Document as DocxDocument
+from PIL import Image
 
 from app.core.exceptions import DocumentParseError
 from app.modules.knowledge.ingestion import (
@@ -39,6 +40,15 @@ def write_docx(path: Path) -> bytes:
     table.cell(1, 1).text = "每日测量"
     buffer = BytesIO()
     document.save(buffer)
+    data = buffer.getvalue()
+    path.write_bytes(data)
+    return data
+
+
+def write_png(path: Path, *, size: tuple[int, int] = (2, 2)) -> bytes:
+    image = Image.new("RGB", size, "white")
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
     data = buffer.getvalue()
     path.write_bytes(data)
     return data
@@ -305,6 +315,49 @@ def test_docx_policy_rejects_malformed_relationship_xml(tmp_path) -> None:
     with pytest.raises(DocumentParseError, match="关系XML无效"):
         FileTypePolicy.validate_path(path, ".docx")
 
+
+
+def test_image_policy_validates_signature_structure_and_pixel_limit(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "report.png"
+    write_png(path)
+
+    assert FileTypePolicy.validate_path(path, ".png").mime_type == "image/png"
+
+    spoofed = tmp_path / "spoofed.png"
+    spoofed.write_bytes(b"not a png")
+    with pytest.raises(DocumentParseError):
+        FileTypePolicy.validate_path(spoofed, ".png")
+
+    jpeg_spoof = tmp_path / "spoofed.jpg"
+    jpeg_spoof.write_bytes(path.read_bytes())
+    with pytest.raises(DocumentParseError):
+        FileTypePolicy.validate_path(jpeg_spoof, ".jpg")
+
+    monkeypatch.setattr(
+        "app.modules.knowledge.ingestion.file_types.IMAGE_MAX_PIXELS",
+        1,
+    )
+    with pytest.raises(DocumentParseError):
+        FileTypePolicy.validate_path(path, ".png")
+
+
+def test_image_parser_returns_discovered_asset_waiting_for_enrichment(tmp_path) -> None:
+    path = tmp_path / "report.png"
+    data = write_png(path, size=(3, 2))
+
+    parsed = LocalDocumentParser().parse_document(ParseRequest(path=path, suffix=".png"))
+    preview = ParsedPreview.from_document(parsed)
+
+    assert parsed.text == ""
+    assert parsed.document_metadata["parser"] == "local_image"
+    assert parsed.document_metadata["enrichment"]["status"] == "waiting_enrichment"
+    assert parsed.assets[0].kind == "uploaded_image"
+    assert parsed.assets[0].storage_ref == "discovered://uploaded-image"
+    assert parsed.assets[0].metadata["pixel_count"] == 6
+    assert parsed.assets[0].metadata["byte_size"] == len(data)
+    assert parsed.quality.counts["scanned_or_image"] == 1
+    assert preview.quality["enrichment"]["status"] == "waiting_enrichment"
+    assert preview.quality["assets"][0]["metadata"]["materialized"] is False
 
 def test_docx_parser_preserves_title_list_and_table_semantics(tmp_path) -> None:
     path = tmp_path / "sample.docx"

@@ -91,6 +91,8 @@ describe('KnowledgeView 文档权限', () => {
     const input = wrapper.get('input[type="file"]')
     expect(input.attributes('accept')).toContain('.docx')
     expect(input.attributes('accept')).toContain('.html')
+    expect(input.attributes('accept')).toContain('.png')
+    expect(input.attributes('accept')).toContain('.jpeg')
 
     const html = new File(['<h1>资料</h1>'], '资料.html', { type: 'text/html' })
     Object.defineProperty(input.element, 'files', { value: [html], configurable: true })
@@ -100,7 +102,7 @@ describe('KnowledgeView 文档权限', () => {
     const exe = new File(['bad'], 'bad.exe', { type: 'application/octet-stream' })
     Object.defineProperty(input.element, 'files', { value: [exe], configurable: true })
     await input.trigger('change')
-    expect(wrapper.text()).toContain('只支持 PDF、TXT、DOCX、Markdown 或 HTML 文件')
+    expect(wrapper.text()).toContain('PDF/TXT/DOCX/Markdown/HTML/PNG/JPEG')
   })
 
   it('可以切换到导入网页并提交URL快照', async () => {

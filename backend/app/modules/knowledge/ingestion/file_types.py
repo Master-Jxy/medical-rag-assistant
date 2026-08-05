@@ -7,15 +7,20 @@ from pathlib import Path, PurePosixPath
 from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile, is_zipfile
 
+from PIL import Image, UnidentifiedImageError
+
 from app.core.exceptions import DocumentParseError, UnsupportedFileTypeError
 
 
 TEXT_SUFFIXES = {".txt", ".md", ".markdown", ".html", ".htm"}
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
 DOCX_MAX_ENTRIES = 256
 DOCX_MAX_ENTRY_UNCOMPRESSED_BYTES = 16 * 1024 * 1024
 DOCX_MAX_TOTAL_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
 DOCX_MAX_COMPRESSION_RATIO = 100
 DOCX_MAX_RELS_UNCOMPRESSED_BYTES = 256 * 1024
+IMAGE_MAX_BYTES = 10 * 1024 * 1024
+IMAGE_MAX_PIXELS = 8_000_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +46,9 @@ class FileTypePolicy:
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "DOCX",
         ),
+        ".png": FileTypeInfo(".png", "image/png", "PNG"),
+        ".jpg": FileTypeInfo(".jpg", "image/jpeg", "JPEG"),
+        ".jpeg": FileTypeInfo(".jpeg", "image/jpeg", "JPEG"),
     }
 
     @classmethod
@@ -68,6 +76,8 @@ class FileTypePolicy:
             cls._validate_docx(path)
         elif info.suffix in TEXT_SUFFIXES:
             cls._validate_utf8_text(path)
+        elif info.suffix in IMAGE_SUFFIXES:
+            cls._validate_image(path, info.suffix)
         else:
             raise UnsupportedFileTypeError()
         return info
@@ -98,6 +108,24 @@ class FileTypePolicy:
             data.decode("utf-8")
         except UnicodeDecodeError as exc:
             raise DocumentParseError("文本文件必须使用UTF-8编码") from exc
+
+    @staticmethod
+    def _validate_image(path: Path, suffix: str) -> None:
+        data = path.read_bytes()
+        if len(data) > IMAGE_MAX_BYTES:
+            raise DocumentParseError("图片文件过大")
+        if suffix == ".png" and not data.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise DocumentParseError("图片内容与PNG格式不匹配")
+        if suffix in {".jpg", ".jpeg"} and not data.startswith(b"\xff\xd8\xff"):
+            raise DocumentParseError("图片内容与JPEG格式不匹配")
+        try:
+            with Image.open(path) as image:
+                image.verify()
+                width, height = image.size
+        except (UnidentifiedImageError, OSError) as exc:
+            raise DocumentParseError("图片文件结构无效") from exc
+        if width <= 0 or height <= 0 or width * height > IMAGE_MAX_PIXELS:
+            raise DocumentParseError("图片像素尺寸超出限制")
 
     @staticmethod
     def _validate_docx(path: Path) -> None:

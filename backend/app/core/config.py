@@ -90,6 +90,26 @@ class Settings(BaseSettings):
         default=10 * 1024 * 1024, ge=1, le=10 * 1024 * 1024
     )
     docling_pdf_timeout_seconds: float = Field(default=20.0, gt=0, le=60)
+    document_asset_dir: Path = BACKEND_DIR / "data" / "document_assets"
+    document_enrichment_enabled: bool = False
+    document_enrichment_approved: bool = False
+    document_enrichment_max_pages: int = Field(default=5, ge=1, le=20)
+    document_enrichment_max_images: int = Field(default=8, ge=1, le=30)
+    document_enrichment_max_image_bytes: int = Field(
+        default=5 * 1024 * 1024, ge=1, le=10 * 1024 * 1024
+    )
+    document_enrichment_max_total_image_bytes: int = Field(
+        default=10 * 1024 * 1024, ge=1, le=30 * 1024 * 1024
+    )
+    document_enrichment_max_pixels_per_image: int = Field(
+        default=8_000_000, ge=1, le=20_000_000
+    )
+    document_enrichment_max_total_pixels: int = Field(
+        default=16_000_000, ge=1, le=60_000_000
+    )
+    document_enrichment_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    document_enrichment_max_calls_per_document: int = Field(default=4, ge=0, le=30)
+    document_enrichment_estimated_tokens_per_call: int = Field(default=1200, ge=0, le=10000)
     web_snapshot_fetch_enabled: bool = False
     web_snapshot_allowed_hosts: list[str] = Field(default_factory=list)
     web_snapshot_max_bytes: int = Field(default=3 * 1024 * 1024, gt=0, le=5 * 1024 * 1024)
@@ -156,6 +176,7 @@ class Settings(BaseSettings):
         "chroma_persist_dir",
         "upload_dir",
         "submission_dir",
+        "document_asset_dir",
         "document_registry_path",
         "telemetry_log_path",
     )

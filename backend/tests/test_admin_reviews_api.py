@@ -1,9 +1,11 @@
 """管理员审核、发布、审计和用户越权回归。"""
 
 from pathlib import Path
+from io import BytesIO
 from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
@@ -26,6 +28,13 @@ from app.modules.knowledge.repository import SubmissionReviewRepository
 from app.modules.knowledge.review_service import KnowledgeReviewService
 from tests.auth_helpers import TEST_TOKEN_SERVICE, auth_headers, create_test_user
 from tests.test_document_service import FakeVectorStore
+
+
+def make_png_bytes() -> bytes:
+    image = Image.new("RGB", (2, 2), "white")
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 class FailPublishedAudit:
@@ -119,6 +128,41 @@ def add_web_snapshot_submission(factory, settings, submitter_id, suffix):
     return submission_id
 
 
+def add_image_submission(factory, settings, submitter_id, suffix):
+    settings.submission_dir.mkdir(parents=True, exist_ok=True)
+    asset_dir = settings.document_asset_dir / "submissions" / f"review-image-{suffix}"
+    asset_dir.mkdir(parents=True, exist_ok=True)
+    submission_id = f"review-image-{suffix}"
+    stored_name = f"{submission_id}.png"
+    content = make_png_bytes()
+    (settings.submission_dir / stored_name).write_bytes(content)
+    (asset_dir / "asset.png").write_bytes(content)
+    with factory() as session:
+        session.add(
+            KnowledgeSubmission(
+                id=submission_id,
+                submitter_id=submitter_id,
+                original_name=f"report-{suffix}.png",
+                stored_name=stored_name,
+                content_hash=(suffix[0] * 64),
+                size_bytes=len(content),
+                status="pending_review",
+                preview_text="",
+                preview_pages=1,
+                parse_warnings=[
+                    "Image document is waiting for OCR/Vision enrichment before publication."
+                ],
+                parse_quality={
+                    "status": "warning",
+                    "counts": {"scanned_or_image": 1, "asset": 1},
+                    "enrichment": {"status": "waiting_enrichment", "asset_count": 1},
+                },
+            )
+        )
+        session.commit()
+    return submission_id
+
+
 def add_damaged_docx_submission(factory, settings, submitter_id, suffix):
     settings.submission_dir.mkdir(parents=True, exist_ok=True)
     submission_id = f"review-docx-{suffix}"
@@ -155,11 +199,15 @@ def test_admin_can_reject_or_publish_and_normal_user_cannot_review(tmp_path) -> 
         _env_file=None,
         submission_dir=tmp_path / "isolated",
         upload_dir=tmp_path / "published",
+        document_asset_dir=tmp_path / "assets",
         chunk_size=30,
         chunk_overlap=5,
     )
     rejected_id = add_submission(factory, settings, submitter.id, "a")
     approved_id = add_submission(factory, settings, submitter.id, "b")
+    approved_asset_dir = settings.document_asset_dir / "submissions" / approved_id
+    approved_asset_dir.mkdir(parents=True, exist_ok=True)
+    (approved_asset_dir / "asset.txt").write_text("sidecar", encoding="utf-8")
     vectors = FakeVectorStore()
 
     def override_session():
@@ -214,6 +262,10 @@ def test_admin_can_reject_or_publish_and_normal_user_cannot_review(tmp_path) -> 
             published = session.get(KnowledgeSubmission, approved_id)
             assert published.document_id is not None
             assert session.get(KnowledgeDocument, published.document_id) is not None
+            assert not (settings.document_asset_dir / "submissions" / approved_id).exists()
+            assert (
+                settings.document_asset_dir / "documents" / published.document_id
+            ).is_dir()
             chunk_text = " ".join(
                 item["document"] for item in vectors.entries.values()
             )
@@ -234,6 +286,112 @@ def test_admin_can_reject_or_publish_and_normal_user_cannot_review(tmp_path) -> 
         app.dependency_overrides.clear()
         engine.dispose()
 
+
+
+def test_image_review_status_is_visible_and_reject_cleans_assets(tmp_path) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'image-review.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    submitter = create_test_user(factory, "image-review-submitter")
+    admin = create_test_user(factory, "image-review-admin", role="admin")
+    settings = Settings(
+        _env_file=None,
+        submission_dir=tmp_path / "isolated",
+        upload_dir=tmp_path / "published",
+        document_asset_dir=tmp_path / "assets",
+    )
+    submission_id = add_image_submission(factory, settings, submitter.id, "r")
+    vectors = FakeVectorStore()
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    def override_review_service():
+        with factory() as session:
+            yield KnowledgeReviewService(
+                session,
+                settings,
+                DocumentLifecycleService(session, settings, vectors),
+                SqlAlchemyAuditRecorder(session),
+                SqlAlchemyJobService(session),
+            )
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
+    app.dependency_overrides[get_review_service] = override_review_service
+    try:
+        with TestClient(app) as client:
+            listed = client.get(
+                "/api/v1/admin/reviews",
+                headers=auth_headers(admin.id),
+            )
+            assert listed.status_code == 200
+            item = listed.json()["items"][0]
+            assert item["parse_quality"]["enrichment"]["status"] == "waiting_enrichment"
+
+            rejected = client.post(
+                f"/api/v1/admin/reviews/{submission_id}/reject",
+                json={"reason": "needs manual OCR"},
+                headers=auth_headers(admin.id),
+            )
+            assert rejected.status_code == 200
+            assert rejected.json()["submission"]["status"] == "rejected"
+
+        assert not (settings.document_asset_dir / "submissions" / submission_id).exists()
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def test_image_review_cannot_publish_empty_text_before_enrichment(tmp_path) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'image-review-fail.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    submitter = create_test_user(factory, "image-review-fail-submitter")
+    admin = create_test_user(factory, "image-review-fail-admin", role="admin")
+    settings = Settings(
+        _env_file=None,
+        submission_dir=tmp_path / "isolated",
+        upload_dir=tmp_path / "published",
+        document_asset_dir=tmp_path / "assets",
+    )
+    submission_id = add_image_submission(factory, settings, submitter.id, "p")
+    vectors = FakeVectorStore()
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    def override_review_service():
+        with factory() as session:
+            yield KnowledgeReviewService(
+                session,
+                settings,
+                DocumentLifecycleService(session, settings, vectors),
+                SqlAlchemyAuditRecorder(session),
+                SqlAlchemyJobService(session),
+            )
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
+    app.dependency_overrides[get_review_service] = override_review_service
+    try:
+        with TestClient(app) as client:
+            approved = client.post(
+                f"/api/v1/admin/reviews/{submission_id}/approve",
+                headers=auth_headers(admin.id),
+            )
+            assert approved.status_code >= 400
+
+        with factory() as session:
+            record = session.get(KnowledgeSubmission, submission_id)
+            assert record.status == "failed"
+            assert session.scalar(select(KnowledgeDocument)) is None
+        assert not vectors.added_ids
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
 
 def test_publish_finalization_failure_compensates_document_file_and_vectors(
     tmp_path,

@@ -17,9 +17,11 @@ from app.core.exceptions import (
     FileTooLargeError,
     UnsupportedFileTypeError,
 )
+from app.modules.knowledge.asset_storage import ControlledDocumentAssetStore
+from app.modules.knowledge.enrichment import DocumentEnrichmentService
+from app.modules.knowledge.ingestion import FileTypePolicy, ParseRequest
 from app.modules.knowledge.models import KnowledgeDocument, KnowledgeSubmission
-from app.modules.knowledge.ingestion import FileTypePolicy
-from app.modules.knowledge.parser import ParserPort
+from app.modules.knowledge.parser import ParsedPreview, ParserPort
 from app.modules.knowledge.schemas import SubmissionCreateResponse
 from app.modules.knowledge.web_snapshot import WebSnapshotFetchPort
 from app.services.upload_protection_service import UploadProtectionService
@@ -42,12 +44,16 @@ class KnowledgeSubmissionService:
         parser: ParserPort,
         upload_protection: UploadProtectionService | None = None,
         web_snapshot_fetcher: WebSnapshotFetchPort | None = None,
+        asset_store: ControlledDocumentAssetStore | None = None,
+        enrichment_service: DocumentEnrichmentService | None = None,
     ) -> None:
         self.session = session
         self.settings = settings
         self.parser = parser
         self.upload_protection = upload_protection
         self.web_snapshot_fetcher = web_snapshot_fetcher
+        self.asset_store = asset_store or ControlledDocumentAssetStore(settings)
+        self.enrichment_service = enrichment_service
 
     async def submit(self, user_id: str, upload_file: UploadFile) -> SubmissionCreateResponse:
         async def operation() -> KnowledgeSubmission:
@@ -129,13 +135,20 @@ class KnowledgeSubmissionService:
             self.session.add(record)
             self.session.commit()
             try:
-                preview = self.parser.parse(final_path, file_type.suffix)
+                preview = self._parse_preview(
+                    final_path,
+                    file_type.suffix,
+                    file_name=original_name,
+                    submission_id=record.id,
+                    user_id=user_id,
+                )
                 record.preview_text = preview.text
                 record.preview_pages = preview.page_count
                 record.parse_warnings = list(preview.warnings)
                 record.parse_quality = preview.quality or {}
                 record.status = "pending_review"
             except DocumentParseError:
+                self.asset_store.cleanup_submission_assets(record.id)
                 record.status = "failed"
                 record.failure_reason = "DOCUMENT_PARSE_ERROR"
             self.session.commit()
@@ -195,13 +208,20 @@ class KnowledgeSubmissionService:
             self.session.add(record)
             self.session.commit()
             try:
-                preview = self.parser.parse(final_path, file_type.suffix)
+                preview = self._parse_preview(
+                    final_path,
+                    file_type.suffix,
+                    file_name=record.original_name,
+                    submission_id=record.id,
+                    user_id=user_id,
+                )
                 record.preview_text = preview.text
                 record.preview_pages = preview.page_count
                 record.parse_warnings = list(preview.warnings)
                 record.parse_quality = preview.quality or {}
                 record.status = "pending_review"
             except DocumentParseError:
+                self.asset_store.cleanup_submission_assets(record.id)
                 record.status = "failed"
                 record.failure_reason = "DOCUMENT_PARSE_ERROR"
             self.session.commit()
@@ -227,10 +247,34 @@ class KnowledgeSubmissionService:
         if record.status not in {"pending_parse", "pending_review"}:
             raise SubmissionNotWithdrawableError()
         (self.settings.submission_dir / record.stored_name).unlink(missing_ok=True)
+        self.asset_store.cleanup_submission_assets(record.id)
         record.status = "withdrawn"
         self.session.commit()
         self.session.refresh(record)
         return self._to_response(record)
+
+    def _parse_preview(
+        self,
+        path: Path,
+        suffix: str,
+        *,
+        file_name: str,
+        submission_id: str,
+        user_id: str,
+    ) -> ParsedPreview:
+        parse_document = getattr(self.parser, "parse_document", None)
+        if parse_document is None:
+            return self.parser.parse(path, suffix)
+        document = parse_document(ParseRequest(path=path, suffix=suffix, file_name=file_name))
+        if document.assets:
+            document = self.asset_store.materialize_submission_assets(
+                document,
+                submission_id=submission_id,
+                source_path=path,
+            )
+            if self.enrichment_service is not None:
+                document = self.enrichment_service.enrich(document, user_id=user_id)
+        return ParsedPreview.from_document(document)
 
     @staticmethod
     def _to_response(record: KnowledgeSubmission) -> SubmissionCreateResponse:

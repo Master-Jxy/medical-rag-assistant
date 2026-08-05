@@ -1995,3 +1995,38 @@ AI 元数据输出是 suggestion，不是正式文档元数据。只有管理员
 完整字段、状态机、安全限制、阶段拆分和开源依据分别见
 `docs/stage24-document-intelligence-and-stability-design.md` 与
 `docs/stage24-open-source-benchmark.md`。
+## Stage 24.4 OCR/Vision Enrichment Boundary (2026-08-06)
+
+24.4 adds only the OCR and vision document-understanding foundation. Application
+services depend on `OcrPort`, `VisionDocumentPort`, `OcrRequest`,
+`OcrResult`, `VisionDocumentRequest`, `VisionDocumentResult`, and
+`DocumentEnrichmentService`; provider SDK objects must stay inside
+infrastructure adapters. The only shipped adapters are disabled and fake
+implementations. Production defaults remain disabled and unapproved, so no OCR,
+vision, Qwen, Embedding, network, model download, or key read occurs.
+
+`EnrichmentResourcePolicy` centralizes resource and cost gates: enabled,
+approved, max pages, image count, single/total image bytes, single/total pixels,
+per-document calls, timeout, concurrency, estimated token/call, and automatic
+retries fixed at zero. If disabled, unapproved, over budget, over pixel/byte
+limits, or over concurrency, enrichment returns a deterministic
+`waiting_enrichment`, `skipped`, or `limited` status through existing
+`parse_quality` JSON. Suspected CT, X-ray, pathology, radiology, or other
+diagnostic imagery returns `restricted` and is not auto-interpreted.
+
+Image asset storage is controlled by `ControlledDocumentAssetStore`. Assets are
+materialized only under `document_asset_dir` with server-generated UUID file
+names and `document-asset://...` references; parser/model paths are never
+trusted. Submission image assets are cleaned on withdraw and reject, promoted
+from submission scope to document scope after successful publication, cleaned
+with isolation cleanup, and removed when public documents are deleted or old
+documents are replaced. This keeps discovered provenance assets distinct from
+materialized server-side files.
+
+PNG/JPEG uploads are accepted as pending-review report screenshots. `FileTypePolicy`
+checks image magic bytes, Pillow structure, UTF-8/text rules for text-like
+formats, and existing PDF/DOCX controls; MIME remains only an auxiliary signal.
+Image-only submissions produce no fake text and cannot publish into Chroma until
+an approved enrichment or manual text path yields normalized elements. Existing
+PDF/TXT/DOCX/Markdown/HTML parsing, preview truncation, review, publish,
+chunking, references, and Chroma lifecycle remain compatible.

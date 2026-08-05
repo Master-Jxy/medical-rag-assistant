@@ -2,8 +2,10 @@
 
 import hashlib
 from datetime import datetime, timezone
+from io import BytesIO
 
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 
@@ -18,6 +20,13 @@ from app.modules.knowledge.submission_service import KnowledgeSubmissionService
 from app.modules.knowledge.web_snapshot import WebSnapshotError, WebSnapshotResult
 from app.api.knowledge_submissions import get_submission_service
 from tests.auth_helpers import TEST_TOKEN_SERVICE, auth_headers, create_test_user
+
+
+def make_png_bytes() -> bytes:
+    image = Image.new("RGB", (2, 2), "white")
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 class FakeParser:
@@ -162,6 +171,65 @@ def test_submission_entry_uses_structured_parser_compatibility(tmp_path) -> None
             assert session.scalar(
                 select(func.count()).select_from(KnowledgeDocument)
             ) == 0
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def test_image_submission_waits_for_enrichment_and_withdraw_cleans_assets(tmp_path) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'image-submissions.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    owner = create_test_user(factory, "image-submission-owner")
+    settings = Settings(
+        _env_file=None,
+        submission_dir=tmp_path / "isolated",
+        document_asset_dir=tmp_path / "assets",
+    )
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    def override_service():
+        with factory() as session:
+            yield KnowledgeSubmissionService(session, settings, LocalDocumentParser())
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
+    app.dependency_overrides[get_submission_service] = override_service
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/v1/knowledge/submissions",
+                files={"file": ("report.png", make_png_bytes(), "text/plain")},
+                headers=auth_headers(owner.id),
+            )
+            assert created.status_code == 202
+            assert created.json()["status"] == "pending_review"
+            submission_id = created.json()["submission_id"]
+
+        with factory() as session:
+            saved = session.get(KnowledgeSubmission, submission_id)
+            assert saved is not None
+            assert saved.preview_text == ""
+            assert saved.preview_pages == 1
+            assert saved.parse_quality["enrichment"]["status"] == "waiting_enrichment"
+            assert saved.parse_quality["counts"]["scanned_or_image"] == 1
+            assert saved.parse_quality["assets"][0]["metadata"]["materialized"] is True
+            assert session.scalar(
+                select(func.count()).select_from(KnowledgeDocument)
+            ) == 0
+        assert (settings.document_asset_dir / "submissions" / submission_id).is_dir()
+
+        with TestClient(app) as client:
+            withdrawn = client.post(
+                f"/api/v1/knowledge/submissions/{submission_id}/withdraw",
+                headers=auth_headers(owner.id),
+            )
+            assert withdrawn.status_code == 200
+            assert withdrawn.json()["status"] == "withdrawn"
+        assert not (settings.document_asset_dir / "submissions" / submission_id).exists()
     finally:
         app.dependency_overrides.clear()
         engine.dispose()

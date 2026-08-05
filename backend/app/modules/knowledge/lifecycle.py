@@ -25,6 +25,7 @@ from app.core.exceptions import (
 )
 from app.infrastructure.vector_store import VectorStoreService
 from app.modules.audit.ports import AuditPort, AuditRecord
+from app.modules.knowledge.asset_storage import ControlledDocumentAssetStore
 from app.modules.knowledge.ingestion import (
     FileTypePolicy,
     ParseRequest,
@@ -63,12 +64,14 @@ class DocumentLifecycleService:
         vector_store: VectorStoreService,
         repository: DocumentRepository | None = None,
         parser: LocalDocumentParser | None = None,
+        asset_store: ControlledDocumentAssetStore | None = None,
     ) -> None:
         self.session = session
         self.settings = settings
         self.vector_store = vector_store
         self.repository = repository or DocumentRepository(session)
         self.parser = parser or LocalDocumentParser()
+        self.asset_store = asset_store or ControlledDocumentAssetStore(settings)
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap,
@@ -138,6 +141,7 @@ class DocumentLifecycleService:
                 tombstone_path.unlink(missing_ok=True)
             except OSError:
                 pass
+            self.asset_store.cleanup_document_assets(record.id)
             return record.id
         except DocumentStoreError:
             self.session.rollback()
@@ -262,6 +266,7 @@ class DocumentLifecycleService:
                 tombstone_path.unlink(missing_ok=True)
             except OSError:
                 pass
+            self.asset_store.cleanup_document_assets(old_copy.id)
             self.session.refresh(prepared.record)
             return prepared.record
         except (
@@ -399,6 +404,7 @@ class DocumentLifecycleService:
                 tombstone_path.unlink(missing_ok=True)
             except OSError:
                 pass
+            self.asset_store.cleanup_document_assets(old_copy.id)
             return old_copy.id
         except (DocumentNotFoundError, DocumentBusyError, DocumentStoreError):
             self.session.rollback()
@@ -499,6 +505,7 @@ class DocumentLifecycleService:
             except Exception:
                 pass
         prepared.final_path.unlink(missing_ok=True)
+        self.asset_store.cleanup_document_assets(prepared.record.id)
 
     def index_existing_document(self, record: KnowledgeDocument) -> list[str]:
         """从保留原文件重建向量；调用方负责提交文档状态。"""
