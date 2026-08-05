@@ -793,6 +793,31 @@ def test_stage24_metadata_suggestions_migrate_and_downgrade(tmp_path) -> None:
     command.upgrade(config, "head")
     inspector = inspect(engine)
     assert "metadata_suggestions" in set(inspector.get_table_names())
+    suggestion_fks = inspector.get_foreign_keys("metadata_suggestions")
+    assert any(
+        foreign_key["constrained_columns"] == ["submission_id"]
+        and foreign_key["referred_table"] == "knowledge_submissions"
+        and foreign_key.get("options", {}).get("ondelete") == "CASCADE"
+        for foreign_key in suggestion_fks
+    )
+    assert any(
+        foreign_key["constrained_columns"] == ["document_id"]
+        and foreign_key["referred_table"] == "documents"
+        and foreign_key.get("options", {}).get("ondelete") == "SET NULL"
+        for foreign_key in suggestion_fks
+    )
+    assert any(
+        foreign_key["constrained_columns"] == ["created_by"]
+        and foreign_key["referred_table"] == "users"
+        and foreign_key.get("options", {}).get("ondelete") == "SET NULL"
+        for foreign_key in suggestion_fks
+    )
+    assert any(
+        foreign_key["constrained_columns"] == ["reviewed_by"]
+        and foreign_key["referred_table"] == "users"
+        and foreign_key.get("options", {}).get("ondelete") == "SET NULL"
+        for foreign_key in suggestion_fks
+    )
     assert {"disease_topics", "document_type", "published_year"} <= {
         column["name"] for column in inspector.get_columns("document_versions")
     }

@@ -76,7 +76,6 @@ class KnowledgeReviewService:
         status: str | None,
         offset: int,
         limit: int,
-        actor_user_id: str | None = None,
     ) -> ReviewListResponse:
         statement = select(KnowledgeSubmission)
         count_statement = select(func.count()).select_from(KnowledgeSubmission)
@@ -92,16 +91,12 @@ class KnowledgeReviewService:
             .limit(limit)
         ).all()
         items = [
-                self._to_item(
-                    record,
-                    self.metadata_suggestions.get_or_create_for_submission(
-                        record, actor_user_id=actor_user_id
-                    ),
-                )
-                for record in records
-            ]
-        if items:
-            self.session.commit()
+            self._to_item(
+                record,
+                self.metadata_suggestions.get_existing_for_submission(record.id),
+            )
+            for record in records
+        ]
         return ReviewListResponse(
             items=items,
             total=self.session.scalar(count_statement) or 0,
@@ -109,16 +104,10 @@ class KnowledgeReviewService:
             limit=limit,
         )
 
-    def get_review(
-        self, submission_id: str, *, actor_user_id: str | None = None
-    ) -> ReviewItem:
+    def get_review(self, submission_id: str) -> ReviewItem:
         record = self._get(submission_id)
-        suggestion = self.metadata_suggestions.get_or_create_for_submission(
-            record, actor_user_id=actor_user_id
-        )
-        item = self._to_item(record, suggestion)
-        self.session.commit()
-        return item
+        suggestion = self.metadata_suggestions.get_existing_for_submission(record.id)
+        return self._to_item(record, suggestion)
 
     def reject(
         self,

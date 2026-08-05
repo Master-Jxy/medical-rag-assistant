@@ -60,21 +60,33 @@ def list_reviews(
     status: str | None = Query(default="pending_review", max_length=30),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
-    admin: UserResponse = Depends(require_admin),
+    _admin: UserResponse = Depends(require_admin),
     service: KnowledgeReviewService = Depends(get_review_service),
 ) -> ReviewListResponse:
-    return service.list_reviews(
-        status=status, offset=offset, limit=limit, actor_user_id=admin.id
-    )
+    return service.list_reviews(status=status, offset=offset, limit=limit)
 
 
 @router.get("/{submission_id}", response_model=ReviewItem)
 def get_review(
     submission_id: str,
-    admin: UserResponse = Depends(require_admin),
+    _admin: UserResponse = Depends(require_admin),
     service: KnowledgeReviewService = Depends(get_review_service),
 ) -> ReviewItem:
-    return service.get_review(submission_id, actor_user_id=admin.id)
+    return service.get_review(submission_id)
+
+
+@router.post("/{submission_id}/metadata-suggestion/generate", response_model=MetadataSuggestionItem)
+def generate_metadata_suggestion(
+    submission_id: str,
+    request: Request,
+    admin: UserResponse = Depends(require_admin),
+    service: KnowledgeReviewService = Depends(get_review_service),
+) -> MetadataSuggestionItem:
+    return service.metadata_suggestions.generate(
+        submission_id,
+        actor_user_id=admin.id,
+        request_id=getattr(request.state, "request_id", None),
+    )
 
 
 @router.post("/{submission_id}/metadata-suggestion/accept", response_model=MetadataSuggestionItem)

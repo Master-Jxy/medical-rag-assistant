@@ -20,6 +20,10 @@ export async function rejectMetadataSuggestion(id, payload) {
   return (await http.post(`/admin/reviews/${id}/metadata-suggestion/reject`, payload)).data
 }
 
+export async function generateMetadataSuggestion(id) {
+  return (await http.post(`/admin/reviews/${id}/metadata-suggestion/generate`)).data
+}
+
 export async function getAssets(params = {}) {
   return (await http.get('/admin/knowledge-assets', { params })).data
 }

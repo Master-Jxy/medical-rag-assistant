@@ -2077,8 +2077,8 @@ Metadata suggestions are persisted separately from formal document metadata in
 `metadata_suggestions`. A suggestion belongs to one `knowledge_submission` and
 stores only structured candidate fields, bounded evidence snippets/element
 references, bounded confidence values, parse warnings, source (`disabled`,
-`fake`, or future explicit providers), actors, timestamps, and a revision. It
-does not store full document text. The allowed state transition is
+`fake`, `manual`, or future explicitly allowlisted providers), actors,
+timestamps, and a revision. It does not store full document text. The allowed state transition is
 `suggested -> accepted / edited / rejected`; confirmation uses an atomic
 status+revision update so repeated or stale administrator actions return a
 stable conflict instead of double-writing.
@@ -2087,8 +2087,21 @@ stable conflict instead of double-writing.
 proposal. The default adapter is disabled, and the only implemented active
 adapter is Fake for tests; Stage 24.5 does not read model keys or call real
 models, Embedding, OCR, vision, SMTP, production data, or third-party services.
-Port failures create a bounded failed suggestion and never block manual review
-or publication.
+`metadata_suggestion_mode` accepts only `disabled` or `fake`; unknown modes fail
+at the configuration/factory boundary instead of silently downgrading. Provider
+sources are normalized to the controlled set before persistence. Port failures
+create a bounded failed suggestion and never block manual review or publication.
+
+Review reads are strictly read-only: `GET /admin/reviews` and
+`GET /admin/reviews/{id}` only return existing suggestions and never create,
+flush, commit, or write audit records. Suggestion generation is an explicit
+administrator write action through
+`POST /admin/reviews/{id}/metadata-suggestion/generate`. The generate action is
+idempotent for an existing submission and relies on the database unique
+constraint on `submission_id` for concurrent creation; the service rolls back on
+audit/commit failure and returns the already-created record or a stable
+conflict, not a raw 500. Accept/reject actions operate only on existing
+suggestions and return 404 when no suggestion has been generated.
 
 Formal metadata is written only after an administrator accepts or edits a
 suggestion. Confirmed values are applied by the knowledge application service
@@ -2102,8 +2115,10 @@ the new formal fields alongside existing source/tag/category/governance fields.
 
 The administrator review UI shows suggested value, editable confirmation value,
 evidence, confidence, parse warnings, disabled/fake/failure state, loading,
-error, and conflict feedback inside the existing review card. Routers remain
-thin and call application services; Vue components collect form state and call
-the admin API only. The implementation references Docling/RAGFlow/Unstructured/
-Dify/Haystack boundary ideas around separated parse products, processing
-status, and human-confirmed governance, without copying third-party source.
+error, and conflict feedback inside the existing review card. When no
+suggestion exists, it shows a compact empty state and a generate button that
+calls the explicit POST action. Routers remain thin and call application
+services; Vue components collect form state and call the admin API only. The
+implementation references Docling/RAGFlow/Unstructured/Dify/Haystack boundary
+ideas around separated parse products, processing status, and human-confirmed
+governance, without copying third-party source.

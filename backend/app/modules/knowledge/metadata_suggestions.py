@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
@@ -31,6 +32,7 @@ MAX_EVIDENCE_ITEMS = 8
 MAX_EVIDENCE_SNIPPET_CHARS = 240
 MAX_WARNING_ITEMS = 12
 MAX_WARNING_CHARS = 200
+ALLOWED_SUGGESTION_SOURCES = {"disabled", "fake", "manual"}
 
 
 class MetadataSuggestionConflictError(AppError):
@@ -48,6 +50,15 @@ class MetadataSuggestionNotFoundError(AppError):
             "metadata suggestion was not found",
             code="METADATA_SUGGESTION_NOT_FOUND",
             status_code=404,
+        )
+
+
+class MetadataSuggestionModeError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "unsupported metadata suggestion mode",
+            code="METADATA_SUGGESTION_MODE_INVALID",
+            status_code=500,
         )
 
 
@@ -222,6 +233,28 @@ class MetadataSuggestionService:
         *,
         actor_user_id: str | None,
     ) -> MetadataSuggestion:
+        return self.generate_for_submission(
+            submission,
+            actor_user_id=actor_user_id,
+            request_id=None,
+        )
+
+    def get_existing_for_submission(
+        self, submission_id: str
+    ) -> MetadataSuggestion | None:
+        return self.session.scalar(
+            select(MetadataSuggestion).where(
+                MetadataSuggestion.submission_id == submission_id
+            )
+        )
+
+    def generate_for_submission(
+        self,
+        submission: KnowledgeSubmission,
+        *,
+        actor_user_id: str | None,
+        request_id: str | None,
+    ) -> MetadataSuggestion:
         existing = self.session.scalar(
             select(MetadataSuggestion).where(
                 MetadataSuggestion.submission_id == submission.id
@@ -266,9 +299,47 @@ class MetadataSuggestionService:
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )
-        self.session.add(suggestion)
-        self.session.flush()
-        return suggestion
+        try:
+            self.session.add(suggestion)
+            self.audit.record(
+                AuditRecord(
+                    actor_user_id=actor_user_id,
+                    action="metadata_suggestion.generated",
+                    object_type="knowledge_submission",
+                    object_id=submission.id,
+                    request_id=request_id,
+                    details={"suggestion_source": suggestion.suggestion_source},
+                )
+            )
+            self.session.commit()
+            self.session.refresh(suggestion)
+            return suggestion
+        except IntegrityError:
+            self.session.rollback()
+            existing = self.get_existing_for_submission(submission.id)
+            if existing is None:
+                raise MetadataSuggestionConflictError()
+            return existing
+        except Exception:
+            self.session.rollback()
+            raise
+
+    def generate(
+        self,
+        submission_id: str,
+        *,
+        actor_user_id: str,
+        request_id: str | None,
+    ) -> MetadataSuggestionItem:
+        submission = self.session.get(KnowledgeSubmission, submission_id)
+        if submission is None:
+            raise MetadataSuggestionNotFoundError()
+        suggestion = self.generate_for_submission(
+            submission,
+            actor_user_id=actor_user_id,
+            request_id=request_id,
+        )
+        return self.to_item(suggestion)
 
     def accept(
         self,
@@ -278,33 +349,35 @@ class MetadataSuggestionService:
         actor_user_id: str,
         request_id: str | None,
     ) -> MetadataSuggestionItem:
-        suggestion = self._get_or_create_by_submission(
-            submission_id, actor_user_id=actor_user_id
-        )
-        suggested_fields = _sanitize_fields(suggestion.suggested_fields)
-        confirmed = payload.fields or suggested_fields
-        status = "accepted" if confirmed == suggested_fields else "edited"
-        self._transition(
-            suggestion,
-            status=status,
-            confirmed_fields=confirmed.model_dump(mode="json"),
-            actor_user_id=actor_user_id,
-            expected_revision=payload.revision,
-        )
-        self._apply_if_published(suggestion)
-        self.audit.record(
-            AuditRecord(
+        suggestion = self._get_existing_by_submission(submission_id)
+        try:
+            suggested_fields = _sanitize_fields(suggestion.suggested_fields)
+            confirmed = payload.fields or suggested_fields
+            status = "accepted" if confirmed == suggested_fields else "edited"
+            self._transition(
+                suggestion,
+                status=status,
+                confirmed_fields=confirmed.model_dump(mode="json"),
                 actor_user_id=actor_user_id,
-                action=f"metadata_suggestion.{status}",
-                object_type="knowledge_submission",
-                object_id=submission_id,
-                request_id=request_id,
-                details={"field_count": len(_non_empty_fields(confirmed))},
+                expected_revision=payload.revision,
             )
-        )
-        self.session.commit()
-        self.session.refresh(suggestion)
-        return self.to_item(suggestion)
+            self._apply_if_published(suggestion)
+            self.audit.record(
+                AuditRecord(
+                    actor_user_id=actor_user_id,
+                    action=f"metadata_suggestion.{status}",
+                    object_type="knowledge_submission",
+                    object_id=submission_id,
+                    request_id=request_id,
+                    details={"field_count": len(_non_empty_fields(confirmed))},
+                )
+            )
+            self.session.commit()
+            self.session.refresh(suggestion)
+            return self.to_item(suggestion)
+        except Exception:
+            self.session.rollback()
+            raise
 
     def reject(
         self,
@@ -314,29 +387,31 @@ class MetadataSuggestionService:
         actor_user_id: str,
         request_id: str | None,
     ) -> MetadataSuggestionItem:
-        suggestion = self._get_or_create_by_submission(
-            submission_id, actor_user_id=actor_user_id
-        )
-        self._transition(
-            suggestion,
-            status="rejected",
-            confirmed_fields=None,
-            actor_user_id=actor_user_id,
-            expected_revision=payload.revision,
-        )
-        self.audit.record(
-            AuditRecord(
+        suggestion = self._get_existing_by_submission(submission_id)
+        try:
+            self._transition(
+                suggestion,
+                status="rejected",
+                confirmed_fields=None,
                 actor_user_id=actor_user_id,
-                action="metadata_suggestion.rejected",
-                object_type="knowledge_submission",
-                object_id=submission_id,
-                request_id=request_id,
-                details={"reason": (payload.reason or "").strip()[:120]},
+                expected_revision=payload.revision,
             )
-        )
-        self.session.commit()
-        self.session.refresh(suggestion)
-        return self.to_item(suggestion)
+            self.audit.record(
+                AuditRecord(
+                    actor_user_id=actor_user_id,
+                    action="metadata_suggestion.rejected",
+                    object_type="knowledge_submission",
+                    object_id=submission_id,
+                    request_id=request_id,
+                    details={"reason": (payload.reason or "").strip()[:120]},
+                )
+            )
+            self.session.commit()
+            self.session.refresh(suggestion)
+            return self.to_item(suggestion)
+        except Exception:
+            self.session.rollback()
+            raise
 
     def apply_confirmed_to_version(
         self, submission: KnowledgeSubmission, version: DocumentVersion
@@ -352,15 +427,11 @@ class MetadataSuggestionService:
         suggestion.document_id = version.document_id
         _apply_fields_to_version(_sanitize_fields(suggestion.confirmed_fields), version)
 
-    def _get_or_create_by_submission(
-        self, submission_id: str, *, actor_user_id: str
-    ) -> MetadataSuggestion:
-        submission = self.session.get(KnowledgeSubmission, submission_id)
-        if submission is None:
+    def _get_existing_by_submission(self, submission_id: str) -> MetadataSuggestion:
+        suggestion = self.get_existing_for_submission(submission_id)
+        if suggestion is None:
             raise MetadataSuggestionNotFoundError()
-        return self.get_or_create_for_submission(
-            submission, actor_user_id=actor_user_id
-        )
+        return suggestion
 
     def _transition(
         self,
@@ -384,7 +455,7 @@ class MetadataSuggestionService:
                 reviewed_by=actor_user_id,
                 reviewed_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
-                revision=suggestion.revision + 1,
+                revision=expected_revision + 1,
             )
             .execution_options(synchronize_session=False)
         )
@@ -449,7 +520,9 @@ class MetadataSuggestionService:
 def create_metadata_suggestion_port(mode: str) -> MetadataSuggestionPort:
     if mode == "fake":
         return FakeMetadataSuggestionPort()
-    return DisabledMetadataSuggestionPort()
+    if mode == "disabled":
+        return DisabledMetadataSuggestionPort()
+    raise MetadataSuggestionModeError()
 
 
 def _sanitize_fields(fields: dict | None) -> MetadataFields:
@@ -497,7 +570,9 @@ def _sanitize_warnings(values: list[str] | None) -> list[str]:
 
 def _safe_source(value: str) -> str:
     cleaned = (value or "disabled").strip().lower()
-    return cleaned[:30] or "disabled"
+    if cleaned not in ALLOWED_SUGGESTION_SOURCES:
+        return "disabled"
+    return cleaned
 
 
 def _safe_failure(value: str | None) -> str | None:

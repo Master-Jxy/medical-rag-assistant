@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const platformApi = vi.hoisted(() => ({
   acceptMetadataSuggestion: vi.fn(),
   approveReview: vi.fn(),
+  generateMetadataSuggestion: vi.fn(),
   getReviews: vi.fn(),
   rejectMetadataSuggestion: vi.fn(),
   rejectReview: vi.fn(),
@@ -70,6 +71,7 @@ beforeEach(() => {
     status: 'rejected',
     revision: 2,
   })
+  platformApi.generateMetadataSuggestion.mockResolvedValue(reviewItem.metadata_suggestion)
 })
 
 describe('AdminReviewsView metadata governance', () => {
@@ -79,7 +81,7 @@ describe('AdminReviewsView metadata governance', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('元数据建议')
+    expect(wrapper.text()).toContain('Metadata suggestion')
     expect(wrapper.text()).toContain('heart failure')
 
     const inputs = wrapper.findAll('.metadata-grid input')
@@ -124,5 +126,30 @@ describe('AdminReviewsView metadata governance', () => {
       revision: 1,
       reason: 'admin rejected metadata suggestion',
     })
+  })
+
+  it('shows an empty state and generates a suggestion explicitly', async () => {
+    platformApi.getReviews.mockResolvedValueOnce({
+      items: [{ ...reviewItem, metadata_suggestion: null }],
+      total: 1,
+    }).mockResolvedValueOnce({ items: [reviewItem], total: 1 })
+    let releaseGenerate
+    platformApi.generateMetadataSuggestion.mockReturnValueOnce(new Promise((resolve) => {
+      releaseGenerate = () => resolve(reviewItem.metadata_suggestion)
+    }))
+    const wrapper = mount(AdminReviewsView, {
+      global: { stubs: { teleport: true } },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('empty')
+    const button = wrapper.get('.metadata-empty .primary-action')
+    await button.trigger('click')
+    await button.trigger('click')
+    expect(platformApi.generateMetadataSuggestion).toHaveBeenCalledTimes(1)
+
+    releaseGenerate()
+    await flushPromises()
+    expect(platformApi.getReviews).toHaveBeenCalledTimes(2)
   })
 })
