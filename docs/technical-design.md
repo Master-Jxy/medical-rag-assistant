@@ -1955,6 +1955,29 @@ MIME、空正文、NUL 和非 UTF-8；text/plain 会被转成受控 HTML 快照�
 解决。24.2b 参考 RAGFlow 的任务状态可见性和 Unstructured HTML partition 思想，没有复制
 源码，也没有引入真实网络测试或新重型依赖。
 
+24.3 在既有 `DocumentParserPort`/`ParserRegistry` 边界内增加可选 Docling 复杂 PDF
+候选。`app.infrastructure.docling_pdf_parser.DoclingPdfStructuredParser` 负责惰性导入和
+归一化 Docling 输出，第三方对象不离开 infrastructure；业务层只接收 `ParsedDocument`、
+`ParsedElement`、`ParsedAsset` 和 `ParseQuality`。运行时通过
+`DOCLING_PDF_CANDIDATE_ENABLED=false` 默认关闭，候选还有页数、文件大小、解析耗时、
+页序、页数一致性、空输出和质量状态闸门；Docling 不可用、超时、异常、输出为空或质量
+不达标时确定性回退 PyPDF，并在解析质量 warning 中留下管理员可见原因。未安装 Docling 的
+默认后端启动和测试不得失败，本阶段也没有新增 required dependency、没有在线下载模型。
+
+Docling 候选输出只保留标准化元素：标题、段落、列表、表格和图片资产均带 page_no、
+order 与可空归一化 bbox；表格保留纯文本、受控 Markdown/HTML 表示，前端不得渲染未消毒
+`v-html`；图片只作为文档资产与来源定位，不做 OCR 或视觉理解。发布 lifecycle 优先消费
+标准化 elements，表格按行切分并重复表头，避免普通字符切分随机打散行列，同时继续保留
+document_id、file_name、source/hash、visibility、document_type 和 knowledge_base_version
+元数据，PDF/TXT 引用页码、审核发布、撤回、替换、删除和 Chroma 生命周期保持兼容。
+
+24.3 复用并升级阶段12的 `parser_experiments` 闸门，新增固定、无隐私的复杂 PDF manifest
+和比较指标：页数一致性、非空元素率、乱码率、顺序异常、表格完整率、provenance 完整率与
+硬失败。晋级规则要求候选相对 PyPDF 明确提升且无硬失败；本阶段只使用 Fake candidate 和
+仓库固定 fixture 验证契约/离线闸门，没有真实 Docling 运行结果，因此不得宣称候选已晋级。
+参考 Docling 的 DocumentConverter/Document/Provenance/Table 导出思想和 RAGFlow parser
+fallback/可观测状态思想，没有复制第三方源码。
+
 AI 元数据输出是 suggestion，不是正式文档元数据。只有管理员接受或编辑后，知识应用
 服务才更新 `document_versions` 并写审计。精确文件哈希继续硬拒绝；标准化正文哈希与
 近重复只提示合并/建新版本，不自动删除。OCR、视觉、真实 Embedding 和生产导入均通过

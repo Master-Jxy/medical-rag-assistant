@@ -5,7 +5,9 @@
 
 ## 1. 当前真实状态
 
-Stage 24.2 已完成本地开发与无模型验证，未部署、未调用真实模型、Embedding 或生产网络。
+Stage 24.3 已完成本地开发与无模型验证，未部署、未调用真实模型、Embedding、OCR/视觉、
+SMTP、生产网络或真实 Docling。生产继续使用 PyPDF PDF 解析基线，Docling 复杂 PDF 候选
+默认关闭且尚未晋级。
 24.2a 只实现 DOCX、Markdown、HTML 本地文件支持并保留 PDF/TXT：在
 `knowledge` 模块内新增统一 `FileTypePolicy`，普通资料提交和管理员 lifecycle 共用同一套
 后缀与内容校验；PDF 校验魔数，DOCX 校验 ZIP/OOXML 必要条目并拒绝宏和外部关系，
@@ -49,10 +51,28 @@ NUL 和非 UTF-8；text/plain 会转成受控 HTML 快照。由于当前 httpx �
 original_url、final_url、fetched_at、response_mime、content_sha256。参考 RAGFlow 任务状态
 可见性和 Unstructured HTML partition 思想，没有复制源码，没有引入真实网络测试或新重型依赖。
 
+24.3 复用并升级阶段12已有 `parser_experiments` 闸门，没有另造第二套实验框架。新增可选
+`DoclingPdfStructuredParser` infrastructure adapter 和 `PdfCandidateFallbackParser`：第三方
+Docling 对象只停留在 adapter 内，业务层只接收 `ParsedDocument`/`ParsedElement`/
+`ParsedAsset`/`ParseQuality`。`DOCLING_PDF_CANDIDATE_ENABLED=false` 默认关闭；启用后仍受
+页数、文件大小、解析耗时、空输出、页序、页数一致性和质量状态检查约束。Docling 不可用、
+超时、异常、输出为空或质量不达标时确定性回退 PyPDF，并把“Docling候选已回退PyPDF”作为
+管理员可见 warning。未安装 Docling 时默认后端启动和测试不失败，也不会在线下载模型。
+
+24.3 候选输出标题、段落、列表、表格和图片资产的 page_no、order 与可空标准化 bbox；
+表格保留安全 Markdown/HTML 表示和纯文本回退，发布切片优先消费标准化 elements，表格按行
+切分并重复表头，避免随机打散行列。图片只作为文档资产与来源定位，不做 OCR 或视觉理解。
+固定复杂 PDF manifest 为无隐私合成用例，覆盖双栏、跨页表格、页码顺序、图片资产、空页和
+损坏候选；离线比较指标包括页数一致性、非空元素率、乱码率、顺序异常、表格完整率和
+provenance 完整率。当前只完成契约/fixture/Fake 候选闸门，尚无真实 Docling 评估结果，
+不能宣称晋级。
+
 24.1 借鉴边界：Docling 的统一转换出口思想、Unstructured 的统一 Element 模型、Haystack
 的 Converter/Splitter 组件分层；没有复制第三方源码，也没有把第三方对象传入业务服务。
 24.2a 继续借鉴 Unstructured file partition 与 Haystack converter/splitter 的组件边界；
 没有复制第三方源码，也没有让第三方对象泄漏到应用服务。
+24.3 参考 Docling 的 DocumentConverter/Document/Provenance/Table 导出思想，以及 RAGFlow
+parser fallback 与可观测状态思想；没有复制第三方源码，没有新增 required dependency。
 
 Stage 24.0 稳定性收尾已经完成本地无模型复核，未修改业务代码，未实现 24.1 及之后的
 解析能力。复核范围只覆盖 RAG/Agent 跨页面流式继续、后台未读与重新打开已读、陈旧
@@ -98,20 +118,11 @@ Stage 22 的 22.1～22.8 已完成并发布，功能提交为 `5c02056`，随后
 ## 2. 本地验证结果
 
 ```text
-backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_document_parser_contract.py backend\tests\test_knowledge_submissions_api.py backend\tests\test_admin_reviews_api.py backend\tests\test_admin_document_api.py backend\tests\test_document_service.py
-28 passed, 2 warnings
-
-backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_document_parser_contract.py backend\tests\test_knowledge_trace_api.py
-12 passed, 2 warnings
-
-backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_web_snapshot_fetcher.py backend\tests\test_knowledge_submissions_api.py backend\tests\test_admin_reviews_api.py backend\tests\test_migrations.py
-34 passed, 117 warnings
+backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_parser_experiments.py backend\tests\test_document_parser_contract.py backend\tests\test_document_service.py backend\tests\test_admin_reviews_api.py
+38 passed, 2 warnings
 
 backend\.venv\Scripts\python.exe -m pytest -q backend/tests
-505 passed, 120 warnings
-
-D:\Nodejs\npm.cmd --prefix frontend test -- KnowledgeView.test.js AdminAssetsView.test.js
-2 files / 5 tests passed
+512 passed, 120 warnings
 
 D:\Nodejs\npm.cmd --prefix frontend test
 18 files / 74 tests passed
@@ -126,9 +137,6 @@ assets: index-DjFGRvws.css / index-C7p2zpu-.js
 backend\.venv\Scripts\python.exe -m alembic -c backend\alembic.ini heads
 0027_web_snapshot_submissions (head)
 
-backend\.venv\Scripts\python.exe backend\scripts\import_documents.py --help
-passed; help lists supported PDF/TXT/DOCX/Markdown/HTML files
-
 git diff --check
 passed
 
@@ -141,6 +149,9 @@ Stage 24.0 未做生产数据写入或线上生成验证。当前仓库没有安
 本轮跳过；禁止猜测连接信息。未调用 Qwen、Embedding、Reranker、OCR、视觉或 SMTP。
 Stage 24.2 没有执行生产数据操作、生产健康检查、真实网页抓取或任何外网/内网边界验证；
 测试 fixture 均为本地生成的非医学资料，网络与 DNS 全部使用 Fake/stub。
+Stage 24.3 没有执行生产数据操作、生产健康检查、真实 Docling、真实网络、OCR、视觉、
+Embedding、Qwen、SMTP 或任何生产导入；复杂 PDF 候选只用 Fake converter 与固定 manifest
+验证，不能作为生产晋级证据。
 
 浏览器无模型/无持久化 stub 验收通过：桌面和 390px 移动端均完成 RAG/Agent 并发、独立
 停止、后台未读、重新打开清除未读、运行中删除禁用、四种 Agent 模式、固定输入器和溢出
@@ -177,7 +188,8 @@ Stage 24.2 没有执行生产数据操作、生产健康检查、真实网页抓
 
 ## 4. 工作区与安全边界
 
-- 当前分支 `main` 已推送本次修复；工作区只剩 `backend/app/modules/auth/service.py` 的既有用户修改，禁止修改、格式化、暂存、提交或回退。
+- 当前分支 `main`；Stage 24.3 只创建本地提交，不推送、不部署。工作区中的
+  `backend/app/modules/auth/service.py` 是既有用户修改，禁止修改、格式化、暂存、提交或回退。
 - 受保护文件当前 SHA-256 为 `9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。
 - 不读取或提交 `.env`、SMTP 授权码、API Key、上传文件、Chroma 数据、日志或数据库备份。
 - 生产服务器工作区已同步指定提交；`frontend/dist` 是构建输入，不作为源代码提交。
@@ -200,19 +212,20 @@ Stage 23 已完成实现、无费用验证和生产发布：
 
 ## 6. 新任务阅读范围
 
-新开发窗口先完整阅读 `AGENTS.md` 和本文件。若执行 24.3，只读
-`docs/stage24-document-intelligence-and-stability-design.md` 的 1、2、3、4、5、9、10、11 节，
-再定向读取 `knowledge` 解析契约、PDF parser、复杂 PDF 候选、审核发布生命周期和相关测试。
-不要读取历史 RAG 评估 JSON，不调用真实模型，不读取真实密钥，不修改受保护 auth Service。
+新开发窗口先完整阅读 `AGENTS.md` 和本文件。若执行 24.4，只读
+`docs/stage24-document-intelligence-and-stability-design.md` 的 OCR/视觉 Port、图片资产生命周期、
+资源/费用闸门、验收与停止条件相关章节，再定向读取 `knowledge` 解析契约、Docling 候选
+边界、文档资产/发布 lifecycle、parser_experiments 和相关测试。不要读取历史 RAG 评估 JSON，
+不调用真实模型/OCR/视觉/Embedding，不读取真实密钥，不修改受保护 auth Service。
 
 ## 7. 唯一下一任务
 
-**执行 Stage 24.3 复杂 PDF 候选。**
+**执行 Stage 24.4 OCR/视觉 Port 与图片生命周期。**
 
-在 24.1/24.2 解析契约基础上，实现复杂 PDF 的 Docling 候选、表格/页码/图片资产输出与
-固定集比较；不满足严格门槛时继续使用 PyPDF。不得启用 OCR/视觉真实调用，不触发真实
-Embedding，不导入生产资料；任何真实模型、生产导入或线上验证都必须先做无副作用预检并
-取得当次确认。
+在 24.1～24.3 解析契约和图片资产定位基础上，只建立 OCR/视觉 的 Port、Fake adapter、
+资源/费用限制、文档图片生命周期和离线评估闸门；默认关闭，不接真实 OCR/视觉模型，不触发
+真实 Embedding，不导入生产资料。任何真实模型、生产导入、线上验证或付费调用都必须先做
+无副作用预检并取得当次确认。
 
 工作区中的 `backend/app/modules/auth/service.py` 仍是受保护的用户改动，哈希应保持为
 `9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。禁止修改、

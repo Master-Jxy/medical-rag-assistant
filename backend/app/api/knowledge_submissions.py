@@ -5,10 +5,10 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
 from app.core.config import Settings, get_settings
+from app.infrastructure.knowledge_parser_factory import create_knowledge_document_parser
 from app.infrastructure.web_snapshot_fetcher import HttpxWebSnapshotFetchAdapter
 from app.modules.auth.dependencies import get_current_user
 from app.modules.auth.schemas import UserResponse
-from app.modules.knowledge.parser import LocalDocumentParser
 from app.modules.knowledge.schemas import (
     MySubmissionListResponse,
     SubmissionCreateResponse,
@@ -32,7 +32,7 @@ def get_submission_service(
     return KnowledgeSubmissionService(
         session,
         settings,
-        LocalDocumentParser(),
+        create_knowledge_document_parser(settings),
         protection,
         HttpxWebSnapshotFetchAdapter(settings),
     )

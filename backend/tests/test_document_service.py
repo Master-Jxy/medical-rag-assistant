@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from fastapi import UploadFile
+from langchain_core.documents import Document
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,7 @@ from app.core.exceptions import (
 from app.db.base import Base
 from app.db.session import build_engine
 from app.models import KnowledgeDocument, User
+from app.modules.knowledge.lifecycle import DocumentLifecycleService
 from app.services.document_service import DocumentService
 
 
@@ -99,6 +101,33 @@ def build_service(tmp_path, *, max_size: int = 1024 * 1024):
 
 def make_upload(name: str, content: bytes) -> UploadFile:
     return UploadFile(filename=name, file=BytesIO(content))
+
+
+def test_table_documents_are_split_by_rows_with_repeated_header(tmp_path) -> None:
+    settings = Settings(
+        _env_file=None,
+        upload_dir=tmp_path / "uploads",
+        document_registry_path=tmp_path / "documents.json",
+        chunk_size=24,
+        chunk_overlap=0,
+    )
+    service = DocumentLifecycleService(None, settings, FakeVectorStore())
+    table = Document(
+        page_content="Name | Value\nalpha | 1111111111\nbeta | 2222222222",
+        metadata={"element_kind": "table", "page": 2},
+    )
+
+    chunks = service._split_documents(
+        [table],
+        document_id="doc-table",
+        file_name="complex.pdf",
+        file_hash="c" * 64,
+    )
+
+    assert len(chunks) == 2
+    assert all(chunk.page_content.startswith("Name | Value") for chunk in chunks)
+    assert all(chunk.metadata["page"] == 2 for chunk in chunks)
+    assert all(chunk.metadata["document_type"] == "pdf" for chunk in chunks)
 
 
 def test_txt_upload_is_saved_split_and_registered_in_mysql(tmp_path) -> None:

@@ -62,12 +62,13 @@ class DocumentLifecycleService:
         settings: Settings,
         vector_store: VectorStoreService,
         repository: DocumentRepository | None = None,
+        parser: LocalDocumentParser | None = None,
     ) -> None:
         self.session = session
         self.settings = settings
         self.vector_store = vector_store
         self.repository = repository or DocumentRepository(session)
-        self.parser = LocalDocumentParser()
+        self.parser = parser or LocalDocumentParser()
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap,
@@ -758,11 +759,38 @@ class DocumentLifecycleService:
                     "knowledge_base_version": self.settings.knowledge_base_version,
                 }
             )
-        chunks = [
+        chunks = []
+        regular_documents = []
+        for document in documents:
+            if document.metadata.get("element_kind") == "table":
+                chunks.extend(self._split_table_document(document))
+            else:
+                regular_documents.append(document)
+        chunks.extend(
             chunk
-            for chunk in self.splitter.split_documents(documents)
+            for chunk in self.splitter.split_documents(regular_documents)
             if chunk.page_content.strip()
-        ]
+        )
         if not chunks:
             raise DocumentParseError()
+        return chunks
+
+    def _split_table_document(self, document: Document) -> list[Document]:
+        rows = [row.strip() for row in document.page_content.splitlines() if row.strip()]
+        if not rows:
+            return []
+        if len(document.page_content) <= self.settings.chunk_size:
+            return [document]
+        header = rows[0]
+        chunks: list[Document] = []
+        current = header
+        for row in rows[1:]:
+            candidate = f"{current}\n{row}"
+            if len(candidate) > self.settings.chunk_size and current != header:
+                chunks.append(Document(page_content=current, metadata=dict(document.metadata)))
+                current = f"{header}\n{row}"
+            else:
+                current = candidate
+        if current.strip():
+            chunks.append(Document(page_content=current, metadata=dict(document.metadata)))
         return chunks

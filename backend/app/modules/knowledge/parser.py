@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from html import escape
 from pathlib import Path
+from threading import BoundedSemaphore
+from time import monotonic
 from typing import Protocol
 
 from bs4 import BeautifulSoup
@@ -47,6 +49,79 @@ class ParsedPreview:
 
 class ParserPort(Protocol):
     def parse(self, path: Path, suffix: str) -> ParsedPreview: ...
+
+
+class PdfCandidateFallbackParser:
+    name = "pdf_candidate_fallback"
+    _candidate_semaphore = BoundedSemaphore(1)
+
+    def __init__(
+        self,
+        baseline: DocumentParserPort,
+        candidate: DocumentParserPort | None,
+        *,
+        enabled: bool = False,
+        max_pages: int = 20,
+        max_file_size_bytes: int = 10 * 1024 * 1024,
+        timeout_seconds: float = 20.0,
+    ) -> None:
+        self.baseline = baseline
+        self.candidate = candidate
+        self.enabled = enabled
+        self.max_pages = max_pages
+        self.max_file_size_bytes = max_file_size_bytes
+        self.timeout_seconds = timeout_seconds
+
+    def parse(self, request: ParseRequest) -> ParsedDocument:
+        if request.normalized_suffix != ".pdf" or not self.enabled:
+            return self.baseline.parse(request)
+        baseline = self.baseline.parse(request)
+        warning_prefix = "Docling候选已回退PyPDF："
+        try:
+            self._check_resource_bounds(request.path)
+            if self.candidate is None:
+                raise DocumentParseError("候选解析器不可用")
+            if not self._candidate_semaphore.acquire(blocking=False):
+                raise DocumentParseError("候选解析并发限制已满")
+            started = monotonic()
+            try:
+                candidate = self.candidate.parse(request)
+                if monotonic() - started > self.timeout_seconds:
+                    raise DocumentParseError("候选解析超时")
+            finally:
+                self._candidate_semaphore.release()
+            self._validate_candidate(candidate, baseline)
+            return candidate
+        except Exception as exc:
+            reason = str(exc).strip() or type(exc).__name__
+            return _with_warning(baseline, f"{warning_prefix}{reason}")
+
+    def _check_resource_bounds(self, path: Path) -> None:
+        if path.stat().st_size > self.max_file_size_bytes:
+            raise DocumentParseError("文件超过候选解析大小限制")
+        try:
+            page_count = len(PdfReader(str(path)).pages)
+        except Exception as exc:
+            raise DocumentParseError("无法读取PDF页数") from exc
+        if page_count > self.max_pages:
+            raise DocumentParseError("页数超过候选解析限制")
+
+    @staticmethod
+    def _validate_candidate(candidate: ParsedDocument, baseline: ParsedDocument) -> None:
+        if not candidate.elements or not candidate.text.strip():
+            raise DocumentParseError("候选解析输出为空")
+        pages = [
+            element.page_no
+            for element in candidate.elements
+            if element.page_no is not None
+        ]
+        if pages and pages != sorted(pages):
+            raise DocumentParseError("候选解析页序异常")
+        if candidate.page_count and baseline.page_count and candidate.page_count != baseline.page_count:
+            raise DocumentParseError("候选解析页数与基线不一致")
+        status = candidate.quality.status
+        if status == "failed":
+            raise DocumentParseError("候选解析质量未通过")
 
 
 class LocalStructuredDocumentParser:
@@ -416,14 +491,46 @@ def _consume_markdown_table(tokens, start: int) -> tuple[str, str, int]:
     return text, f"<table>{html_rows}</table>" if rows else "", index
 
 
-def build_default_parser_registry() -> ParserRegistry:
+def _with_warning(document: ParsedDocument, warning: str) -> ParsedDocument:
+    warnings = tuple(dict.fromkeys((*document.warnings, warning)))
+    return ParsedDocument(
+        document_metadata=document.document_metadata,
+        elements=document.elements,
+        assets=document.assets,
+        warnings=warnings,
+        quality=ParseQuality(
+            status="warning",
+            counts=document.quality.counts,
+            page_results=document.quality.page_results,
+            warnings=warnings,
+            parser_name=document.quality.parser_name,
+        ),
+    )
+
+
+def build_default_parser_registry(
+    *,
+    pdf_candidate: DocumentParserPort | None = None,
+    pdf_candidate_enabled: bool = False,
+    pdf_candidate_max_pages: int = 20,
+    pdf_candidate_max_file_size_bytes: int = 10 * 1024 * 1024,
+    pdf_candidate_timeout_seconds: float = 20.0,
+) -> ParserRegistry:
     local_pdf_txt = LocalStructuredDocumentParser()
     markdown = MarkdownStructuredDocumentParser()
+    pdf = PdfCandidateFallbackParser(
+        local_pdf_txt,
+        pdf_candidate,
+        enabled=pdf_candidate_enabled,
+        max_pages=pdf_candidate_max_pages,
+        max_file_size_bytes=pdf_candidate_max_file_size_bytes,
+        timeout_seconds=pdf_candidate_timeout_seconds,
+    )
     return ParserRegistry(
         [
             ParserRegistration(
                 name=LocalStructuredDocumentParser.name,
-                parser=local_pdf_txt,
+                parser=pdf,
                 suffixes=(".pdf", ".txt"),
                 mime_types=("application/pdf", "text/plain"),
             ),
@@ -450,8 +557,23 @@ def build_default_parser_registry() -> ParserRegistry:
 
 
 class LocalDocumentParser:
-    def __init__(self, registry: ParserRegistry | None = None) -> None:
-        self.registry = registry or build_default_parser_registry()
+    def __init__(
+        self,
+        registry: ParserRegistry | None = None,
+        *,
+        pdf_candidate: DocumentParserPort | None = None,
+        pdf_candidate_enabled: bool = False,
+        pdf_candidate_max_pages: int = 20,
+        pdf_candidate_max_file_size_bytes: int = 10 * 1024 * 1024,
+        pdf_candidate_timeout_seconds: float = 20.0,
+    ) -> None:
+        self.registry = registry or build_default_parser_registry(
+            pdf_candidate=pdf_candidate,
+            pdf_candidate_enabled=pdf_candidate_enabled,
+            pdf_candidate_max_pages=pdf_candidate_max_pages,
+            pdf_candidate_max_file_size_bytes=pdf_candidate_max_file_size_bytes,
+            pdf_candidate_timeout_seconds=pdf_candidate_timeout_seconds,
+        )
 
     def parse_document(self, request: ParseRequest) -> ParsedDocument:
         return self.registry.parse(request)

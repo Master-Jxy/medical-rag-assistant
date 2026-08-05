@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_db_session
+from app.infrastructure.knowledge_parser_factory import create_knowledge_document_parser
 from app.infrastructure.vector_store import VectorStoreService
 from app.modules.audit.repository import SqlAlchemyAuditRecorder
 from app.modules.auth.dependencies import require_admin
@@ -42,7 +43,12 @@ def get_asset_service(
 ) -> KnowledgeAssetService:
     return KnowledgeAssetService(
         session,
-        DocumentLifecycleService(session, settings, vector_store),
+        DocumentLifecycleService(
+            session,
+            settings,
+            vector_store,
+            parser=create_knowledge_document_parser(settings),
+        ),
         SqlAlchemyAuditRecorder(session),
         SqlAlchemyJobService(session),
     )

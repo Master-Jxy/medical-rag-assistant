@@ -13,6 +13,7 @@ from app.core.exceptions import (
     DocumentStoreError,
 )
 from app.db.session import get_db_session
+from app.infrastructure.knowledge_parser_factory import create_knowledge_document_parser
 from app.infrastructure.vector_store import VectorStoreService
 from app.modules.knowledge.lifecycle import DocumentLifecycleService
 from app.modules.knowledge.models import KnowledgeDocument
@@ -62,6 +63,7 @@ class DocumentService:
             self.settings,
             self.vector_store,
             repository=self.repository,
+            parser=create_knowledge_document_parser(self.settings),
         )
 
     async def process_upload(

@@ -83,6 +83,12 @@ class Settings(BaseSettings):
     document_registry_path: Path = BACKEND_DIR / "data" / "documents.json"
     knowledge_base_version: str = "live_v1"
     max_upload_size_bytes: int = 10 * 1024 * 1024
+    docling_pdf_candidate_enabled: bool = False
+    docling_pdf_max_pages: int = Field(default=20, ge=1, le=50)
+    docling_pdf_max_file_size_bytes: int = Field(
+        default=10 * 1024 * 1024, ge=1, le=10 * 1024 * 1024
+    )
+    docling_pdf_timeout_seconds: float = Field(default=20.0, gt=0, le=60)
     web_snapshot_fetch_enabled: bool = False
     web_snapshot_allowed_hosts: list[str] = Field(default_factory=list)
     web_snapshot_max_bytes: int = Field(default=3 * 1024 * 1024, gt=0, le=5 * 1024 * 1024)

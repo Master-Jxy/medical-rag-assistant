@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_db_session
+from app.infrastructure.knowledge_parser_factory import create_knowledge_document_parser
 from app.infrastructure.vector_store import VectorStoreService
 from app.modules.audit.ports import AuditPort, AuditRecord
 from app.modules.audit.repository import SqlAlchemyAuditRecorder
@@ -41,6 +42,7 @@ class AdminDocumentService:
             self.settings,
             self.vector_store,
             repository=self.repository,
+            parser=create_knowledge_document_parser(self.settings),
         )
 
     async def create_system_document(

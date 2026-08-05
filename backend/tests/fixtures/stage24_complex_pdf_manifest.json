@@ -1,0 +1,51 @@
+{
+  "schema_version": "stage24_complex_pdf_fixture_v1",
+  "description": "Synthetic, non-medical fixed cases for complex PDF parser candidate gating.",
+  "cases": [
+    {
+      "case_id": "two_column_order",
+      "path": "synthetic/two-column.pdf",
+      "expected_pages": 2,
+      "expected_min_elements": 4,
+      "expected_min_tables": 0,
+      "expected_min_assets": 0,
+      "expected_required_text": ["left column", "right column"]
+    },
+    {
+      "case_id": "cross_page_table",
+      "path": "synthetic/cross-page-table.pdf",
+      "expected_pages": 2,
+      "expected_min_elements": 3,
+      "expected_min_tables": 1,
+      "expected_min_assets": 0,
+      "expected_required_text": ["Header A", "continued row"]
+    },
+    {
+      "case_id": "image_asset",
+      "path": "synthetic/image-asset.pdf",
+      "expected_pages": 1,
+      "expected_min_elements": 1,
+      "expected_min_tables": 0,
+      "expected_min_assets": 1,
+      "expected_required_text": ["figure caption"]
+    },
+    {
+      "case_id": "blank_page_candidate",
+      "path": "synthetic/blank-page.pdf",
+      "expected_pages": 1,
+      "expected_min_elements": 1,
+      "expected_min_tables": 0,
+      "expected_min_assets": 0,
+      "expected_required_text": ["non blank fallback"]
+    },
+    {
+      "case_id": "damaged_candidate",
+      "path": "synthetic/damaged.pdf",
+      "expected_pages": 1,
+      "expected_min_elements": 1,
+      "expected_min_tables": 0,
+      "expected_min_assets": 0,
+      "expected_required_text": ["recoverable fallback"]
+    }
+  ]
+}
