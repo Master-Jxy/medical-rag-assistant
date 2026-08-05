@@ -2041,10 +2041,19 @@ Asset cleanup IDs are constrained to `[A-Za-z0-9][A-Za-z0-9_-]{0,127}`; `.`,
 `..`, blank, whitespace-wrapped, control-character, path-separator, and
 drive-like values fail before any recursive cleanup. Recursive cleanup still
 performs resolved-path boundary checks under `document_asset_dir`.
-Pre-transaction cleanup failures surface as `DocumentStoreError`; publication
-isolation cleanup happens after the database commit and records
-`knowledge_submission.cleanup_pending` when file or sidecar cleanup cannot
-complete.
+Asset cleanup is split by transaction phase instead of using one immediate
+delete API everywhere. `stage_*_assets_for_delete` atomically renames the
+controlled asset directory to a tombstone under `.trash`; pre-commit failures
+call `restore_staged_deletion` so file/vector/database recovery can put the
+asset directory back. After the database state is committed,
+`finalize_staged_deletion` removes the tombstone. If post-commit removal fails,
+the business state is not rolled back; the store writes a durable
+`.cleanup_pending/*.json` marker with only scope, object id, tombstone relative
+path, and error type, and admin review paths also record
+`knowledge_submission.cleanup_pending`. `retry_pending_cleanups()` can later
+delete tombstones and remove markers. This staged protocol is used by public
+delete, managed permanent delete, replace, ordinary withdraw, reject, and
+publication isolation cleanup.
 
 PNG/JPEG uploads are accepted as pending-review report screenshots. `FileTypePolicy`
 checks image magic bytes, Pillow structure, UTF-8/text rules for text-like

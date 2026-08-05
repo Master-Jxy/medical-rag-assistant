@@ -25,7 +25,10 @@ from app.core.exceptions import (
 )
 from app.infrastructure.vector_store import VectorStoreService
 from app.modules.audit.ports import AuditPort, AuditRecord
-from app.modules.knowledge.asset_storage import ControlledDocumentAssetStore
+from app.modules.knowledge.asset_storage import (
+    ControlledDocumentAssetStore,
+    StagedAssetDeletion,
+)
 from app.modules.knowledge.ingestion import (
     FileTypePolicy,
     ParseRequest,
@@ -123,6 +126,7 @@ class DocumentLifecycleService:
         snapshot: dict | None = None
         file_moved = False
         delete_started = False
+        asset_deletion: StagedAssetDeletion | None = None
 
         try:
             snapshot = self.vector_store.snapshot_documents(record.chunk_ids)
@@ -131,23 +135,19 @@ class DocumentLifecycleService:
             if not stored_path.is_file():
                 raise DocumentStoreError()
 
+            asset_deletion = self.asset_store.stage_document_assets_for_delete(record.id)
             stored_path.replace(tombstone_path)
             file_moved = True
             delete_started = True
             self.vector_store.delete_documents(record.chunk_ids)
             self.repository.delete(record)
             self.session.commit()
-            try:
-                tombstone_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-            self.asset_store.cleanup_document_assets(record.id)
-            return record.id
         except DocumentStoreError:
             self.session.rollback()
             self._restore_delete(
                 stored_path, tombstone_path, snapshot, file_moved, delete_started
             )
+            self._restore_staged_assets(asset_deletion)
             raise
         except Exception as exc:
             self.session.rollback()
@@ -155,9 +155,16 @@ class DocumentLifecycleService:
                 self._restore_delete(
                     stored_path, tombstone_path, snapshot, file_moved, delete_started
                 )
+                self._restore_staged_assets(asset_deletion)
             except Exception:
                 pass
             raise DocumentStoreError() from exc
+        try:
+            tombstone_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        self._finalize_staged_assets_after_commit(asset_deletion)
+        return record.id
 
     async def replace_document(
         self,
@@ -179,6 +186,7 @@ class DocumentLifecycleService:
         old_file_moved = False
         old_delete_started = False
         tombstone_path: Path | None = None
+        asset_deletion: StagedAssetDeletion | None = None
 
         try:
             try:
@@ -215,6 +223,7 @@ class DocumentLifecycleService:
             ) != set(old_record.chunk_ids):
                 raise DocumentStoreError()
 
+            asset_deletion = self.asset_store.stage_document_assets_for_delete(old_record.id)
             prepared = await self._prepare_upload(
                 upload_file,
                 uploader_id=old_record.uploader_id,
@@ -266,9 +275,7 @@ class DocumentLifecycleService:
                 tombstone_path.unlink(missing_ok=True)
             except OSError:
                 pass
-            self.asset_store.cleanup_document_assets(old_copy.id)
             self.session.refresh(prepared.record)
-            return prepared.record
         except (
             DocumentNotFoundError,
             DocumentBusyError,
@@ -280,11 +287,13 @@ class DocumentLifecycleService:
             self.session.rollback()
             if prepared is not None and not switched:
                 self._cleanup_prepared(prepared)
+            self._restore_staged_assets(asset_deletion)
             raise
         except IntegrityError as exc:
             self.session.rollback()
             if prepared is not None and not switched:
                 self._cleanup_prepared(prepared)
+            self._restore_staged_assets(asset_deletion)
             raise DuplicateDocumentError() from exc
         except Exception as exc:
             self.session.rollback()
@@ -305,13 +314,17 @@ class DocumentLifecycleService:
                         old_version_values,
                         submission_states,
                     )
+                    self._restore_staged_assets(asset_deletion)
                 except Exception:
                     pass
             elif prepared is not None:
                 self._cleanup_prepared(prepared)
+                self._restore_staged_assets(asset_deletion)
             raise DocumentStoreError() from exc
         finally:
             await upload_file.close()
+        self._finalize_staged_assets_after_commit(asset_deletion)
+        return prepared.record
 
     async def replace_system_document(
         self, document_id: str, upload_file: UploadFile
@@ -336,6 +349,7 @@ class DocumentLifecycleService:
         delete_started = False
         database_deleted = False
         tombstone_path: Path | None = None
+        asset_deletion: StagedAssetDeletion | None = None
 
         try:
             try:
@@ -369,6 +383,7 @@ class DocumentLifecycleService:
             ) != set(record.chunk_ids):
                 raise DocumentStoreError()
 
+            asset_deletion = self.asset_store.stage_document_assets_for_delete(record.id)
             for submission in submissions:
                 submission.status = "archived"
                 submission.document_id = None
@@ -404,8 +419,6 @@ class DocumentLifecycleService:
                 tombstone_path.unlink(missing_ok=True)
             except OSError:
                 pass
-            self.asset_store.cleanup_document_assets(old_copy.id)
-            return old_copy.id
         except (DocumentNotFoundError, DocumentBusyError, DocumentStoreError):
             self.session.rollback()
             if database_deleted and old_copy is not None:
@@ -420,6 +433,7 @@ class DocumentLifecycleService:
                 self._restore_deleted_database(
                     old_copy, old_version_values, submission_states
                 )
+            self._restore_staged_assets(asset_deletion)
             raise
         except Exception as exc:
             self.session.rollback()
@@ -437,9 +451,14 @@ class DocumentLifecycleService:
                     self._restore_deleted_database(
                         old_copy, old_version_values, submission_states
                     )
+                    self._restore_staged_assets(asset_deletion)
                 except Exception:
                     pass
+            else:
+                self._restore_staged_assets(asset_deletion)
             raise DocumentStoreError() from exc
+        self._finalize_staged_assets_after_commit(asset_deletion)
+        return old_copy.id
 
     async def _prepare_upload(
         self,
@@ -546,6 +565,22 @@ class DocumentLifecycleService:
             self.vector_store.restore_documents(snapshot)
         if file_moved and tombstone_path.exists():
             tombstone_path.replace(stored_path)
+
+    def _restore_staged_assets(self, staged: StagedAssetDeletion | None) -> None:
+        if staged is None:
+            return
+        self.asset_store.restore_staged_deletion(staged)
+
+    def _finalize_staged_assets_after_commit(
+        self,
+        staged: StagedAssetDeletion | None,
+    ) -> None:
+        if staged is None:
+            return
+        try:
+            self.asset_store.finalize_staged_deletion(staged)
+        except DocumentStoreError as exc:
+            self.asset_store.mark_cleanup_pending(staged, reason=type(exc).__name__)
 
     def _restore_replaced_database(
         self,

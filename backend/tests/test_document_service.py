@@ -1,6 +1,7 @@
 """文档服务测试：验证 MySQL 登记边界、权限和三处存储回滚，不调用外部模型。"""
 
 import asyncio
+import shutil
 from io import BytesIO
 from pathlib import Path
 
@@ -181,6 +182,86 @@ def test_lifecycle_delete_removes_document_asset_sidecars(tmp_path) -> None:
         assert deleted_id == uploaded.document_id
         assert not asset_dir.exists()
         assert set(vector_store.deleted_ids) == set(chunk_ids)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_lifecycle_delete_commit_failure_restores_staged_assets(
+    tmp_path, monkeypatch
+) -> None:
+    service, vector_store, session, engine, owner, _ = build_service(tmp_path)
+    try:
+        uploaded = asyncio.run(
+            service.process_upload(
+                owner.id,
+                make_upload("asset-restore.txt", "asset restore content".encode()),
+            )
+        )
+        record = session.get(KnowledgeDocument, uploaded.document_id)
+        asset_dir = service.settings.document_asset_dir / "documents" / record.id
+        asset_dir.mkdir(parents=True, exist_ok=True)
+        (asset_dir / "asset.txt").write_text("sidecar", encoding="utf-8")
+        original_commit = session.commit
+
+        def fail_delete_commit_once():
+            monkeypatch.setattr(session, "commit", original_commit)
+            raise RuntimeError("simulated commit failure")
+
+        monkeypatch.setattr(session, "commit", fail_delete_commit_once)
+
+        with pytest.raises(DocumentStoreError):
+            service.lifecycle.delete_document(record)
+
+        assert asset_dir.is_dir()
+        assert (asset_dir / "asset.txt").is_file()
+        assert session.get(KnowledgeDocument, uploaded.document_id) is not None
+        assert set(vector_store.entries)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_lifecycle_delete_post_commit_asset_cleanup_failure_marks_pending(
+    tmp_path, monkeypatch
+) -> None:
+    service, vector_store, session, engine, owner, _ = build_service(tmp_path)
+    try:
+        uploaded = asyncio.run(
+            service.process_upload(
+                owner.id,
+                make_upload("asset-pending.txt", "asset pending content".encode()),
+            )
+        )
+        record = session.get(KnowledgeDocument, uploaded.document_id)
+        chunk_ids = set(record.chunk_ids)
+        asset_dir = service.settings.document_asset_dir / "documents" / record.id
+        asset_dir.mkdir(parents=True, exist_ok=True)
+        (asset_dir / "asset.txt").write_text("sidecar", encoding="utf-8")
+        original_rmtree = shutil.rmtree
+
+        def fail_trash_rmtree(path):
+            if ".trash" in Path(path).parts:
+                raise OSError("simulated post-commit cleanup failure")
+            return original_rmtree(path)
+
+        monkeypatch.setattr("app.modules.knowledge.asset_storage.shutil.rmtree", fail_trash_rmtree)
+
+        deleted_id = service.lifecycle.delete_document(record)
+
+        assert deleted_id == uploaded.document_id
+        assert session.get(KnowledgeDocument, uploaded.document_id) is None
+        assert not asset_dir.exists()
+        assert chunk_ids.issubset(set(vector_store.deleted_ids))
+        assert vector_store.restore_calls == 0
+        markers = list((service.settings.document_asset_dir / ".cleanup_pending").glob("*.json"))
+        assert len(markers) == 1
+        assert list((service.settings.document_asset_dir / ".trash" / "documents").glob("*"))
+
+        monkeypatch.setattr("app.modules.knowledge.asset_storage.shutil.rmtree", original_rmtree)
+        assert service.lifecycle.asset_store.retry_pending_cleanups() == 1
+        assert not markers[0].exists()
+        assert not list((service.settings.document_asset_dir / ".trash" / "documents").glob("*"))
     finally:
         session.close()
         engine.dispose()
@@ -403,6 +484,50 @@ def test_html_replacement_database_failure_restores_old_file_and_vectors(
         assert old_path.exists()
         assert set(vector_store.entries) == old_ids
         assert session.get(KnowledgeDocument, uploaded.document_id) is not None
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_replace_post_commit_old_asset_cleanup_failure_marks_pending(
+    tmp_path, monkeypatch
+) -> None:
+    service, vector_store, session, engine, owner, _ = build_service(tmp_path)
+    try:
+        uploaded = asyncio.run(
+            service.process_upload(
+                owner.id,
+                make_upload("old-asset.txt", "old asset document content".encode()),
+            )
+        )
+        old_record = session.get(KnowledgeDocument, uploaded.document_id)
+        old_asset_dir = service.settings.document_asset_dir / "documents" / old_record.id
+        old_asset_dir.mkdir(parents=True, exist_ok=True)
+        (old_asset_dir / "asset.txt").write_text("sidecar", encoding="utf-8")
+        original_rmtree = shutil.rmtree
+
+        def fail_trash_rmtree(path):
+            if ".trash" in Path(path).parts:
+                raise OSError("simulated replace cleanup failure")
+            return original_rmtree(path)
+
+        monkeypatch.setattr("app.modules.knowledge.asset_storage.shutil.rmtree", fail_trash_rmtree)
+
+        replacement = asyncio.run(
+            service.lifecycle.replace_document(
+                uploaded.document_id,
+                make_upload("new-asset.txt", "new asset document content".encode()),
+                actor_user_id=owner.id,
+            )
+        )
+
+        assert replacement.id != uploaded.document_id
+        assert session.get(KnowledgeDocument, uploaded.document_id) is None
+        assert session.get(KnowledgeDocument, replacement.id) is not None
+        assert not old_asset_dir.exists()
+        assert vector_store.restore_calls == 0
+        assert list((service.settings.document_asset_dir / ".cleanup_pending").glob("*.json"))
+        assert list((service.settings.document_asset_dir / ".trash" / "documents").glob("*"))
     finally:
         session.close()
         engine.dispose()

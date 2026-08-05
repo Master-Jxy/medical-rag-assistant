@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import shutil
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from uuid import uuid4
 
@@ -19,6 +20,16 @@ from app.modules.knowledge.ingestion import ParseQuality, ParsedAsset, ParsedDoc
 SAFE_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}")
 TRUSTED_UPLOAD_SOURCE_KIND = "uploaded_image_file"
 MATERIALIZED_MIME_TYPES = {"image/png": ".png", "image/jpeg": ".jpg"}
+
+
+@dataclass(frozen=True, slots=True)
+class StagedAssetDeletion:
+    scope: str
+    object_id: str
+    original_dir: Path
+    tombstone_dir: Path
+    pending_marker: Path
+    moved: bool
 
 
 class ControlledDocumentAssetStore:
@@ -81,6 +92,82 @@ class ControlledDocumentAssetStore:
 
     def cleanup_document_assets(self, document_id: str) -> None:
         self._safe_rmtree(self._document_dir(document_id))
+
+    def stage_submission_assets_for_delete(self, submission_id: str) -> StagedAssetDeletion:
+        return self._stage_assets_for_delete(
+            "submission",
+            submission_id,
+            self._submission_dir(submission_id),
+        )
+
+    def stage_document_assets_for_delete(self, document_id: str) -> StagedAssetDeletion:
+        return self._stage_assets_for_delete(
+            "document",
+            document_id,
+            self._document_dir(document_id),
+        )
+
+    def restore_staged_deletion(self, staged: StagedAssetDeletion) -> None:
+        if not staged.moved:
+            return
+        self._assert_under_base(staged.original_dir)
+        self._assert_under_base(staged.tombstone_dir)
+        if not staged.tombstone_dir.exists():
+            return
+        if staged.original_dir.exists():
+            raise DocumentStoreError()
+        staged.original_dir.parent.mkdir(parents=True, exist_ok=True)
+        staged.tombstone_dir.replace(staged.original_dir)
+        staged.pending_marker.unlink(missing_ok=True)
+
+    def finalize_staged_deletion(self, staged: StagedAssetDeletion) -> None:
+        if not staged.moved:
+            staged.pending_marker.unlink(missing_ok=True)
+            return
+        self._safe_rmtree(staged.tombstone_dir)
+        staged.pending_marker.unlink(missing_ok=True)
+
+    def mark_cleanup_pending(
+        self,
+        staged: StagedAssetDeletion,
+        *,
+        reason: str,
+    ) -> None:
+        if not staged.moved:
+            return
+        self._assert_under_base(staged.tombstone_dir)
+        marker_dir = self._cleanup_pending_dir()
+        marker_dir.mkdir(parents=True, exist_ok=True)
+        self._assert_under_base(staged.pending_marker)
+        payload = {
+            "scope": staged.scope,
+            "object_id": staged.object_id,
+            "tombstone": staged.tombstone_dir.resolve()
+            .relative_to(self.base_dir.resolve())
+            .as_posix(),
+            "reason": reason,
+        }
+        temporary = staged.pending_marker.with_suffix(".tmp")
+        temporary.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+        temporary.replace(staged.pending_marker)
+
+    def retry_pending_cleanups(self) -> int:
+        marker_dir = self._cleanup_pending_dir()
+        if not marker_dir.exists():
+            return 0
+        cleaned = 0
+        for marker in sorted(marker_dir.glob("*.json")):
+            self._assert_under_base(marker)
+            try:
+                payload = json.loads(marker.read_text(encoding="utf-8"))
+                tombstone = self.base_dir / str(payload["tombstone"])
+                self._assert_under_base(tombstone)
+                self._safe_rmtree(tombstone)
+                marker.unlink(missing_ok=True)
+                cleaned += 1
+            except Exception:
+                continue
+        return cleaned
 
     def _materialize_asset(
         self,
@@ -164,6 +251,47 @@ class ControlledDocumentAssetStore:
 
     def _document_dir(self, document_id: str) -> Path:
         return self.base_dir / "documents" / self._safe_id(document_id)
+
+    def _stage_assets_for_delete(
+        self,
+        scope: str,
+        object_id: str,
+        original_dir: Path,
+    ) -> StagedAssetDeletion:
+        self._assert_under_base(original_dir)
+        safe_id = self._safe_id(object_id)
+        tombstone_dir = self._trash_dir(scope) / f".{safe_id}.{uuid4().hex}.deleting"
+        pending_marker = self._cleanup_pending_dir() / f"{scope}-{safe_id}-{uuid4().hex}.json"
+        self._assert_under_base(tombstone_dir)
+        self._assert_under_base(pending_marker)
+        if not original_dir.exists():
+            return StagedAssetDeletion(
+                scope=scope,
+                object_id=safe_id,
+                original_dir=original_dir,
+                tombstone_dir=tombstone_dir,
+                pending_marker=pending_marker,
+                moved=False,
+            )
+        tombstone_dir.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            original_dir.replace(tombstone_dir)
+        except OSError as exc:
+            raise DocumentStoreError() from exc
+        return StagedAssetDeletion(
+            scope=scope,
+            object_id=safe_id,
+            original_dir=original_dir,
+            tombstone_dir=tombstone_dir,
+            pending_marker=pending_marker,
+            moved=True,
+        )
+
+    def _trash_dir(self, scope: str) -> Path:
+        return self.base_dir / ".trash" / f"{scope}s"
+
+    def _cleanup_pending_dir(self) -> Path:
+        return self.base_dir / ".cleanup_pending"
 
     @staticmethod
     def _safe_id(value: str) -> str:

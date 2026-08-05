@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -440,6 +441,29 @@ def test_asset_store_raises_when_recursive_cleanup_fails(tmp_path, monkeypatch) 
 
     with pytest.raises(DocumentStoreError):
         store.cleanup_submission_assets("submission-1")
+
+
+def test_asset_store_stage_rename_failure_leaves_original_assets(tmp_path, monkeypatch) -> None:
+    settings = Settings(_env_file=None, document_asset_dir=tmp_path / "assets")
+    target = settings.document_asset_dir / "submissions" / "submission-1"
+    target.mkdir(parents=True)
+    (target / "asset.txt").write_text("sidecar", encoding="utf-8")
+    store = ControlledDocumentAssetStore(settings)
+    original_replace = Path.replace
+
+    def fail_stage_replace(self, target_path):
+        if self == target:
+            raise OSError("simulated stage failure")
+        return original_replace(self, target_path)
+
+    monkeypatch.setattr(Path, "replace", fail_stage_replace)
+
+    with pytest.raises(DocumentStoreError):
+        store.stage_submission_assets_for_delete("submission-1")
+
+    assert target.is_dir()
+    assert (target / "asset.txt").is_file()
+    assert not list((settings.document_asset_dir / ".trash" / "submissions").glob("*"))
 
 
 class SimpleQuotaGate:

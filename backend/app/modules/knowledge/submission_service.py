@@ -13,11 +13,15 @@ from app.core.config import Settings
 from app.core.exceptions import (
     DocumentNotFoundError,
     DocumentParseError,
+    DocumentStoreError,
     DuplicateDocumentError,
     FileTooLargeError,
     UnsupportedFileTypeError,
 )
-from app.modules.knowledge.asset_storage import ControlledDocumentAssetStore
+from app.modules.knowledge.asset_storage import (
+    ControlledDocumentAssetStore,
+    StagedAssetDeletion,
+)
 from app.modules.knowledge.enrichment import DocumentEnrichmentService
 from app.modules.knowledge.ingestion import FileTypePolicy, ParseRequest
 from app.modules.knowledge.models import KnowledgeDocument, KnowledgeSubmission
@@ -246,12 +250,42 @@ class KnowledgeSubmissionService:
             raise DocumentNotFoundError()
         if record.status not in {"pending_parse", "pending_review"}:
             raise SubmissionNotWithdrawableError()
-        (self.settings.submission_dir / record.stored_name).unlink(missing_ok=True)
-        self.asset_store.cleanup_submission_assets(record.id)
-        record.status = "withdrawn"
-        self.session.commit()
+        stored_path = self.settings.submission_dir / record.stored_name
+        tombstone_path = self.settings.submission_dir / f".{record.stored_name}.withdrawn"
+        file_moved = False
+        asset_deletion: StagedAssetDeletion | None = None
+        try:
+            asset_deletion = self.asset_store.stage_submission_assets_for_delete(record.id)
+            if stored_path.exists():
+                stored_path.replace(tombstone_path)
+                file_moved = True
+            record.status = "withdrawn"
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            if file_moved and tombstone_path.exists():
+                tombstone_path.replace(stored_path)
+            if asset_deletion is not None:
+                self.asset_store.restore_staged_deletion(asset_deletion)
+            raise
+        try:
+            tombstone_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        self._finalize_submission_assets_after_commit(asset_deletion)
         self.session.refresh(record)
         return self._to_response(record)
+
+    def _finalize_submission_assets_after_commit(
+        self,
+        staged: StagedAssetDeletion | None,
+    ) -> None:
+        if staged is None:
+            return
+        try:
+            self.asset_store.finalize_staged_deletion(staged)
+        except DocumentStoreError as exc:
+            self.asset_store.mark_cleanup_pending(staged, reason=type(exc).__name__)
 
     def _parse_preview(
         self,

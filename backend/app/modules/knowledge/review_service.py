@@ -10,7 +10,10 @@ from app.core.config import Settings
 from app.core.exceptions import AppError, DocumentStoreError
 from app.modules.audit.ports import AuditPort, AuditRecord
 from app.modules.jobs.ports import JobPort
-from app.modules.knowledge.asset_storage import ControlledDocumentAssetStore
+from app.modules.knowledge.asset_storage import (
+    ControlledDocumentAssetStore,
+    StagedAssetDeletion,
+)
 from app.modules.knowledge.lifecycle import DocumentLifecycleService
 from app.modules.knowledge.models import (
     DocumentVersion,
@@ -94,21 +97,33 @@ class KnowledgeReviewService:
     ) -> ApprovalResponse:
         record = self._get(submission_id)
         normalized_reason = reason.strip()
-        if not self.repository.reject_pending(submission_id, normalized_reason):
-            self.session.rollback()
-            raise ReviewStateConflictError()
-        self.audit.record(
-            AuditRecord(
-                actor_user_id=actor_user_id,
-                action="knowledge_submission.rejected",
-                object_type="knowledge_submission",
-                object_id=record.id,
-                request_id=request_id,
-                details={"reason": normalized_reason},
+        asset_deletion = self.asset_store.stage_submission_assets_for_delete(record.id)
+        try:
+            if not self.repository.reject_pending(submission_id, normalized_reason):
+                raise ReviewStateConflictError()
+            self.audit.record(
+                AuditRecord(
+                    actor_user_id=actor_user_id,
+                    action="knowledge_submission.rejected",
+                    object_type="knowledge_submission",
+                    object_id=record.id,
+                    request_id=request_id,
+                    details={"reason": normalized_reason},
+                )
             )
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            self.asset_store.restore_staged_deletion(asset_deletion)
+            raise
+        self._finalize_submission_assets_after_commit(
+            asset_deletion,
+            record=record,
+            action="knowledge_submission.cleanup_pending",
+            actor_user_id=actor_user_id,
+            request_id=request_id,
+            details={},
         )
-        self.session.commit()
-        self.asset_store.cleanup_submission_assets(record.id)
         self.session.refresh(record)
         return ApprovalResponse(submission=self._to_item(record))
 
@@ -239,9 +254,18 @@ class KnowledgeReviewService:
         """发布提交后只做尽力清理；失败不能反向撤销已发布资产。"""
 
         try:
+            staged_assets = self.asset_store.stage_submission_assets_for_delete(record.id)
             isolated_path.unlink(missing_ok=True)
-            self.asset_store.cleanup_submission_assets(record.id)
+            self.asset_store.finalize_staged_deletion(staged_assets)
         except (OSError, DocumentStoreError) as exc:
+            if "staged_assets" in locals():
+                try:
+                    self.asset_store.mark_cleanup_pending(
+                        staged_assets,
+                        reason=type(exc).__name__,
+                    )
+                except Exception:
+                    pass
             try:
                 self.audit.record(
                     AuditRecord(
@@ -255,6 +279,36 @@ class KnowledgeReviewService:
                             "job_id": job_id,
                             "error_type": type(exc).__name__,
                         },
+                    )
+                )
+                self.session.commit()
+            except Exception:
+                self.session.rollback()
+
+    def _finalize_submission_assets_after_commit(
+        self,
+        staged: StagedAssetDeletion,
+        *,
+        record: KnowledgeSubmission,
+        action: str,
+        actor_user_id: str,
+        request_id: str | None,
+        details: dict,
+    ) -> None:
+        try:
+            self.asset_store.finalize_staged_deletion(staged)
+        except DocumentStoreError as exc:
+            self.asset_store.mark_cleanup_pending(staged, reason=type(exc).__name__)
+            try:
+                self.audit.record(
+                    AuditRecord(
+                        actor_user_id=actor_user_id,
+                        action=action,
+                        object_type="knowledge_submission",
+                        object_id=record.id,
+                        result="warning",
+                        request_id=request_id,
+                        details={"error_type": type(exc).__name__, **details},
                     )
                 )
                 self.session.commit()

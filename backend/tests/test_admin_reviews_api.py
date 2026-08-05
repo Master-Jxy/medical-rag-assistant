@@ -344,6 +344,71 @@ def test_image_review_status_is_visible_and_reject_cleans_assets(tmp_path) -> No
         engine.dispose()
 
 
+def test_reject_post_commit_asset_cleanup_failure_records_pending(
+    tmp_path, monkeypatch
+) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'image-review-pending.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    submitter = create_test_user(factory, "image-review-pending-submitter")
+    admin = create_test_user(factory, "image-review-pending-admin", role="admin")
+    settings = Settings(
+        _env_file=None,
+        submission_dir=tmp_path / "isolated",
+        upload_dir=tmp_path / "published",
+        document_asset_dir=tmp_path / "assets",
+    )
+    submission_id = add_image_submission(factory, settings, submitter.id, "pending")
+    original_rmtree = __import__("shutil").rmtree
+
+    def fail_trash_rmtree(path):
+        if ".trash" in Path(path).parts:
+            raise OSError("simulated reject cleanup failure")
+        return original_rmtree(path)
+
+    monkeypatch.setattr("app.modules.knowledge.asset_storage.shutil.rmtree", fail_trash_rmtree)
+    vectors = FakeVectorStore()
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    def override_review_service():
+        with factory() as session:
+            yield KnowledgeReviewService(
+                session,
+                settings,
+                DocumentLifecycleService(session, settings, vectors),
+                SqlAlchemyAuditRecorder(session),
+                SqlAlchemyJobService(session),
+            )
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
+    app.dependency_overrides[get_review_service] = override_review_service
+    try:
+        with TestClient(app) as client:
+            rejected = client.post(
+                f"/api/v1/admin/reviews/{submission_id}/reject",
+                json={"reason": "needs manual OCR"},
+                headers=auth_headers(admin.id),
+            )
+            assert rejected.status_code == 200
+            assert rejected.json()["submission"]["status"] == "rejected"
+
+        with factory() as session:
+            submission = session.get(KnowledgeSubmission, submission_id)
+            assert submission.status == "rejected"
+            actions = set(session.scalars(select(AuditEvent.action)).all())
+            assert "knowledge_submission.cleanup_pending" in actions
+        assert list((settings.document_asset_dir / ".cleanup_pending").glob("*.json"))
+        assert not (settings.document_asset_dir / "submissions" / submission_id).exists()
+        assert list((settings.document_asset_dir / ".trash" / "submissions").glob("*"))
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
 def test_image_review_cannot_publish_empty_text_before_enrichment(tmp_path) -> None:
     engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'image-review-fail.db'}")
     Base.metadata.create_all(engine)

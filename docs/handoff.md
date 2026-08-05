@@ -48,16 +48,35 @@ Stage 24.4 已完成本地开发与无模型验证，未部署、未推送，未
   `DocumentStoreError`. No real OCR, vision provider, model, network, production
   data, deployment, or protected auth change was performed.
 
+24.4 final transaction follow-up (2026-08-06):
+- Document and submission asset cleanup now has explicit
+  stage/restore/finalize/cleanup-pending semantics. `stage_*_assets_for_delete`
+  atomically renames controlled asset directories to `.trash` before the
+  business commit; pre-commit failures restore the tombstone, while post-commit
+  finalization failures no longer enter rollback paths.
+- Post-commit asset cleanup failures write durable `.cleanup_pending/*.json`
+  markers containing only scope, object id, tombstone relative path, and error
+  type. `retry_pending_cleanups()` removes tombstones and clears markers when
+  cleanup can later succeed.
+- Public delete, managed permanent delete, replace, ordinary withdraw, reject,
+  and publication isolation cleanup now use the staged protocol at their
+  transaction boundaries. Admin review paths still record
+  `knowledge_submission.cleanup_pending` audit warnings; no broad job queue
+  refactor or production operation was performed.
+
 ## 2. 本地验证结果
 
 已通过：
 
 ```text
+backend\.venv\Scripts\python.exe -m pytest -q backend/tests/test_document_enrichment.py backend/tests/test_document_service.py backend/tests/test_knowledge_submissions_api.py backend/tests/test_admin_reviews_api.py
+66 passed, 2 warnings
+
 backend\.venv\Scripts\python.exe -m pytest -q backend/tests/test_document_parser_contract.py backend/tests/test_document_enrichment.py backend/tests/test_knowledge_submissions_api.py backend/tests/test_admin_reviews_api.py backend/tests/test_document_service.py
 52 passed, 2 warnings
 
 backend\.venv\Scripts\python.exe -m pytest -q backend/tests
-555 passed, 120 warnings
+561 passed, 120 warnings
 
 backend\.venv\Scripts\python.exe -m pytest -q backend/tests/test_document_enrichment.py
 32 passed
