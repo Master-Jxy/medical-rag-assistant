@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 from threading import BoundedSemaphore
-from time import monotonic
 from typing import Protocol
 
 from bs4 import BeautifulSoup
@@ -61,16 +60,16 @@ class PdfCandidateFallbackParser:
         candidate: DocumentParserPort | None,
         *,
         enabled: bool = False,
+        promoted: bool = False,
         max_pages: int = 20,
         max_file_size_bytes: int = 10 * 1024 * 1024,
-        timeout_seconds: float = 20.0,
     ) -> None:
         self.baseline = baseline
         self.candidate = candidate
         self.enabled = enabled
+        self.promoted = promoted
         self.max_pages = max_pages
         self.max_file_size_bytes = max_file_size_bytes
-        self.timeout_seconds = timeout_seconds
 
     def parse(self, request: ParseRequest) -> ParsedDocument:
         if request.normalized_suffix != ".pdf" or not self.enabled:
@@ -83,15 +82,14 @@ class PdfCandidateFallbackParser:
                 raise DocumentParseError("候选解析器不可用")
             if not self._candidate_semaphore.acquire(blocking=False):
                 raise DocumentParseError("候选解析并发限制已满")
-            started = monotonic()
             try:
                 candidate = self.candidate.parse(request)
-                if monotonic() - started > self.timeout_seconds:
-                    raise DocumentParseError("候选解析超时")
             finally:
                 self._candidate_semaphore.release()
             self._validate_candidate(candidate, baseline)
-            return candidate
+            if not self.promoted:
+                return _with_warning(baseline, "Docling候选仅完成实验观测，尚未批准替换PyPDF")
+            return _with_warning(candidate, "Docling候选已批准替换PyPDF")
         except Exception as exc:
             reason = str(exc).strip() or type(exc).__name__
             return _with_warning(baseline, f"{warning_prefix}{reason}")
@@ -512,9 +510,9 @@ def build_default_parser_registry(
     *,
     pdf_candidate: DocumentParserPort | None = None,
     pdf_candidate_enabled: bool = False,
+    pdf_candidate_promoted: bool = False,
     pdf_candidate_max_pages: int = 20,
     pdf_candidate_max_file_size_bytes: int = 10 * 1024 * 1024,
-    pdf_candidate_timeout_seconds: float = 20.0,
 ) -> ParserRegistry:
     local_pdf_txt = LocalStructuredDocumentParser()
     markdown = MarkdownStructuredDocumentParser()
@@ -522,9 +520,9 @@ def build_default_parser_registry(
         local_pdf_txt,
         pdf_candidate,
         enabled=pdf_candidate_enabled,
+        promoted=pdf_candidate_promoted,
         max_pages=pdf_candidate_max_pages,
         max_file_size_bytes=pdf_candidate_max_file_size_bytes,
-        timeout_seconds=pdf_candidate_timeout_seconds,
     )
     return ParserRegistry(
         [
@@ -563,16 +561,16 @@ class LocalDocumentParser:
         *,
         pdf_candidate: DocumentParserPort | None = None,
         pdf_candidate_enabled: bool = False,
+        pdf_candidate_promoted: bool = False,
         pdf_candidate_max_pages: int = 20,
         pdf_candidate_max_file_size_bytes: int = 10 * 1024 * 1024,
-        pdf_candidate_timeout_seconds: float = 20.0,
     ) -> None:
         self.registry = registry or build_default_parser_registry(
             pdf_candidate=pdf_candidate,
             pdf_candidate_enabled=pdf_candidate_enabled,
+            pdf_candidate_promoted=pdf_candidate_promoted,
             pdf_candidate_max_pages=pdf_candidate_max_pages,
             pdf_candidate_max_file_size_bytes=pdf_candidate_max_file_size_bytes,
-            pdf_candidate_timeout_seconds=pdf_candidate_timeout_seconds,
         )
 
     def parse_document(self, request: ParseRequest) -> ParsedDocument:

@@ -1,8 +1,11 @@
 """任务12.3/12.4：解析质量与候选解析器晋级门槛。"""
 
 import json
+import multiprocessing
+import time
 from pathlib import Path
 
+from app.infrastructure import docling_pdf_parser
 from app.infrastructure.docling_pdf_parser import DoclingPdfStructuredParser
 from app.modules.knowledge.ingestion import (
     ParseRequest,
@@ -33,6 +36,14 @@ class BetterParser:
 class WorseParser:
     def parse(self, path, suffix):
         return ParsedPreview("只有表格", 1)
+
+
+def hanging_docling_worker(_path_text, _output_queue) -> None:
+    time.sleep(30)
+
+
+def failing_docling_worker(_path_text, output_queue) -> None:
+    output_queue.put({"ok": False, "error_code": "docling_parse_failed"})
 
 
 class BaselineStructuredParser:
@@ -137,7 +148,7 @@ def test_pdf_candidate_fallback_keeps_baseline_when_disabled_or_failed(tmp_path,
     assert any("Docling候选已回退PyPDF" in warning for warning in parsed.warnings)
 
 
-def test_pdf_candidate_fallback_returns_valid_candidate(tmp_path, monkeypatch) -> None:
+def test_pdf_candidate_fallback_observes_valid_candidate_without_promoting(tmp_path, monkeypatch) -> None:
     path = tmp_path / "sample.pdf"
     path.write_bytes(b"%PDF-1.4\n%fake")
     baseline = BaselineStructuredParser()
@@ -152,6 +163,22 @@ def test_pdf_candidate_fallback_returns_valid_candidate(tmp_path, monkeypatch) -
     monkeypatch.setattr(parser, "_check_resource_bounds", lambda _path: None)
 
     parsed = parser.parse(ParseRequest(path=path, suffix=".pdf"))
+
+    assert parsed.document_metadata["parser"] == "pypdf"
+    assert parsed.quality.parser_name == "pypdf"
+    assert "PyPDF基线文本" in parsed.text
+    assert any("尚未批准替换PyPDF" in warning for warning in parsed.warnings)
+
+    promoted = PdfCandidateFallbackParser(
+        baseline,
+        candidate,
+        enabled=True,
+        promoted=True,
+        max_pages=1,
+        max_file_size_bytes=100,
+    )
+    monkeypatch.setattr(promoted, "_check_resource_bounds", lambda _path: None)
+    parsed = promoted.parse(ParseRequest(path=path, suffix=".pdf"))
 
     assert parsed.document_metadata["parser"] == "docling_pdf_candidate"
     assert parsed.quality.parser_name == "docling_pdf_candidate"
@@ -251,6 +278,53 @@ def test_docling_adapter_normalizes_elements_tables_assets_and_bbox(tmp_path) ->
     assert parsed.elements[-1].table_html.startswith("<table>")
     assert parsed.assets[0].storage_ref == "docling://image/1"
     assert parsed.assets[0].page_no == 2
+
+
+def test_docling_adapter_subprocess_timeout_is_killed_and_sanitized(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "secret-patient-content.pdf"
+    path.write_bytes(b"%PDF-1.4\n%fake")
+    monkeypatch.setattr(docling_pdf_parser, "find_spec", lambda _name: object())
+    parser = DoclingPdfStructuredParser(
+        timeout_seconds=0.2,
+        worker_target=hanging_docling_worker,
+    )
+
+    started = time.monotonic()
+    try:
+        parser.parse(ParseRequest(path=path, suffix=".pdf"))
+    except Exception as exc:
+        elapsed = time.monotonic() - started
+        message = str(exc)
+    else:
+        raise AssertionError("expected timeout")
+
+    assert elapsed < 5
+    assert "timed out" in message
+    assert "secret-patient-content" not in message
+    assert all(
+        child.name != "docling-pdf-candidate"
+        for child in multiprocessing.active_children()
+    )
+
+
+def test_docling_adapter_worker_error_does_not_leak_path_or_content(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "secret-patient-content.pdf"
+    path.write_bytes(b"%PDF-1.4\n%fake")
+    monkeypatch.setattr(docling_pdf_parser, "find_spec", lambda _name: object())
+    parser = DoclingPdfStructuredParser(
+        timeout_seconds=5,
+        worker_target=failing_docling_worker,
+    )
+
+    try:
+        parser.parse(ParseRequest(path=path, suffix=".pdf"))
+    except Exception as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("expected worker failure")
+
+    assert "docling_parse_failed" in message
+    assert "secret-patient-content" not in message
 
 
 def test_complex_pdf_manifest_and_structured_gate_require_real_improvement() -> None:

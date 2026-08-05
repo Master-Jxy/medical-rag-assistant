@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     knowledge_base_version: str = "live_v1"
     max_upload_size_bytes: int = 10 * 1024 * 1024
     docling_pdf_candidate_enabled: bool = False
+    docling_pdf_candidate_promoted: bool = False
     docling_pdf_max_pages: int = Field(default=20, ge=1, le=50)
     docling_pdf_max_file_size_bytes: int = Field(
         default=10 * 1024 * 1024, ge=1, le=10 * 1024 * 1024

@@ -8,8 +8,12 @@ until a fixed offline gate proves the candidate can replace the PyPDF baseline.
 from __future__ import annotations
 
 import hashlib
+import multiprocessing
+import os
+import queue
 from html import escape
 from importlib.util import find_spec
+from pathlib import Path
 from typing import Any, Callable
 
 from bs4 import BeautifulSoup
@@ -27,8 +31,16 @@ from app.modules.knowledge.ingestion import (
 class DoclingPdfStructuredParser:
     name = "docling_pdf_candidate"
 
-    def __init__(self, converter_factory: Callable[[], Any] | None = None) -> None:
+    def __init__(
+        self,
+        converter_factory: Callable[[], Any] | None = None,
+        *,
+        timeout_seconds: float = 20.0,
+        worker_target: Callable[[str, Any], None] | None = None,
+    ) -> None:
         self.converter_factory = converter_factory
+        self.timeout_seconds = timeout_seconds
+        self.worker_target = worker_target or run_docling_worker
 
     @property
     def available(self) -> bool:
@@ -37,46 +49,66 @@ class DoclingPdfStructuredParser:
     def parse(self, request: ParseRequest) -> ParsedDocument:
         if request.normalized_suffix != ".pdf":
             raise DocumentParseError("Docling candidate only supports PDF")
-        converter = self._build_converter()
-        try:
-            result = converter.convert(request.path)
-        except Exception as exc:
-            raise DocumentParseError("Docling candidate parse failed") from exc
-        document_data = self._export_document_data(result)
+        if self.converter_factory is not None:
+            document_data = self._parse_with_test_converter(request.path)
+        else:
+            document_data = self._parse_in_subprocess(request.path)
         parsed = self._normalize_document(document_data, request)
         if not parsed.elements or not parsed.text.strip():
             raise DocumentParseError("Docling candidate produced empty text")
         return parsed
 
-    def _build_converter(self):
-        if self.converter_factory is not None:
-            return self.converter_factory()
+    def _parse_with_test_converter(self, path: Path) -> dict[str, Any]:
+        converter = self.converter_factory()
+        try:
+            result = converter.convert(path)
+        except Exception as exc:
+            raise DocumentParseError("Docling candidate parse failed") from exc
+        return export_docling_document_data(result)
+
+    def _parse_in_subprocess(self, path: Path) -> dict[str, Any]:
         if find_spec("docling") is None:
             raise DocumentParseError("Docling is not installed")
-        from docling.document_converter import DocumentConverter
-
-        return DocumentConverter()
+        context = multiprocessing.get_context("spawn")
+        output_queue = context.Queue(maxsize=1)
+        process = context.Process(
+            target=self.worker_target,
+            args=(str(path), output_queue),
+            name="docling-pdf-candidate",
+        )
+        process.start()
+        process.join(self.timeout_seconds)
+        if process.is_alive():
+            process.terminate()
+            process.join(2)
+            if process.is_alive():
+                process.kill()
+                process.join(2)
+            self._close_worker_resources(output_queue, process)
+            raise DocumentParseError("Docling candidate worker timed out")
+        try:
+            message = output_queue.get(timeout=0.1)
+        except queue.Empty as exc:
+            self._close_worker_resources(output_queue, process)
+            raise DocumentParseError("Docling candidate worker returned no output") from exc
+        self._close_worker_resources(output_queue, process)
+        if not isinstance(message, dict) or message.get("ok") is not True:
+            code = "worker_error"
+            if isinstance(message, dict):
+                code = str(message.get("error_code") or code)
+            raise DocumentParseError(f"Docling candidate worker failed: {code}")
+        document = message.get("document")
+        if not isinstance(document, dict):
+            raise DocumentParseError("Docling candidate worker returned invalid output")
+        return document
 
     @staticmethod
-    def _export_document_data(result: Any) -> dict[str, Any]:
-        if isinstance(result, dict):
-            return result
-        document = getattr(result, "document", result)
-        if hasattr(document, "export_to_dict"):
-            exported = document.export_to_dict()
-            if isinstance(exported, dict):
-                return exported
-        if hasattr(document, "model_dump"):
-            exported = document.model_dump(mode="json")
-            if isinstance(exported, dict):
-                return exported
-        if hasattr(document, "export_to_markdown"):
-            text = document.export_to_markdown().strip()
-            return {
-                "page_count": len(getattr(document, "pages", {}) or {1: None}),
-                "elements": [{"kind": "paragraph", "text": text, "page_no": 1}],
-            }
-        raise DocumentParseError("Docling candidate output format is unsupported")
+    def _close_worker_resources(output_queue: Any, process: Any) -> None:
+        output_queue.close()
+        output_queue.join_thread()
+        close = getattr(process, "close", None)
+        if callable(close):
+            close()
 
     def _normalize_document(
         self, data: dict[str, Any], request: ParseRequest
@@ -160,6 +192,44 @@ class DoclingPdfStructuredParser:
                     normalized.setdefault("kind", kind)
                     items.append(normalized)
         return items
+
+
+def run_docling_worker(path_text: str, output_queue: Any) -> None:
+    configure_docling_offline_environment()
+    try:
+        from docling.document_converter import DocumentConverter
+
+        result = DocumentConverter().convert(Path(path_text))
+        output_queue.put({"ok": True, "document": export_docling_document_data(result)})
+    except Exception:
+        output_queue.put({"ok": False, "error_code": "docling_parse_failed"})
+
+
+def configure_docling_offline_environment() -> None:
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+    os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
+
+
+def export_docling_document_data(result: Any) -> dict[str, Any]:
+    if isinstance(result, dict):
+        return result
+    document = getattr(result, "document", result)
+    if hasattr(document, "export_to_dict"):
+        exported = document.export_to_dict()
+        if isinstance(exported, dict):
+            return exported
+    if hasattr(document, "model_dump"):
+        exported = document.model_dump(mode="json")
+        if isinstance(exported, dict):
+            return exported
+    if hasattr(document, "export_to_markdown"):
+        text = document.export_to_markdown().strip()
+        return {
+            "page_count": len(getattr(document, "pages", {}) or {1: None}),
+            "elements": [{"kind": "paragraph", "text": text, "page_no": 1}],
+        }
+    raise DocumentParseError("Docling candidate output format is unsupported")
 
 
 def normalize_kind(value: str) -> str:

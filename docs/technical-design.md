@@ -1959,10 +1959,16 @@ MIME、空正文、NUL 和非 UTF-8；text/plain 会被转成受控 HTML 快照�
 候选。`app.infrastructure.docling_pdf_parser.DoclingPdfStructuredParser` 负责惰性导入和
 归一化 Docling 输出，第三方对象不离开 infrastructure；业务层只接收 `ParsedDocument`、
 `ParsedElement`、`ParsedAsset` 和 `ParseQuality`。运行时通过
-`DOCLING_PDF_CANDIDATE_ENABLED=false` 默认关闭，候选还有页数、文件大小、解析耗时、
-页序、页数一致性、空输出和质量状态闸门；Docling 不可用、超时、异常、输出为空或质量
-不达标时确定性回退 PyPDF，并在解析质量 warning 中留下管理员可见原因。未安装 Docling 的
-默认后端启动和测试不得失败，本阶段也没有新增 required dependency、没有在线下载模型。
+`DOCLING_PDF_CANDIDATE_ENABLED=false` 默认关闭，表示是否允许实验候选执行；
+`DOCLING_PDF_CANDIDATE_PROMOTED=false` 独立表示是否允许候选替换生产 PyPDF 结果。候选
+还有页数、文件大小、单进程并发、页序、页数一致性、空输出和质量状态闸门；未晋级时即使
+候选输出正常也继续返回 PyPDF，并在 warning 中记录候选仅作观测。真实 Docling 路径必须由
+`DoclingPdfStructuredParser` 在独立 `spawn` 子进程 worker 中执行，父进程只通过 IPC 接收
+可序列化标准 dict 或稳定错误码；超过 `DOCLING_PDF_TIMEOUT_SECONDS` 后父进程会
+terminate/kill/join worker、关闭 IPC 资源并确定性回退 PyPDF。parser fallback 不再用事后
+`monotonic` 比较伪装硬超时，只负责资源前置检查、并发闸门、质量校验和 promoted gate。
+未安装 Docling 的默认后端启动和测试不得失败；worker 进入离线模式，缺少本地依赖或工件时
+快速失败并回退，不静默在线下载模型或权重。
 
 Docling 候选输出只保留标准化元素：标题、段落、列表、表格和图片资产均带 page_no、
 order 与可空归一化 bbox；表格保留纯文本、受控 Markdown/HTML 表示，前端不得渲染未消毒
