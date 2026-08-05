@@ -69,6 +69,15 @@ def test_empty_database_upgrades_to_owned_conversation_schema(tmp_path) -> None:
     assert "parse_quality" in {
         column["name"] for column in inspector.get_columns("knowledge_submissions")
     }
+    assert {
+        "snapshot_original_url",
+        "snapshot_final_url",
+        "snapshot_fetched_at",
+        "snapshot_response_mime",
+        "snapshot_content_sha256",
+    } <= {
+        column["name"] for column in inspector.get_columns("knowledge_submissions")
+    }
     assert {"document_id", "chunk_id"} <= {
         column["name"] for column in inspector.get_columns("message_sources")
     }
@@ -635,6 +644,77 @@ def test_stage22_runtime_contract_backfills_read_markers_and_downgrades_safely(
         ) == 1
         assert connection.scalar(
             text("SELECT COUNT(*) FROM agent_threads WHERE id = 'legacy-thread'")
+        ) == 1
+
+
+def test_stage24_web_snapshot_metadata_migrates_and_downgrades(tmp_path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'stage24-web.db'}"
+    config = build_alembic_config(database_url)
+    command.upgrade(config, "0026_stage22_runtime_contract")
+    engine = build_engine(database_url)
+    now = datetime.now(timezone.utc)
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users "
+                "(id, email, password_hash, is_active, role, token_version, "
+                "created_at, updated_at) VALUES "
+                "('snapshot-user', 'snapshot@example.com', 'hash', 1, 'user', 0, "
+                ":now, :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO knowledge_submissions "
+                "(id, submitter_id, original_name, stored_name, content_hash, "
+                "size_bytes, status, preview_text, preview_pages, parse_warnings, "
+                "parse_quality, rejection_reason, failure_reason, document_id, "
+                "created_at, updated_at) VALUES "
+                "('snapshot-submission', 'snapshot-user', '旧资料.html', "
+                "'snapshot.html', :hash, 10, 'pending_review', NULL, NULL, "
+                "'[]', '{}', NULL, NULL, NULL, :now, :now)"
+            ),
+            {"hash": "e" * 64, "now": now},
+        )
+
+    command.upgrade(config, "head")
+    inspector = inspect(engine)
+    assert {
+        "snapshot_original_url",
+        "snapshot_final_url",
+        "snapshot_fetched_at",
+        "snapshot_response_mime",
+        "snapshot_content_sha256",
+    } <= {
+        column["name"] for column in inspector.get_columns("knowledge_submissions")
+    }
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text(
+                "SELECT COUNT(*) FROM knowledge_submissions "
+                "WHERE id = 'snapshot-submission'"
+            )
+        ) == 1
+
+    command.downgrade(config, "0026_stage22_runtime_contract")
+    inspector = inspect(engine)
+    assert {
+        "snapshot_original_url",
+        "snapshot_final_url",
+        "snapshot_fetched_at",
+        "snapshot_response_mime",
+        "snapshot_content_sha256",
+    }.isdisjoint(
+        {column["name"] for column in inspector.get_columns("knowledge_submissions")}
+    )
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text(
+                "SELECT COUNT(*) FROM knowledge_submissions "
+                "WHERE id = 'snapshot-submission'"
+            )
         ) == 1
 
 

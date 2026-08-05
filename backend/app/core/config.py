@@ -83,6 +83,13 @@ class Settings(BaseSettings):
     document_registry_path: Path = BACKEND_DIR / "data" / "documents.json"
     knowledge_base_version: str = "live_v1"
     max_upload_size_bytes: int = 10 * 1024 * 1024
+    web_snapshot_fetch_enabled: bool = False
+    web_snapshot_allowed_hosts: list[str] = Field(default_factory=list)
+    web_snapshot_max_bytes: int = Field(default=3 * 1024 * 1024, gt=0, le=5 * 1024 * 1024)
+    web_snapshot_max_redirects: int = Field(default=3, ge=0, le=3)
+    web_snapshot_connect_timeout_seconds: float = Field(default=2.0, gt=0, le=10)
+    web_snapshot_read_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+    web_snapshot_total_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
     chunk_size: int = 800
     chunk_overlap: int = 100
     max_history_rounds: int = 3
@@ -203,6 +210,13 @@ class Settings(BaseSettings):
         if not cleaned or len(cleaned) > 100:
             raise ValueError("KNOWLEDGE_BASE_VERSION 必须为1-100个非空字符")
         return cleaned
+
+    @field_validator("web_snapshot_allowed_hosts", mode="before")
+    @classmethod
+    def normalize_web_snapshot_allowed_hosts(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
 
     @field_validator("smtp_host", "mail_from_name")
     @classmethod

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const api = vi.hoisted(() => ({
   deleteDocument: vi.fn(),
   getDocuments: vi.fn(),
+  importWebSnapshot: vi.fn(),
   uploadDocument: vi.fn(),
 }))
 
@@ -45,6 +46,11 @@ function mountKnowledge() {
 beforeEach(() => {
   vi.clearAllMocks()
   api.getDocuments.mockResolvedValue({ documents: [systemDocument, ownedDocument] })
+  api.importWebSnapshot.mockResolvedValue({
+    submission_id: 'web-submission-1',
+    file_name: '网页快照-example.com.html',
+    status: 'pending_review',
+  })
   api.deleteDocument.mockResolvedValue({ message: '文档已删除' })
 })
 
@@ -95,5 +101,18 @@ describe('KnowledgeView 文档权限', () => {
     Object.defineProperty(input.element, 'files', { value: [exe], configurable: true })
     await input.trigger('change')
     expect(wrapper.text()).toContain('只支持 PDF、TXT、DOCX、Markdown 或 HTML 文件')
+  })
+
+  it('可以切换到导入网页并提交URL快照', async () => {
+    const wrapper = mountKnowledge()
+    await flushPromises()
+
+    await wrapper.get('.submit-mode-tabs button:nth-child(2)').trigger('click')
+    await wrapper.get('#web-snapshot-url').setValue('https://example.com/article')
+    await wrapper.get('.web-import-box button').trigger('click')
+    await flushPromises()
+
+    expect(api.importWebSnapshot).toHaveBeenCalledWith('https://example.com/article')
+    expect(wrapper.text()).toContain('网页快照-example.com.html 已提交，等待管理员审核')
   })
 })

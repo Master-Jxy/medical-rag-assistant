@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class MySubmissionItem(BaseModel):
@@ -23,3 +23,7 @@ class MySubmissionListResponse(BaseModel):
 
 class SubmissionCreateResponse(MySubmissionItem):
     message: str = "资料已提交，等待管理员审核"
+
+
+class WebSnapshotSubmissionRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=2048)

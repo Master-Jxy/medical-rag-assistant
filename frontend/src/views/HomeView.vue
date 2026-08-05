@@ -186,7 +186,7 @@ onBeforeUnmount(() => {
     <section class="overview-section workflow-section" data-reveal>
       <header class="section-heading"><div><h2>一条可以解释的工作链路</h2><p>每一步都有明确输入、状态和责任边界，避免把所有功能堆进一个聊天函数。</p></div><span><Workflow :size="18" />真实业务闭环</span></header>
       <div class="workflow-line">
-        <article><b>1</b><div><h3>资料提交</h3><p>PDF/TXT/DOCX/Markdown/HTML 进入待审核区，保留上传者与文件状态。</p></div></article>
+        <article><b>1</b><div><h3>资料提交</h3><p>文件或网页快照进入待审核区，保留上传者与文件状态。</p></div></article>
         <article><b>2</b><div><h3>审核发布</h3><p>管理员确认内容后写入公共知识库并建立向量索引。</p></div></article>
         <article><b>3</b><div><h3>检索执行</h3><p>RAG 或 Agent 调用共享检索能力，获得受控上下文。</p></div></article>
         <article><b>4</b><div><h3>反馈治理</h3><p>来源、用量、反馈和审计信息回到管理端持续分析。</p></div></article>

@@ -18,6 +18,11 @@ export async function uploadDocument(file, onProgress) {
   return response.data
 }
 
+export async function importWebSnapshot(url) {
+  const response = await http.post('/knowledge/submissions/web-snapshots', { url })
+  return response.data
+}
+
 export async function deleteDocument(documentId) {
   const response = await http.delete(`/documents/${documentId}`)
   return response.data

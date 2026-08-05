@@ -1,5 +1,8 @@
 """普通资料只进入隔离提交，不写公共文档或向量库。"""
 
+import hashlib
+from datetime import datetime, timezone
+
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
@@ -12,6 +15,7 @@ from app.modules.auth.tokens import get_token_service
 from app.modules.knowledge.models import KnowledgeDocument, KnowledgeSubmission
 from app.modules.knowledge.parser import LocalDocumentParser, ParsedPreview
 from app.modules.knowledge.submission_service import KnowledgeSubmissionService
+from app.modules.knowledge.web_snapshot import WebSnapshotError, WebSnapshotResult
 from app.api.knowledge_submissions import get_submission_service
 from tests.auth_helpers import TEST_TOKEN_SERVICE, auth_headers, create_test_user
 
@@ -19,6 +23,27 @@ from tests.auth_helpers import TEST_TOKEN_SERVICE, auth_headers, create_test_use
 class FakeParser:
     def parse(self, _path, _suffix):
         return ParsedPreview("解析预览", 1)
+
+
+class FakeWebSnapshotFetcher:
+    def __init__(self, content: bytes | None = None, error: Exception | None = None) -> None:
+        self.content = content or "<html><body><h1>网页资料</h1><p>正文</p></body></html>".encode()
+        self.error = error
+        self.urls: list[str] = []
+
+    async def fetch(self, url: str) -> WebSnapshotResult:
+        self.urls.append(url)
+        if self.error:
+            raise self.error
+        digest = hashlib.sha256(self.content).hexdigest()
+        return WebSnapshotResult(
+            original_url="https://example.com/article?token=secret",
+            final_url="https://example.com/article",
+            fetched_at=datetime.now(timezone.utc),
+            mime_type="text/html",
+            content_sha256=digest,
+            content=self.content,
+        )
 
 
 def test_submit_parse_list_and_withdraw_are_isolated_without_publication(tmp_path) -> None:
@@ -223,6 +248,138 @@ def test_spoofed_submission_extension_fails_after_content_validation(tmp_path) -
                 select(func.count()).select_from(KnowledgeSubmission)
             ) == 0
         assert not list(settings.submission_dir.glob("*"))
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def test_web_snapshot_submission_creates_isolated_pending_review_and_metadata(tmp_path) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'web-submissions.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    owner = create_test_user(factory, "web-submission-owner")
+    other = create_test_user(factory, "web-submission-other")
+    settings = Settings(_env_file=None, submission_dir=tmp_path / "isolated")
+    fetcher = FakeWebSnapshotFetcher()
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    def override_service():
+        with factory() as session:
+            yield KnowledgeSubmissionService(
+                session,
+                settings,
+                LocalDocumentParser(),
+                web_snapshot_fetcher=fetcher,
+            )
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
+    app.dependency_overrides[get_submission_service] = override_service
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/v1/knowledge/submissions/web-snapshots",
+                json={"url": "https://example.com/article#drop"},
+                headers=auth_headers(owner.id),
+            )
+            assert created.status_code == 202
+            assert created.json()["status"] == "pending_review"
+            submission_id = created.json()["submission_id"]
+            assert client.get(
+                "/api/v1/knowledge/submissions",
+                headers=auth_headers(other.id),
+            ).json()["total"] == 0
+
+        with factory() as session:
+            saved = session.get(KnowledgeSubmission, submission_id)
+            assert saved is not None
+            assert saved.original_name.startswith("网页快照-example.com")
+            assert saved.stored_name == f"{submission_id}.html"
+            assert saved.snapshot_original_url == "https://example.com/article?token=secret"
+            assert saved.snapshot_final_url == "https://example.com/article"
+            assert saved.snapshot_response_mime == "text/html"
+            assert saved.snapshot_content_sha256 == saved.content_hash
+            assert "网页资料" in saved.preview_text
+            assert session.scalar(select(func.count()).select_from(KnowledgeDocument)) == 0
+        assert (settings.submission_dir / f"{submission_id}.html").is_file()
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def test_web_snapshot_duplicate_and_fetch_failure_do_not_leave_orphan_file(tmp_path) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'web-failure.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    owner = create_test_user(factory, "web-failure-owner")
+    settings = Settings(_env_file=None, submission_dir=tmp_path / "isolated")
+    content = b"<html><body>same</body></html>"
+    digest = hashlib.sha256(content).hexdigest()
+    settings.submission_dir.mkdir(parents=True)
+    with factory() as session:
+        session.add(
+            KnowledgeSubmission(
+                id="existing",
+                submitter_id=owner.id,
+                original_name="old.html",
+                stored_name="existing.html",
+                content_hash=digest,
+                size_bytes=len(content),
+                status="pending_review",
+                parse_warnings=[],
+            )
+        )
+        session.commit()
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    def override_duplicate_service():
+        with factory() as session:
+            yield KnowledgeSubmissionService(
+                session,
+                settings,
+                LocalDocumentParser(),
+                web_snapshot_fetcher=FakeWebSnapshotFetcher(content=content),
+            )
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
+    app.dependency_overrides[get_submission_service] = override_duplicate_service
+    try:
+        with TestClient(app) as client:
+            duplicate = client.post(
+                "/api/v1/knowledge/submissions/web-snapshots",
+                json={"url": "https://example.com/same"},
+                headers=auth_headers(owner.id),
+            )
+            assert duplicate.status_code == 409
+        assert sorted(path.name for path in settings.submission_dir.iterdir()) == []
+
+        def override_failing_service():
+            with factory() as session:
+                yield KnowledgeSubmissionService(
+                    session,
+                    settings,
+                    LocalDocumentParser(),
+                    web_snapshot_fetcher=FakeWebSnapshotFetcher(
+                        error=WebSnapshotError("网页快照抓取失败")
+                    ),
+                )
+
+        app.dependency_overrides[get_submission_service] = override_failing_service
+        with TestClient(app) as client:
+            failed = client.post(
+                "/api/v1/knowledge/submissions/web-snapshots",
+                json={"url": "https://example.com/fail"},
+                headers=auth_headers(owner.id),
+            )
+            assert failed.status_code == 422
+        assert sorted(path.name for path in settings.submission_dir.iterdir()) == []
     finally:
         app.dependency_overrides.clear()
         engine.dispose()

@@ -772,7 +772,7 @@
    服务器只重建 backend。四容器健康，HTTP 308、HTTPS 200、未授权 401、配置 900 秒
    和错误日志检查通过；未调用真实模型。
 
-## 24. 阶段二十四：稳定性收尾与文档智能升级 `[进行中：24.2a完成]`
+## 24. 阶段二十四：稳定性收尾与文档智能升级 `[进行中：24.2完成]`
 
 完整架构、数据契约、安全闸门和验收标准见
 [`docs/stage24-document-intelligence-and-stability-design.md`](stage24-document-intelligence-and-stability-design.md)，
@@ -785,8 +785,9 @@
    ParserRegistry 和现有 PDF/TXT 兼容层。
 3. **24.2a `[已完成]`**：增加本地 DOCX、Markdown、HTML 文件格式支持，共用
    `FileTypePolicy` 内容校验和 24.1 ParserRegistry；不包含网页 URL 抓取。
-4. **24.2b `[下一任务]`**：实现带 SSRF 防护的受控网页快照导入。
-5. **24.3 `[待开始]`**：实现复杂 PDF 的 Docling 候选、表格/页码/图片资产输出与固定集
+4. **24.2b `[已完成]`**：实现带 SSRF 防护的受控网页快照导入；生产抓取默认关闭并要求
+   域名 allowlist，RAG/Agent 只读取审核发布后的本地快照。
+5. **24.3 `[下一任务]`**：实现复杂 PDF 的 Docling 候选、表格/页码/图片资产输出与固定集
    晋级，不满足门槛时继续使用 PyPDF。
 6. **24.4 `[待开始]`**：实现 OCR/视觉 Port、Fake、资源与费用限制、文档图片生命周期；
    真实调用与启用另行授权。

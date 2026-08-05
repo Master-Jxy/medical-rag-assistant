@@ -84,6 +84,11 @@ class KnowledgeSubmission(Base):
     document_id: Mapped[str | None] = mapped_column(
         ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
     )
+    snapshot_original_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    snapshot_final_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    snapshot_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    snapshot_response_mime: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    snapshot_content_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )

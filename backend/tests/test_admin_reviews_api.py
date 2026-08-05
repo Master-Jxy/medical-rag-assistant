@@ -87,6 +87,38 @@ def add_markdown_submission(factory, settings, submitter_id, suffix):
     return submission_id
 
 
+def add_web_snapshot_submission(factory, settings, submitter_id, suffix):
+    settings.submission_dir.mkdir(parents=True, exist_ok=True)
+    submission_id = f"review-web-{suffix}"
+    stored_name = f"{submission_id}.html"
+    content = (
+        "<html><body><h1>网页标题</h1><p>网页正文</p>"
+        "<table><tr><td>项目</td><td>说明</td></tr></table></body></html>"
+    )
+    (settings.submission_dir / stored_name).write_text(content, encoding="utf-8")
+    with factory() as session:
+        session.add(
+            KnowledgeSubmission(
+                id=submission_id,
+                submitter_id=submitter_id,
+                original_name="网页快照-example.com.html",
+                stored_name=stored_name,
+                content_hash=(suffix[0] * 64),
+                size_bytes=len(content.encode()),
+                status="pending_review",
+                preview_text="网页标题\n\n网页正文",
+                preview_pages=1,
+                parse_warnings=[],
+                snapshot_original_url="https://example.com/article",
+                snapshot_final_url="https://example.com/article",
+                snapshot_response_mime="text/html",
+                snapshot_content_sha256=(suffix[0] * 64),
+            )
+        )
+        session.commit()
+    return submission_id
+
+
 def add_damaged_docx_submission(factory, settings, submitter_id, suffix):
     settings.submission_dir.mkdir(parents=True, exist_ok=True)
     submission_id = f"review-docx-{suffix}"
@@ -315,6 +347,66 @@ def test_admin_can_publish_markdown_submission_with_structured_chunks(tmp_path) 
             item["metadata"]["document_type"] == "md"
             for item in vectors.entries.values()
         )
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def test_admin_can_publish_web_snapshot_submission_with_html_parser(tmp_path) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'review-web.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    submitter = create_test_user(factory, "review-web-submitter")
+    admin = create_test_user(factory, "review-web-admin", role="admin")
+    settings = Settings(
+        _env_file=None,
+        submission_dir=tmp_path / "isolated",
+        upload_dir=tmp_path / "published",
+        chunk_size=80,
+        chunk_overlap=5,
+    )
+    submission_id = add_web_snapshot_submission(factory, settings, submitter.id, "w")
+    vectors = FakeVectorStore()
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    def override_review_service():
+        with factory() as session:
+            yield KnowledgeReviewService(
+                session,
+                settings,
+                DocumentLifecycleService(session, settings, vectors),
+                SqlAlchemyAuditRecorder(session),
+                SqlAlchemyJobService(session),
+            )
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_token_service] = lambda: TEST_TOKEN_SERVICE
+    app.dependency_overrides[get_review_service] = override_review_service
+    try:
+        with TestClient(app) as client:
+            approved = client.post(
+                f"/api/v1/admin/reviews/{submission_id}/approve",
+                headers=auth_headers(admin.id),
+            )
+            assert approved.status_code == 200
+            assert approved.json()["submission"]["status"] == "published"
+
+        with factory() as session:
+            submission = session.get(KnowledgeSubmission, submission_id)
+            document = session.get(KnowledgeDocument, submission.document_id)
+            assert document is not None
+            assert document.original_name == "网页快照-example.com.html"
+            chunk_text = " ".join(item["document"] for item in vectors.entries.values())
+            assert "# 网页标题" in chunk_text
+            assert "网页正文" in chunk_text
+            assert any(
+                item["metadata"]["document_type"] == "html"
+                for item in vectors.entries.values()
+            )
+        assert not (settings.submission_dir / f"{submission_id}.html").exists()
     finally:
         app.dependency_overrides.clear()
         engine.dispose()

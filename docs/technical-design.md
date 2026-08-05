@@ -1937,6 +1937,24 @@ document_id、file_name、source、hash、visibility、document_type 和 kb_vers
 `text/html` 内联执行；结构化 `table_html` 若未来进入 UI，必须继续经过受控消毒而不是
 直接未消毒 `v-html`。
 
+24.2b 增加受控网页快照输入，但不改变 RAG/Agent 检索时序：登录用户提交 URL 后，
+`KnowledgeSubmissionService` 调用小型 `WebSnapshotFetchPort`，由 infrastructure 的 httpx
+adapter 做一次性抓取，保存 UUID 命名的不可变 `.html` 快照到 submission 隔离目录，写入
+pending_review；管理员审核发布后继续通过现有 HTML parser、切片、Embedding 和 Chroma
+生命周期入库。问答时绝不实时访问网页。`knowledge_submissions` 记录
+snapshot_original_url、snapshot_final_url、snapshot_fetched_at、snapshot_response_mime 和
+snapshot_content_sha256，既有 submission 字段保持可空兼容。
+
+网页抓取只允许 http/https，拒绝 userinfo、IP literal、localhost、非默认端口和超长 URL，
+fragment 在规范化时丢弃，主机名用 IDNA 规范化。DNS 任一解析结果为 loopback/private/
+link-local/multicast/reserved/unspecified 均拒绝；每次重定向都重新完整校验，最多 3 次。
+响应按解压后流式读取并限制为 3 MB，只接受 text/html 与 text/plain，拒绝下载、缺失或错误
+MIME、空正文、NUL 和非 UTF-8；text/plain 会被转成受控 HTML 快照。由于当前 httpx 常规
+用法不能可靠把连接固定到已验证 IP 并同时保持正确 Host/SNI，生产 adapter 默认关闭，并要求
+显式配置域名 allowlist 后才能启用；此处将 DNS 重绑定风险记录为残余风险，不能声称已完全
+解决。24.2b 参考 RAGFlow 的任务状态可见性和 Unstructured HTML partition 思想，没有复制
+源码，也没有引入真实网络测试或新重型依赖。
+
 AI 元数据输出是 suggestion，不是正式文档元数据。只有管理员接受或编辑后，知识应用
 服务才更新 `document_versions` 并写审计。精确文件哈希继续硬拒绝；标准化正文哈希与
 近重复只提示合并/建新版本，不自动删除。OCR、视觉、真实 Embedding 和生产导入均通过

@@ -2,6 +2,7 @@
 
 import hashlib
 from pathlib import Path
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from fastapi import UploadFile
@@ -20,6 +21,7 @@ from app.modules.knowledge.models import KnowledgeDocument, KnowledgeSubmission
 from app.modules.knowledge.ingestion import FileTypePolicy
 from app.modules.knowledge.parser import ParserPort
 from app.modules.knowledge.schemas import SubmissionCreateResponse
+from app.modules.knowledge.web_snapshot import WebSnapshotFetchPort
 from app.services.upload_protection_service import UploadProtectionService
 
 READ_BLOCK_SIZE = 1024 * 1024
@@ -39,11 +41,13 @@ class KnowledgeSubmissionService:
         settings: Settings,
         parser: ParserPort,
         upload_protection: UploadProtectionService | None = None,
+        web_snapshot_fetcher: WebSnapshotFetchPort | None = None,
     ) -> None:
         self.session = session
         self.settings = settings
         self.parser = parser
         self.upload_protection = upload_protection
+        self.web_snapshot_fetcher = web_snapshot_fetcher
 
     async def submit(self, user_id: str, upload_file: UploadFile) -> SubmissionCreateResponse:
         async def operation() -> KnowledgeSubmission:
@@ -57,6 +61,20 @@ class KnowledgeSubmissionService:
             )
         finally:
             await upload_file.close()
+        return self._to_response(record)
+
+    async def submit_url(self, user_id: str, url: str) -> SubmissionCreateResponse:
+        if self.web_snapshot_fetcher is None:
+            raise DocumentParseError("网页快照导入当前不可用")
+
+        async def operation() -> KnowledgeSubmission:
+            return await self._fetch_save_and_parse(user_id, url)
+
+        record = (
+            await self.upload_protection.execute(user_id, operation)
+            if self.upload_protection
+            else await operation()
+        )
         return self._to_response(record)
 
     async def _save_and_parse(
@@ -131,6 +149,72 @@ class KnowledgeSubmissionService:
         finally:
             temporary.unlink(missing_ok=True)
 
+    async def _fetch_save_and_parse(self, user_id: str, url: str) -> KnowledgeSubmission:
+        snapshot = await self.web_snapshot_fetcher.fetch(url)
+        duplicate = self.session.scalar(
+            select(KnowledgeSubmission.id).where(
+                KnowledgeSubmission.content_hash == snapshot.content_sha256
+            )
+        ) or self.session.scalar(
+            select(KnowledgeDocument.id).where(
+                KnowledgeDocument.content_hash == snapshot.content_sha256
+            )
+        )
+        if duplicate:
+            raise DuplicateDocumentError()
+        size = len(snapshot.content)
+        if size == 0:
+            raise DocumentParseError("网页正文为空")
+        if size > self.settings.max_upload_size_bytes:
+            raise FileTooLargeError(self.settings.max_upload_size_bytes // 1024 // 1024)
+
+        self.settings.submission_dir.mkdir(parents=True, exist_ok=True)
+        submission_id = str(uuid4())
+        temporary = self.settings.submission_dir / f".{submission_id}.snapshot"
+        final_path = self.settings.submission_dir / f"{submission_id}.html"
+        record: KnowledgeSubmission | None = None
+        try:
+            temporary.write_bytes(snapshot.content)
+            file_type = FileTypePolicy.validate_path(temporary, ".html")
+            temporary.replace(final_path)
+            record = KnowledgeSubmission(
+                id=submission_id,
+                submitter_id=user_id,
+                original_name=self._snapshot_file_name(snapshot.final_url),
+                stored_name=final_path.name,
+                content_hash=snapshot.content_sha256,
+                size_bytes=size,
+                status="pending_parse",
+                parse_warnings=[],
+                snapshot_original_url=snapshot.original_url,
+                snapshot_final_url=snapshot.final_url,
+                snapshot_fetched_at=snapshot.fetched_at,
+                snapshot_response_mime=snapshot.mime_type,
+                snapshot_content_sha256=snapshot.content_sha256,
+            )
+            self.session.add(record)
+            self.session.commit()
+            try:
+                preview = self.parser.parse(final_path, file_type.suffix)
+                record.preview_text = preview.text
+                record.preview_pages = preview.page_count
+                record.parse_warnings = list(preview.warnings)
+                record.parse_quality = preview.quality or {}
+                record.status = "pending_review"
+            except DocumentParseError:
+                record.status = "failed"
+                record.failure_reason = "DOCUMENT_PARSE_ERROR"
+            self.session.commit()
+            self.session.refresh(record)
+            return record
+        except Exception:
+            self.session.rollback()
+            if record is None:
+                final_path.unlink(missing_ok=True)
+            raise
+        finally:
+            temporary.unlink(missing_ok=True)
+
     def withdraw(self, user_id: str, submission_id: str) -> SubmissionCreateResponse:
         record = self.session.scalar(
             select(KnowledgeSubmission).where(
@@ -160,3 +244,12 @@ class KnowledgeSubmissionService:
             submitted_at=record.created_at,
             document_id=record.document_id,
         )
+
+    @staticmethod
+    def _snapshot_file_name(final_url: str) -> str:
+        host = (urlsplit(final_url).hostname or "web").encode("idna").decode("ascii")
+        safe_host = "".join(
+            char if char.isalnum() or char in {".", "-"} else "-"
+            for char in host.lower()
+        ).strip(".-") or "web"
+        return f"网页快照-{safe_host[:180]}.html"

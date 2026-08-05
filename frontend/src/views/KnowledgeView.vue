@@ -1,8 +1,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { Database, FileText, Layers3, RefreshCw, UploadCloud, X } from '@lucide/vue'
+import { Database, FileText, Layers3, Link, RefreshCw, UploadCloud, X } from '@lucide/vue'
 
-import { getDocuments, uploadDocument } from '../api/documents'
+import { getDocuments, importWebSnapshot, uploadDocument } from '../api/documents'
 import { getApiErrorMessage } from '../api/http'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -14,8 +14,11 @@ const documents = ref([])
 const listLoading = ref(false)
 const selectedFile = ref(null)
 const fileInput = ref(null)
+const submitMode = ref('file')
+const webUrl = ref('')
 const dragActive = ref(false)
 const uploading = ref(false)
+const importing = ref(false)
 const uploadProgress = ref(0)
 const errorMessage = ref('')
 const successMessage = ref('')
@@ -68,6 +71,12 @@ function clearSelectedFile() {
   if (fileInput.value) fileInput.value.value = ''
 }
 
+function setSubmitMode(mode) {
+  submitMode.value = mode
+  errorMessage.value = ''
+  successMessage.value = ''
+}
+
 async function startUpload() {
   if (!selectedFile.value || uploading.value) return
   uploading.value = true
@@ -87,6 +96,25 @@ async function startUpload() {
     errorMessage.value = getApiErrorMessage(error)
   } finally {
     uploading.value = false
+  }
+}
+
+async function startWebImport() {
+  const url = webUrl.value.trim()
+  if (!url || importing.value) return
+  importing.value = true
+  errorMessage.value = ''
+  successMessage.value = ''
+
+  try {
+    const result = await importWebSnapshot(url)
+    successMessage.value = `${result.file_name} 已提交，等待管理员审核。`
+    webUrl.value = ''
+    await loadDocuments()
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+  } finally {
+    importing.value = false
   }
 }
 
@@ -133,8 +161,14 @@ onMounted(loadDocuments)
         <small>{{ FORMAT_LABEL }} · 最大 10 MB</small>
       </div>
 
+      <div class="submit-mode-tabs" role="tablist" aria-label="提交方式">
+        <button type="button" :class="{ active: submitMode === 'file' }" @click="setSubmitMode('file')"><FileText :size="14" />上传文件</button>
+        <button type="button" :class="{ active: submitMode === 'web' }" @click="setSubmitMode('web')"><Link :size="14" />导入网页</button>
+      </div>
+
       <input ref="fileInput" type="file" :accept="ACCEPTED_DOCUMENT_FORMATS" hidden @change="handleFileInput" />
       <div
+        v-if="submitMode === 'file'"
         class="drop-zone"
         :class="{ active: dragActive }"
         role="button"
@@ -151,13 +185,31 @@ onMounted(loadDocuments)
         <p>系统会先校验并生成解析预览，提交阶段不会调用向量模型。</p>
       </div>
 
-      <div v-if="selectedFile" class="selected-file">
+      <div v-else class="web-import-box">
+        <label for="web-snapshot-url">网页 URL</label>
+        <div>
+          <input
+            id="web-snapshot-url"
+            v-model="webUrl"
+            type="url"
+            maxlength="2048"
+            placeholder="https://example.com/article"
+            @keydown.enter.prevent="startWebImport"
+          />
+          <el-button type="primary" round :loading="importing" :disabled="!webUrl.trim()" @click="startWebImport">
+            导入网页
+          </el-button>
+        </div>
+        <p>后端会安全抓取一次并保存不可变快照，审核和问答都只读取本地快照。</p>
+      </div>
+
+      <div v-if="submitMode === 'file' && selectedFile" class="selected-file">
         <div class="file-badge"><FileText :size="17" /></div>
         <div><strong>{{ selectedFile.name }}</strong><small>{{ formatFileSize(selectedFile.size) }}</small></div>
         <button v-if="!uploading" aria-label="移除已选文件" @click="clearSelectedFile"><X :size="17" /></button>
       </div>
 
-      <div v-if="uploading" class="progress-area">
+      <div v-if="submitMode === 'file' && uploading" class="progress-area">
         <div><span>正在上传并提交审核</span><strong>{{ uploadProgress }}%</strong></div>
         <div class="progress-track"><i :style="{ width: `${uploadProgress}%` }"></i></div>
         <p>当前阶段只上传原文件并生成审核预览，不会调用向量模型。</p>
@@ -165,7 +217,7 @@ onMounted(loadDocuments)
 
       <div class="upload-actions">
         <span>提交成功表示进入审核队列，并不表示已经发布。</span>
-        <el-button class="upload-button" type="primary" round :loading="uploading" :disabled="!selectedFile" @click="startUpload">
+        <el-button v-if="submitMode === 'file'" class="upload-button" type="primary" round :loading="uploading" :disabled="!selectedFile" @click="startUpload">
           提交审核
         </el-button>
       </div>
@@ -220,11 +272,20 @@ onMounted(loadDocuments)
 .section-title > div > svg { color: var(--brand); }
 .section-title h2 { margin: 0; color: var(--text-strong); font-size: 15px; }
 .section-title small { color: var(--muted); font-size: 12px; }
+.submit-mode-tabs { display: inline-flex; gap: 4px; margin-bottom: 13px; padding: 3px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg-subtle); }
+.submit-mode-tabs button { min-height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; border: 0; border-radius: 5px; color: var(--muted); background: transparent; font-size: 12px; cursor: pointer; }
+.submit-mode-tabs button.active { color: var(--primary-dark); background: white; box-shadow: 0 1px 4px rgba(15, 61, 47, .08); }
 .drop-zone { padding: 28px 20px; border: 1px dashed #b9cec8; border-radius: 7px; text-align: center; background: var(--bg-subtle); cursor: pointer; transition: border-color .16s ease, background .16s ease; }
 .drop-zone:hover, .drop-zone.active { border-color: var(--primary); background: #f0f8f5; }
 .upload-symbol { width: 38px; height: 38px; display: grid; place-items: center; margin: 0 auto 11px; border-radius: 7px; color: var(--brand); background: #e5f2ee; }
 .drop-zone strong { display: block; font-size: 15px; }
 .drop-zone p { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+.web-import-box { padding: 16px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg-subtle); }
+.web-import-box label { display: block; margin-bottom: 8px; color: var(--text-strong); font-size: 12px; font-weight: 700; }
+.web-import-box > div { display: flex; gap: 10px; }
+.web-import-box input { min-width: 0; flex: 1; height: 38px; padding: 0 11px; border: 1px solid var(--line); border-radius: 6px; color: var(--text-strong); background: white; outline: none; }
+.web-import-box input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(32, 126, 95, .1); }
+.web-import-box p { margin: 9px 0 0; color: var(--muted); font-size: 12px; }
 .selected-file { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 11px; margin-top: 12px; padding: 11px; border: 1px solid var(--line); border-radius: 7px; }
 .file-badge, .type-badge { display: grid; place-items: center; color: var(--primary-dark); background: #e4f2ed; font-size: 10px; font-weight: 800; }
 .file-badge { width: 36px; height: 36px; border-radius: 6px; }
@@ -275,5 +336,7 @@ onMounted(loadDocuments)
   .protected-label { grid-column: 1 / -1; }
   .upload-actions { align-items: stretch; flex-direction: column; }
   .upload-actions .el-button { width: 100%; }
+  .web-import-box > div { flex-direction: column; }
+  .web-import-box .el-button { width: 100%; }
 }
 </style>

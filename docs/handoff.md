@@ -5,8 +5,8 @@
 
 ## 1. 当前真实状态
 
-Stage 24.2a 本地文件格式已经完成本地开发与无模型验证，未部署、未调用真实模型或
-Embedding。24.2a 只实现 DOCX、Markdown、HTML 本地文件支持并保留 PDF/TXT：在
+Stage 24.2 已完成本地开发与无模型验证，未部署、未调用真实模型、Embedding 或生产网络。
+24.2a 只实现 DOCX、Markdown、HTML 本地文件支持并保留 PDF/TXT：在
 `knowledge` 模块内新增统一 `FileTypePolicy`，普通资料提交和管理员 lifecycle 共用同一套
 后缀与内容校验；PDF 校验魔数，DOCX 校验 ZIP/OOXML 必要条目并拒绝宏和外部关系，
 TXT/Markdown/HTML 拒绝 NUL 并要求 UTF-8，客户端 MIME 只作为辅助信号。
@@ -30,6 +30,24 @@ knowledge_base_version 元数据；PDF/TXT 切片和引用行为保持回归通�
 畸形关系 XML 明确拒绝。HTML 已发布原文预览不再以同源 `text/html` 内联返回，而是
 `text/plain; charset=utf-8` 加 `X-Content-Type-Options: nosniff`；当前前端没有渲染
 `ParsedElement.table_html`，后续若展示必须继续避免未消毒 `v-html`。
+
+24.2b 受控网页快照已经完成：登录用户通过“导入网页”提交 URL，后端经
+`WebSnapshotFetchPort`/httpx infrastructure adapter 安全抓取一次，保存 UUID 命名的不可变
+`.html` 快照到 submission 隔离目录，生成内容 SHA-256 并进入现有 pending_review；管理员
+审核发布后继续按 HTML parser 切片入公共知识库。RAG/Agent 问答时只读已发布本地快照，
+绝不实时访问网页。
+
+网页快照安全边界：仅 http/https，拒绝 userinfo、IP literal、localhost、非默认端口和超长
+URL，fragment 在规范化时丢弃，主机名 IDNA 规范化；DNS 任一结果为 loopback/private/
+link-local/multicast/reserved/unspecified 均拒绝，每次重定向都重新校验，最多 3 次。响应按
+解压后流式读取，最大 3 MB，只接受 text/html/text/plain，拒绝下载、缺失/错误 MIME、空正文、
+NUL 和非 UTF-8；text/plain 会转成受控 HTML 快照。由于当前 httpx 常规用法不能可靠做到
+“连接固定到已验证 IP 且保持正确 Host/SNI”，生产 adapter 默认关闭，并要求配置域名 allowlist
+后才可启用；DNS 重绑定作为残余风险记录，不声称已完全解决。
+
+24.2b 迁移 `0027_web_snapshot_submissions` 为 `knowledge_submissions` 增加可空快照元数据：
+original_url、final_url、fetched_at、response_mime、content_sha256。参考 RAGFlow 任务状态
+可见性和 Unstructured HTML partition 思想，没有复制源码，没有引入真实网络测试或新重型依赖。
 
 24.1 借鉴边界：Docling 的统一转换出口思想、Unstructured 的统一 Element 模型、Haystack
 的 Converter/Splitter 组件分层；没有复制第三方源码，也没有把第三方对象传入业务服务。
@@ -86,21 +104,27 @@ backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_document_parser
 backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_document_parser_contract.py backend\tests\test_knowledge_trace_api.py
 12 passed, 2 warnings
 
+backend\.venv\Scripts\python.exe -m pytest -q backend\tests\test_web_snapshot_fetcher.py backend\tests\test_knowledge_submissions_api.py backend\tests\test_admin_reviews_api.py backend\tests\test_migrations.py
+34 passed, 117 warnings
+
 backend\.venv\Scripts\python.exe -m pytest -q backend/tests
-494 passed, 113 warnings
+505 passed, 120 warnings
 
 D:\Nodejs\npm.cmd --prefix frontend test -- KnowledgeView.test.js AdminAssetsView.test.js
 2 files / 5 tests passed
 
 D:\Nodejs\npm.cmd --prefix frontend test
-18 files / 73 tests passed
+18 files / 74 tests passed
 
 D:\Nodejs\npm.cmd --prefix frontend run test:stream
 SSE parser test passed
 
 D:\Nodejs\npm.cmd --prefix frontend run build
 Vite production build passed
-assets: index-BLbkt_rf.css / index-DMAlE1if.js
+assets: index-DjFGRvws.css / index-C7p2zpu-.js
+
+backend\.venv\Scripts\python.exe -m alembic -c backend\alembic.ini heads
+0027_web_snapshot_submissions (head)
 
 backend\.venv\Scripts\python.exe backend\scripts\import_documents.py --help
 passed; help lists supported PDF/TXT/DOCX/Markdown/HTML files
@@ -115,9 +139,8 @@ Protected auth hash
 Stage 24.0 未做生产数据写入或线上生成验证。当前仓库没有安全、明确的真实公网 IP/SSH
 目标可用于本任务的只读生产连接，因此生产健康、容器、迁移、静态资源和错误计数检查
 本轮跳过；禁止猜测连接信息。未调用 Qwen、Embedding、Reranker、OCR、视觉或 SMTP。
-Stage 24.2a 同样没有执行生产数据操作、生产健康检查、真实网页抓取或任何外网/内网边界
-验证；测试 fixture 均为本地生成的非医学资料。24.2a 安全补丁未改前端行为，因此未重新
-运行完整前端测试。
+Stage 24.2 没有执行生产数据操作、生产健康检查、真实网页抓取或任何外网/内网边界验证；
+测试 fixture 均为本地生成的非医学资料，网络与 DNS 全部使用 Fake/stub。
 
 浏览器无模型/无持久化 stub 验收通过：桌面和 390px 移动端均完成 RAG/Agent 并发、独立
 停止、后台未读、重新打开清除未读、运行中删除禁用、四种 Agent 模式、固定输入器和溢出
@@ -177,20 +200,19 @@ Stage 23 已完成实现、无费用验证和生产发布：
 
 ## 6. 新任务阅读范围
 
-新开发窗口先完整阅读 `AGENTS.md` 和本文件。若执行 24.2b，只读
-`docs/stage24-document-intelligence-and-stability-design.md` 的 1、2、4、9、10、11 节，
-再定向读取 `knowledge` 解析契约、FileTypePolicy、资料提交、审核发布生命周期、网页
-抓取/网络安全相关入口和相关测试。不要读取历史 RAG 评估 JSON，不调用真实模型，不读取
-真实密钥，不修改受保护 auth Service。
+新开发窗口先完整阅读 `AGENTS.md` 和本文件。若执行 24.3，只读
+`docs/stage24-document-intelligence-and-stability-design.md` 的 1、2、3、4、5、9、10、11 节，
+再定向读取 `knowledge` 解析契约、PDF parser、复杂 PDF 候选、审核发布生命周期和相关测试。
+不要读取历史 RAG 评估 JSON，不调用真实模型，不读取真实密钥，不修改受保护 auth Service。
 
 ## 7. 唯一下一任务
 
-**执行 Stage 24.2b 受控网页快照导入。**
+**执行 Stage 24.3 复杂 PDF 候选。**
 
-在 24.2a 本地文件格式基础上，只实现带 SSRF 防护的 URL 抓取与不可变网页快照。必须复用
-24.1 normalized parser 契约、ParserRegistry 和 24.2a 的 HTML 清洗边界；不得重做本地
-DOCX/Markdown/HTML 文件链路。不得触发 Embedding，不发布真实资料；真实网页抓取、生产
-导入或任何外网/内网边界验证都必须先做无副作用预检并取得当次确认。
+在 24.1/24.2 解析契约基础上，实现复杂 PDF 的 Docling 候选、表格/页码/图片资产输出与
+固定集比较；不满足严格门槛时继续使用 PyPDF。不得启用 OCR/视觉真实调用，不触发真实
+Embedding，不导入生产资料；任何真实模型、生产导入或线上验证都必须先做无副作用预检并
+取得当次确认。
 
 工作区中的 `backend/app/modules/auth/service.py` 仍是受保护的用户改动，哈希应保持为
 `9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。禁止修改、

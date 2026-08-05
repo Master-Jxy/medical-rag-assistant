@@ -17,4 +17,4 @@ npm run dev
 
 - `/`：系统概览和后端健康状态。
 - `/chat`：SSE 流式知识库问答、停止生成和引用来源展开。
-- `/knowledge`：PDF/TXT/DOCX/Markdown/HTML 上传、文档列表和删除管理。
+- `/knowledge`：PDF/TXT/DOCX/Markdown/HTML 上传、网页快照导入、文档列表和删除管理。
