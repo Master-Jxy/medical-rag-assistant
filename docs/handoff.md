@@ -1,11 +1,11 @@
 # 当前开发交接
 
-> 最后更新：2026-08-06
+> 最后更新：2026-08-09
 > 本文只保留当前事实、工作区边界和一个下一任务。
 
 ## 1. 当前真实状态
 
-Stage 24.8 完整验收与发布候选已完成本地验证，等待用户单独授权部署；未推送、未部署、未修改生产，未调用真实 Qwen、Embedding、Reranker、OCR、Vision、SMTP、Docling、生产网络或任何收费供应商。
+Stage 24.8 完整验收与发布候选已完成本地验证，并已推送和部署到服务器提交 `39a56ab6f8d6ad8179ce1be4449f5d5e112c44c8`。生产备份成功，数据库迁移到 `0029_dedup_version_governance`，HTTP/HTTPS、健康接口和四个容器均已验收通过。未调用真实 Qwen、Embedding、Reranker、OCR、Vision、SMTP、Docling、生产抓取或任何收费供应商。
 
 Stage 24 当前候选边界：
 
@@ -14,7 +14,16 @@ Stage 24 当前候选边界：
 - Docling/OCR/Vision/metadata model 仍默认关闭或 Disabled/Fake；真实供应商、真实抓取、真实导入和生产向量化必须另行授权。
 - 新审计文件：`docs/release-audit-stage24-document-intelligence.md`。它记录 PASS/SKIP、证据命令、已知限制、备份和回滚预检。
 
-`docs/development-roadmap.md` 已将 24.7 标记为已完成并通过独立验收，将 24.8 标记为“发布候选已验收，待用户授权部署”。`docs/technical-design.md` 已新增 Stage 24.8 release candidate validation boundary。
+`docs/development-roadmap.md` 已将 24.7 标记为已完成并通过独立验收，将 24.8 标记为已部署。`docs/technical-design.md` 已新增 Stage 24.8 release candidate validation boundary。
+
+线上发布记录：
+
+- GitHub `main` 已推送至 `39a56ab`。
+- 服务器：`112.124.9.120`，工作区提交为 `39a56ab`，工作区干净。
+- 备份：`/home/deploy/medical-rag-backups/backup-20260808T174209Z`。
+- 迁移：`0029_dedup_version_governance (head)`。
+- 容器：backend、web、mysql、redis 均为 healthy。
+- HTTP 80 返回 308 跳转；HTTPS 首页和 `/api/v1/health` 返回成功。
 
 ## 2. 本地验证结果
 
@@ -87,7 +96,7 @@ SKIP 项：
 ## 3. 工作区与安全边界
 
 - 当前分支：`main`。
-- 本任务只允许本地提交；禁止 push、部署、生产操作、生产网络抓取、真实模型或收费调用。
+- 本次 Stage 24 已完成推送和部署；后续任务仍禁止直接修改生产源码，必须先本地验证、备份，再按提交部署。
 - `backend/app/modules/auth/service.py` 是受保护用户改动，禁止修改、格式化、暂存、提交、回退或覆盖；提交前后只允许 SHA-256 校验，目标值必须保持：
   `9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。
 - 不读取 `.env`、真实上传资料、Chroma 数据、数据库备份、历史大型 reports JSON 或正文日志。
@@ -106,6 +115,6 @@ SKIP 项：
 
 ## 5. 唯一下一任务
 
-**等待用户单独授权后执行 Stage 24 部署。**
+**观察 Stage 24 线上运行状态，收集真实错误和用户体验问题；不要立即启用 Docling、OCR、Vision 或导入 `corpus_v2` 真实资料。**
 
-部署前必须再次确认目标提交、服务器当前提交、备份目录、迁移顺序、回滚点和无真实供应商调用边界。未获得用户明确授权前，不推送、不部署、不连接生产。
+下一次发布前必须再次确认目标提交、服务器当前提交、备份目录、迁移顺序、回滚点和无真实供应商调用边界。
