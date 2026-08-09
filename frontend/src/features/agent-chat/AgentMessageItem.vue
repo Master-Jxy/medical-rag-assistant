@@ -3,6 +3,8 @@ import { computed, ref } from 'vue'
 import MarkdownContent from '../../components/MarkdownContent.vue'
 import AgentRunProgress from './AgentRunProgress.vue'
 import UsageMeta from '../../components/UsageMeta.vue'
+import PrivateAttachmentGallery from '../attachments/PrivateAttachmentGallery.vue'
+import VisionObservationPanel from '../attachments/VisionObservationPanel.vue'
 
 const props = defineProps({
   message: { type: Object, required: true },
@@ -50,6 +52,7 @@ const usage = computed(() => props.message.usage || props.live?.usage || null)
     <div class="avatar">{{ message.role === 'user' ? '你' : 'M' }}</div>
     <div class="message-body">
       <span class="role-name">{{ message.role === 'user' ? '我的问题' : 'Agent' }}</span>
+      <PrivateAttachmentGallery v-if="message.attachments?.length" :attachments="message.attachments" />
 
       <AgentRunProgress
         v-if="isAssistant && (plan.length || steps.length || run || isActive)"
@@ -77,6 +80,7 @@ const usage = computed(() => props.message.usage || props.live?.usage || null)
           <i></i><i></i><i></i><span>正在理解任务并准备下一步</span>
         </template>
       </div>
+      <VisionObservationPanel v-if="isAssistant" :observations="message.vision_observations || []" />
 
       <div v-if="sources.length" class="sources">
         <button

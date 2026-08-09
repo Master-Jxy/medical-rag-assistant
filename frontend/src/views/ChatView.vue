@@ -5,6 +5,7 @@ import {
   History,
   LoaderCircle,
   PanelLeft,
+  ImagePlus,
   Plus,
   Send,
   Square,
@@ -32,6 +33,10 @@ import ModelSelector from '../components/ModelSelector.vue'
 import UsageMeta from '../components/UsageMeta.vue'
 import { createUuid } from '../utils/uuid.js'
 import { useConversationStreamRegistry } from '../features/agent-chat/useConversationStreamRegistry.js'
+import { useAttachmentDraft } from '../features/attachments/useAttachmentDraft.js'
+import AttachmentDraftTray from '../features/attachments/AttachmentDraftTray.vue'
+import PrivateAttachmentGallery from '../features/attachments/PrivateAttachmentGallery.vue'
+import VisionObservationPanel from '../features/attachments/VisionObservationPanel.vue'
 
 const WELCOME_MESSAGE = {
   id: 'welcome',
@@ -42,6 +47,15 @@ const WELCOME_MESSAGE = {
 
 const question = ref('')
 const questionInput = ref(null)
+const imageInput = ref(null)
+const attachmentDraft = useAttachmentDraft()
+const draftItems = attachmentDraft.items
+const attachmentError = attachmentDraft.error
+const uploadingAttachments = attachmentDraft.uploading
+const canSend = computed(() => (
+  (question.value.trim() || attachmentDraft.hasAttachments.value)
+  && !sending.value && !loadingMessages.value && !attachmentDraft.uploading.value
+))
 const loadingConversations = ref(true)
 const loadingMessages = ref(false)
 const errorMessage = ref('')
@@ -320,9 +334,19 @@ async function ensureConversation() {
 
 async function sendQuestion() {
   const cleanedQuestion = question.value.trim()
-  if (!cleanedQuestion || sending.value) return
+  if ((!cleanedQuestion && !attachmentDraft.hasAttachments.value) || sending.value) return
 
   errorMessage.value = ''
+  let attachmentIds = []
+  try {
+    attachmentIds = attachmentDraft.hasAttachments.value
+      ? await attachmentDraft.uploadAll()
+      : []
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+    return
+  }
+  const optimisticAttachments = attachmentDraft.snapshot()
   let conversationId
   try {
     conversationId = await ensureConversation()
@@ -343,6 +367,7 @@ async function sendQuestion() {
     role: 'user',
     content: cleanedQuestion,
     sources: [],
+    attachments: optimisticAttachments,
   })
   const assistantMessage = reactive({
     id: createUuid(),
@@ -353,6 +378,7 @@ async function sendQuestion() {
     sourcesExpanded: false,
     status: 'pending',
     feedbackRating: null,
+    vision_observations: [],
   })
   conversationMessages.push(userMessage, assistantMessage)
   question.value = ''
@@ -371,17 +397,25 @@ async function sendQuestion() {
   }
   await scrollToBottom()
   let terminalReceived = false
+  let requestAccepted = false
 
   try {
     await streamConversation(conversationId, cleanedQuestion, {
       idempotencyKey,
       signal: entry.controller.signal,
+      attachmentIds,
+      onOpen() {
+        requestAccepted = true
+      },
       onToken(content) {
         assistantMessage.content += content
         if (activeConversationId.value === conversationId) scrollToBottom()
       },
       onSources(sources) {
         assistantMessage.sources = sources
+      },
+      onVisionObservations(observations) {
+        assistantMessage.vision_observations = observations
       },
       onDone(data) {
         if (terminalReceived) return
@@ -445,8 +479,18 @@ async function sendQuestion() {
       } else {
         streamRegistry.markUnread(conversationId)
       }
+      if (requestAccepted) attachmentDraft.completeSend({ preserveLocalUrls: true })
     }
   }
+}
+
+function chooseImages() {
+  if (!sending.value) imageInput.value?.click()
+}
+
+function handleImageSelection(event) {
+  attachmentDraft.addFiles(event.target.files)
+  event.target.value = ''
 }
 
 async function stopGeneration() {
@@ -598,7 +642,8 @@ onBeforeUnmount(() => {
             <div class="avatar">{{ message.role === 'user' ? '你' : 'M' }}</div>
             <div class="message-body">
               <span class="role-name">{{ message.role === 'user' ? '我的问题' : '知识库助手' }}</span>
-              <div class="bubble" data-testid="message-bubble" :class="{ thinking: message.streaming && !message.content }">
+              <PrivateAttachmentGallery v-if="message.attachments?.length" :attachments="message.attachments" />
+              <div v-if="message.content || message.streaming" class="bubble" data-testid="message-bubble" :class="{ thinking: message.streaming && !message.content }">
                 <template v-if="message.content">
                   <MarkdownContent
                     v-if="message.role === 'assistant'"
@@ -649,6 +694,7 @@ onBeforeUnmount(() => {
                 <button type="button" aria-label="回答有帮助" :class="{ active: message.feedbackRating === 'up' }" @click="openFeedback(message, 'up')"><ThumbsUp :size="14" /></button>
                 <button type="button" aria-label="回答需改进" :class="{ active: message.feedbackRating === 'down' }" @click="openFeedback(message, 'down')"><ThumbsDown :size="14" /></button>
               </div>
+              <VisionObservationPanel v-if="message.role === 'assistant'" :observations="message.vision_observations || []" />
             </div>
           </article>
         </div>
@@ -658,6 +704,11 @@ onBeforeUnmount(() => {
           <button type="button" @click="errorMessage = ''">关闭</button>
         </div>
         <form class="composer" @submit.prevent="sendQuestion">
+          <AttachmentDraftTray
+            :items="draftItems"
+            @remove="attachmentDraft.remove"
+            @retry="attachmentDraft.upload"
+          />
           <textarea
             ref="questionInput"
             v-model="question"
@@ -668,17 +719,23 @@ onBeforeUnmount(() => {
             :disabled="sending || loadingMessages"
             @input="resizeQuestionInput"
             @keydown="handleKeydown"
+            @paste="attachmentDraft.handlePaste"
           ></textarea>
           <div class="composer-footer">
-            <ModelSelector surface="rag" />
+            <div class="composer-tools">
+              <input ref="imageInput" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden @change="handleImageSelection" />
+              <button type="button" class="add-image-button" aria-label="添加图片" :disabled="sending || draftItems.length >= 3" @click="chooseImages"><ImagePlus :size="17" /><span>添加图片</span></button>
+            </div>
             <div class="composer-actions">
+              <ModelSelector surface="rag" />
               <span v-if="question.length">{{ question.length }} / 2000</span>
               <el-button v-if="sending" data-testid="stop-generation" type="danger" plain round :loading="stopping" :disabled="stopping" @click="stopGeneration">
                 <Square v-if="!stopping" :size="14" />{{ stopping ? '正在停止' : '停止生成' }}
               </el-button>
-              <el-button v-else type="primary" round native-type="submit" :disabled="!question.trim() || loadingMessages"><Send :size="15" />发送</el-button>
+              <el-button v-else type="primary" round native-type="submit" :loading="uploadingAttachments" :disabled="!canSend"><Send :size="15" />发送</el-button>
             </div>
           </div>
+          <p v-if="attachmentError" class="attachment-error" role="alert">{{ attachmentError }}</p>
         </form>
         <p class="medical-note">回答仅用于学习和信息检索，不构成医疗建议。</p>
       </div>
@@ -788,12 +845,17 @@ details p { margin: 0; padding: 0 13px 13px; color: var(--muted); font-size: 13p
 @keyframes pulse { to { opacity: .25; transform: translateY(-2px); } }
 .error-banner { display: flex; justify-content: space-between; gap: 16px; margin: 0 24px 10px; padding: 10px 13px; border: 1px solid #f0c4c0; border-radius: 6px; color: #a33f2f; background: #fff7f6; font-size: 12px; }
 .error-banner button { border: 0; color: inherit; background: transparent; cursor: pointer; }
-.composer { width: min(calc(100% - 36px), 960px); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; margin: 0 auto 7px; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: #fff; box-shadow: 0 8px 24px rgba(23,32,30,.08); }
+.composer { width: min(calc(100% - 36px), 960px); display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; margin: 0 auto 7px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: #fff; box-shadow: 0 8px 24px rgba(23,32,30,.08); }
 textarea { width: 100%; min-height: 22px; max-height: 88px; align-self: center; resize: none; overflow-y: hidden; border: 0; outline: 0; color: var(--ink); background: transparent; font: inherit; font-size: 13px; line-height: 22px; }
 textarea::placeholder { color: #9aaba7; }
 .composer-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; }
 .composer-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .composer-footer span { color: #9aaba7; font-size: 11px; }
+.composer-tools { display: flex; align-items: center; }
+.add-image-button { min-height: 40px; display: inline-flex; align-items: center; gap: 7px; padding: 0 10px; border: 0; border-radius: 11px; color: var(--ui-text-body); background: transparent; cursor: pointer; }
+.add-image-button:hover { color: var(--ui-brand-blue); background: rgba(235,240,255,.72); }
+.add-image-button:disabled { cursor: not-allowed; opacity: .45; }
+.attachment-error { grid-column: 1 / -1; margin: -2px 2px 0; color: var(--ui-danger); font-size: 11px; }
 .medical-note { margin: 0 0 10px; color: #91a09d; text-align: center; font-size: 10px; }
 .dialog-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 20px; background: rgba(18,39,34,.5); }
 .delete-dialog { width: min(420px, 100%); padding: 24px; border-radius: 8px; background: white; box-shadow: 0 24px 70px rgba(0,0,0,.22); text-align: center; }
@@ -837,6 +899,8 @@ textarea::placeholder { color: #9aaba7; }
   .bubble { padding: 11px 12px; }
   .composer { width: calc(100% - 20px); }
   .composer textarea { min-height: 22px; }
+  .add-image-button { width: 44px; justify-content: center; padding: 0; }
+  .add-image-button span { display: none; }
   .medical-note { margin-bottom: 7px; }
 }
 </style>

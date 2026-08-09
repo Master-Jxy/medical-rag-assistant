@@ -1,6 +1,9 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
+import { ImagePlus } from '@lucide/vue'
 import ModelSelector from '../../components/ModelSelector.vue'
+import { useAttachmentDraft } from '../attachments/useAttachmentDraft.js'
+import AttachmentDraftTray from '../attachments/AttachmentDraftTray.vue'
 
 const props = defineProps({
   disabled: Boolean,
@@ -10,22 +13,46 @@ const props = defineProps({
 const emit = defineEmits(['send', 'stop', 'remove-reference'])
 const value = ref('')
 const textarea = ref(null)
-const canSend = computed(() => value.value.trim() && !props.disabled)
+const imageInput = ref(null)
+const attachmentDraft = useAttachmentDraft()
+const draftItems = attachmentDraft.items
+const attachmentError = attachmentDraft.error
+const uploadingAttachments = attachmentDraft.uploading
+const canSend = computed(() => (
+  (value.value.trim() || attachmentDraft.hasAttachments.value)
+  && !props.disabled && !uploadingAttachments.value
+))
 
 function focus() {
   resizeTextarea()
   if (!props.disabled) textarea.value?.focus()
 }
 
-defineExpose({ focus })
-
-function submit() {
-  const content = value.value.trim()
-  if (!content || props.disabled) return
-  emit('send', content)
+function completeSend() {
   value.value = ''
+  attachmentDraft.completeSend({ preserveLocalUrls: true })
   nextTick(resizeTextarea)
 }
+
+defineExpose({ focus, completeSend })
+
+async function submit() {
+  const content = value.value.trim()
+  if ((!content && !attachmentDraft.hasAttachments.value) || props.disabled) return
+  try {
+    const attachmentIds = await attachmentDraft.uploadAll()
+    emit('send', { content, attachmentIds, attachments: attachmentDraft.snapshot() })
+  } catch {
+    // 失败状态和可重试提示由共享草稿状态机维护。
+  }
+}
+
+function chooseImages() { imageInput.value?.click() }
+function handleImageSelection(event) {
+  attachmentDraft.addFiles(event.target.files)
+  event.target.value = ''
+}
+function retryUpload(item) { attachmentDraft.upload(item).catch(() => {}) }
 
 function resizeTextarea() {
   const input = textarea.value
@@ -59,6 +86,7 @@ function handleKeydown(event) {
         @ {{ item.label }} ×
       </button>
     </div>
+    <AttachmentDraftTray :items="draftItems" @remove="attachmentDraft.remove" @retry="retryUpload" />
     <textarea
       ref="textarea"
       id="agent-message"
@@ -69,17 +97,23 @@ function handleKeydown(event) {
       :disabled="disabled"
       @input="resizeTextarea"
       @keydown="handleKeydown"
+      @paste="attachmentDraft.handlePaste"
     />
     <div class="composer-footer">
-      <ModelSelector surface="agent" />
+      <div class="composer-tools">
+        <input ref="imageInput" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden @change="handleImageSelection" />
+        <button type="button" class="add-image-button" aria-label="添加图片" :disabled="disabled || draftItems.length >= 3" @click="chooseImages"><ImagePlus :size="17" /><span>添加图片</span></button>
+      </div>
       <div class="composer-actions">
+        <ModelSelector surface="agent" />
         <small v-if="value.length">{{ value.length }} / 4000</small>
         <el-button v-if="running" type="danger" plain round @click="$emit('stop')">停止生成</el-button>
-        <el-button v-else type="primary" round native-type="submit" :disabled="!canSend">
+        <el-button v-else type="primary" round native-type="submit" :loading="uploadingAttachments" :disabled="!canSend">
           发送任务
         </el-button>
       </div>
     </div>
+    <p v-if="attachmentError" class="attachment-error" role="alert">{{ attachmentError }}</p>
   </form>
 </template>
 
@@ -91,10 +125,9 @@ function handleKeydown(event) {
   bottom: 8px;
   left: max(18px, calc((100% - 960px) / 2));
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 10px;
-  padding: 8px 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 9px;
+  padding: 10px 12px;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   background: #fff;
@@ -151,7 +184,14 @@ function handleKeydown(event) {
 }
 .composer-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .composer small { color: var(--muted); }
+.composer-tools { display: flex; align-items: center; }
+.add-image-button { min-height: 40px; display: inline-flex; align-items: center; gap: 7px; padding: 0 10px; border: 0; border-radius: 11px; color: var(--ui-text-body); background: transparent; cursor: pointer; }
+.add-image-button:hover { color: var(--ui-brand-blue); background: rgba(235,240,255,.72); }
+.add-image-button:disabled { cursor: not-allowed; opacity: .45; }
+.attachment-error { margin: -2px 2px 0; color: var(--ui-danger); font-size: 11px; }
 @media (max-width: 760px) {
   .composer { right: 10px; bottom: 8px; left: 10px; }
+  .add-image-button { width: 44px; justify-content: center; padding: 0; }
+  .add-image-button span { display: none; }
 }
 </style>

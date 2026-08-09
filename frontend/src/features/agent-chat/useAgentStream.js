@@ -70,7 +70,7 @@ export function useAgentStream(onSettled, onEvent) {
     }
   }
 
-  function send(threadId, content, references = {}) {
+  function send(threadId, content, references = {}, attachmentIds = []) {
     return runStream(threadId, (entry, handleEvent) => streamAgentMessage(
       threadId,
       {
@@ -78,6 +78,7 @@ export function useAgentStream(onSettled, onEvent) {
         referenced_message_ids: references.messageIds || [],
         source_ids: references.sourceIds || [],
         artifact_ids: references.artifactIds || [],
+        attachment_ids: attachmentIds,
       },
       requestId(),
       { onEvent: handleEvent, signal: entry.controller.signal },

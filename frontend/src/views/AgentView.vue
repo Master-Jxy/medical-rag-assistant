@@ -249,14 +249,14 @@ async function confirmRemoveThread() {
   }
 }
 
-async function send(content) {
+async function send({ content, attachmentIds = [], attachments = [] }) {
   errorMessage.value = ''
   notice.value = ''
   try {
     let thread = threadState.currentThread.value
     if (!thread) thread = await threadState.newThread('新对话', assistantMode.value)
     if (thread.title === '新对话') {
-      await threadState.renameThread(thread, content.slice(0, 30))
+      await threadState.renameThread(thread, content.slice(0, 30) || '图片问答')
     }
     const selectedReferences = {
       messageIds: [...references.value.messageIds],
@@ -264,8 +264,9 @@ async function send(content) {
       artifactIds: [...references.value.artifactIds],
     }
     references.value = { messageIds: [], sourceIds: [], artifactIds: [] }
-    timeline.beginUser(thread.id, content)
-    await stream.send(thread.id, content, selectedReferences)
+    timeline.beginUser(thread.id, content, attachments)
+    await stream.send(thread.id, content, selectedReferences, attachmentIds)
+    composer.value?.completeSend()
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
   }

@@ -137,6 +137,7 @@ async function logout() {
           type="button"
           :title="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
           :aria-label="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
+          :aria-expanded="!sidebarCollapsed"
           @click="sidebarCollapsed = !sidebarCollapsed"
         >
           <PanelLeftOpen v-if="sidebarCollapsed" :size="17" />

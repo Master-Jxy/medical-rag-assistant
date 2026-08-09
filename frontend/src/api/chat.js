@@ -31,6 +31,7 @@ function handleSseEvent(item, handlers) {
   if (!item) return
   if (item.event === 'token') handlers.onToken?.(item.data.content || '')
   if (item.event === 'sources') handlers.onSources?.(item.data.sources || [])
+  if (item.event === 'vision_observations') handlers.onVisionObservations?.(item.data.observations || [])
   if (item.event === 'done') handlers.onDone?.(item.data)
   if (item.event === 'stopped') handlers.onStopped?.(item.data)
   if (item.event === 'error') throw createUserError(item.data.message || '流式回答失败。')

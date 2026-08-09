@@ -103,7 +103,7 @@ select:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
   width: 100%;
   height: 100dvh;
   display: grid;
-  grid-template-columns: clamp(240px, 17vw, 300px) minmax(0, 1fr);
+  grid-template-columns: 220px minmax(0, 1fr);
   gap: 18px;
   padding: 18px;
   overflow: hidden;
@@ -225,10 +225,10 @@ select:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
 .app-shell--collapsed .side-nav a span,
 .app-shell--collapsed .sidebar-safety span,
 .app-shell--collapsed .sidebar-version { display: none; }
-.app-shell--collapsed .sidebar-brand-row { justify-content: center; padding-inline: 10px; }
+.app-shell--collapsed .sidebar-brand-row { min-height: 0; display: grid; grid-template-columns: 1fr; justify-items: center; gap: 8px; padding: 10px; }
 .app-shell--collapsed .sidebar-brand-row .brand { flex: 0 0 44px; }
-.app-shell--collapsed .sidebar-collapse { position: absolute; top: 82px; left: 20px; }
-.app-shell--collapsed .side-nav { padding-top: 56px; }
+.app-shell--collapsed .sidebar-collapse { position: static; }
+.app-shell--collapsed .side-nav { padding-top: 10px; }
 .app-shell--collapsed .side-nav a { justify-content: center; padding-inline: 0; }
 .app-shell--collapsed .sidebar-footer { display: grid; place-items: center; }
 
@@ -538,7 +538,7 @@ select:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
 @keyframes page-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (max-width: 1280px) {
-  .app-shell { grid-template-columns: 240px minmax(0, 1fr); gap: 14px; padding: 14px; }
+  .app-shell { grid-template-columns: 220px minmax(0, 1fr); gap: 14px; padding: 14px; }
   .app-shell--collapsed { grid-template-columns: 76px minmax(0, 1fr); }
   .app-workspace { grid-template-rows: 86px minmax(0, 1fr); gap: 14px; }
   .app-topbar { padding-inline: 22px; }
@@ -562,7 +562,7 @@ select:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
   .app-shell--collapsed .side-nav a span,
   .app-shell--collapsed .sidebar-safety span,
   .app-shell--collapsed .sidebar-version { display: initial; }
-  .app-shell--collapsed .sidebar-brand-row { justify-content: initial; padding-inline: 16px; }
+  .app-shell--collapsed .sidebar-brand-row { min-height: 78px; display: flex; justify-content: flex-start; padding-inline: 16px; }
   .app-shell--collapsed .sidebar-brand-row .brand { flex: 1; }
   .app-shell--collapsed .sidebar-collapse, .sidebar-collapse { display: none; }
   .app-shell--collapsed .side-nav { padding-top: 14px; }

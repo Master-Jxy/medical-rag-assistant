@@ -51,7 +51,11 @@ export async function streamConversation(conversationId, question, options = {})
         'Idempotency-Key': idempotencyKey,
         ...getAuthorizationHeaders(),
       },
-      body: JSON.stringify({ question, top_k: options.topK || 4 }),
+      body: JSON.stringify({
+        question,
+        top_k: options.topK || 4,
+        attachment_ids: options.attachmentIds || [],
+      }),
       signal: options.signal,
     },
   )
@@ -60,6 +64,8 @@ export async function streamConversation(conversationId, question, options = {})
     if (response.status === 401) notifyUnauthorized()
     throw await createApiErrorFromResponse(response)
   }
+
+  options.onOpen?.()
 
   await consumeSseResponse(response, options)
 }

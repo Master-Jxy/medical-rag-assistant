@@ -52,6 +52,7 @@ export function reduceAgentTimeline(state, event, data = {}) {
       status: 'pending',
       sequence_no: Number.MAX_SAFE_INTEGER - 1,
       metadata: {},
+      attachments: data.attachments || [],
     })
     return next
   }
@@ -69,6 +70,7 @@ export function reduceAgentTimeline(state, event, data = {}) {
       sequence_no: data.user_sequence_no,
       turn_id: data.turn_id,
       metadata: {},
+      attachments: pending?.attachments || storedUser?.attachments || [],
     })
     next.messages[data.assistant_message_id] = normalizedMessage({
       ...storedAssistant,
@@ -158,6 +160,9 @@ export function reduceAgentTimeline(state, event, data = {}) {
       ))) updated.parts.sources.push(source)
     }
   }
+  if (event === 'vision_observations') {
+    updated.vision_observations = data.observations || []
+  }
   if (event === 'artifact_ready') {
     if (!updated.parts.artifacts.some((item) => (
       item.id === data.artifact_id || item.artifact_id === data.artifact_id
@@ -199,12 +204,12 @@ export function useAgentTimeline() {
     states.set(threadId, hydrateAgentTimeline(ensure(threadId), rows, runDetails))
   }
 
-  function beginUser(threadId, content) {
+  function beginUser(threadId, content, attachments = []) {
     const id = `pending-${Date.now()}`
     states.set(threadId, reduceAgentTimeline(
       ensure(threadId),
       'optimistic_user',
-      { id, content },
+      { id, content, attachments },
     ))
   }
 
