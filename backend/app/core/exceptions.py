@@ -152,6 +152,21 @@ class ConversationStoreError(AppError):
         super().__init__("会话服务暂时不可用，请稍后重试", code="CONVERSATION_STORE_ERROR", status_code=500)
 
 
+class MediaValidationError(AppError):
+    def __init__(self, message: str = "图片文件无效") -> None:
+        super().__init__(message, code="MEDIA_VALIDATION_ERROR", status_code=422)
+
+
+class MediaNotFoundError(AppError):
+    def __init__(self) -> None:
+        super().__init__("未找到图片或无权访问", code="MEDIA_NOT_FOUND", status_code=404)
+
+
+class MediaConflictError(AppError):
+    def __init__(self, message: str = "图片当前状态不允许此操作") -> None:
+        super().__init__(message, code="MEDIA_CONFLICT", status_code=409)
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """把业务异常统一转换成稳定的 JSON，避免向前端暴露 Traceback。"""
 

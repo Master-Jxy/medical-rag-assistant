@@ -21,6 +21,7 @@ from app.modules.usage.models import (
     ModelUsageRecord, QuotaPeriod, QuotaPlan, QuotaPolicyEvent,
     QuotaReservation, UserQuotaAssignment,
 )
+from app.modules.media.models import MediaAsset, MessageAttachment
 
 __all__ = [
     "AuditEvent",
@@ -51,4 +52,6 @@ __all__ = [
     "QuotaPeriod",
     "QuotaPolicyEvent",
     "QuotaReservation",
+    "MediaAsset",
+    "MessageAttachment",
 ]

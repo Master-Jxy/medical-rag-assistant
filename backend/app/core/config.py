@@ -91,6 +91,21 @@ class Settings(BaseSettings):
     )
     docling_pdf_timeout_seconds: float = Field(default=20.0, gt=0, le=60)
     document_asset_dir: Path = BACKEND_DIR / "data" / "document_assets"
+    media_asset_dir: Path = BACKEND_DIR / "data" / "media"
+    media_retention_days: int = Field(default=30, ge=1, le=365)
+    vision_chat_enabled: bool = False
+    vision_provider: Literal["disabled", "fake", "dashscope"] = "disabled"
+    vision_model: str = "qwen-vl-max-latest"
+    vision_max_images: int = Field(default=3, ge=1, le=3)
+    vision_max_image_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=10 * 1024 * 1024)
+    vision_max_image_pixels: int = Field(default=40_000_000, ge=1, le=40_000_000)
+    vision_max_calls_per_image: int = Field(default=3, ge=1, le=3)
+    vision_timeout_seconds: float = Field(default=45.0, gt=0, le=60)
+    vision_automatic_retries: int = Field(default=0, ge=0, le=0)
+    vision_reserve_input_tokens: int = Field(default=2000, ge=1, le=200000)
+    vision_reserve_output_tokens: int = Field(default=1000, ge=1, le=10000)
+    vision_input_price_per_million_tokens_cny: float | None = Field(default=None, ge=0, le=1000)
+    vision_output_price_per_million_tokens_cny: float | None = Field(default=None, ge=0, le=1000)
     document_enrichment_enabled: bool = False
     document_enrichment_approved: bool = False
     document_enrichment_max_pages: int = Field(default=5, ge=1, le=20)
@@ -178,6 +193,7 @@ class Settings(BaseSettings):
         "upload_dir",
         "submission_dir",
         "document_asset_dir",
+        "media_asset_dir",
         "document_registry_path",
         "telemetry_log_path",
     )
