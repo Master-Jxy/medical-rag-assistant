@@ -39,6 +39,7 @@ from app.modules.agent.thread_schemas import (
     AgentThreadUpdate,
 )
 from app.modules.agent.thread_service import AgentThreadService
+from app.modules.media.service import MediaAssetService
 from app.modules.memory.agent_context import SqlAlchemyAgentMemoryContext
 from app.modules.auth.dependencies import get_current_user
 from app.services.memory_extraction_runtime import run_memory_extraction_recovery
@@ -225,8 +226,12 @@ def delete_thread(
     thread_id: str,
     current_user: UserResponse = Depends(get_current_user),
     session: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, str]:
-    AgentThreadService(session).delete(current_user.id, thread_id)
+    AgentThreadService(
+        session,
+        media_service=MediaAssetService(session, settings),
+    ).delete(current_user.id, thread_id)
     return {"status": "deleted"}
 
 

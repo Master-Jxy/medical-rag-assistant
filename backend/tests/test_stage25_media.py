@@ -12,6 +12,7 @@ from app.db.session import build_engine, get_db_session
 from app.main import app
 from app.modules.auth.tokens import get_token_service
 from app.modules.media.models import MediaAsset
+from app.modules.media.service import MediaAssetService
 from app.modules.media.storage import PrivateMediaStorage
 from tests.auth_helpers import TEST_TOKEN_SERVICE, auth_headers, create_test_user
 
@@ -108,6 +109,28 @@ def test_delete_unattached_asset_removes_private_file(tmp_path) -> None:
                 assert stored.exists()
             deleted = client.delete(f"/api/v1/media/assets/{uploaded['id']}", headers=auth_headers(owner.id))
             assert deleted.status_code == 200
+            assert not stored.exists()
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def test_cleanup_reclaims_orphaned_attached_asset(tmp_path) -> None:
+    engine, factory, owner, _other, settings = build_client(tmp_path)
+    try:
+        with TestClient(app) as client:
+            uploaded = client.post(
+                "/api/v1/media/assets",
+                files={"file": ("scan.png", image_bytes("PNG"), "image/png")},
+                headers=auth_headers(owner.id),
+            ).json()
+        with factory() as session:
+            asset = session.get(MediaAsset, uploaded["id"])
+            stored = PrivateMediaStorage(settings).resolve(asset.storage_key)
+            asset.status = "attached"
+            session.commit()
+            assert MediaAssetService(session, settings).cleanup_expired() == 1
+            assert asset.status == "expired"
             assert not stored.exists()
     finally:
         app.dependency_overrides.clear()

@@ -14,6 +14,7 @@ from app.core.config import Settings, get_settings
 from app.modules.auth.dependencies import get_current_user
 from app.modules.auth.schemas import UserResponse
 from app.schemas.chat import ChatRequest
+from app.modules.media.service import MediaAssetService
 from app.schemas.conversation import (
     ConversationCreate,
     ConversationDeleteResponse,
@@ -140,9 +141,11 @@ def delete_conversation(
     conversation_id: str,
     current_user: UserResponse = Depends(get_current_user),
     session: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
     _recovery: None = Depends(ensure_conversation_recovery),
 ) -> ConversationDeleteResponse:
-    return ConversationService(session).delete(current_user.id, conversation_id)
+    media_service = MediaAssetService(session, settings)
+    return ConversationService(session, media_service).delete(current_user.id, conversation_id)
 
 
 @router.post("/{conversation_id}/chat", response_model=ConversationChatResponse)

@@ -88,9 +88,13 @@ class AgentMessageStreamRequest(BaseModel):
     @model_validator(mode="after")
     def require_content_or_attachments(self):
         self.content = self.content.strip()
+        self.attachment_ids = [item.strip() for item in self.attachment_ids]
         if not self.content and not self.attachment_ids:
             raise ValueError("消息或图片至少提供一项")
-        if len(set(self.attachment_ids)) != len(self.attachment_ids) or any(not item.strip() for item in self.attachment_ids):
+        if (
+            len(set(self.attachment_ids)) != len(self.attachment_ids)
+            or any(not item or len(item) > 36 for item in self.attachment_ids)
+        ):
             raise ValueError("附件标识无效或重复")
         return self
 

@@ -2,7 +2,9 @@
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from PIL import Image
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -24,6 +26,7 @@ from app.modules.agent.thread_schemas import AgentMessageStreamRequest
 from app.modules.agent.thread_service import AgentThreadService
 from app.modules.agent.message_service import AgentMessageService
 from app.modules.media.storage import PrivateMediaStorage
+from app.modules.media.service import MediaAssetService
 from app.ports.idempotency import IdempotencyRecord, IdempotencyStatus
 from app.services.generation_lock_service import GenerationLockLease
 from app.services.idempotency_service import IdempotencyClaim
@@ -83,6 +86,15 @@ class NoopExtraction:
         del args, kwargs
 
 
+def test_agent_attachment_ids_are_normalized_and_bounded() -> None:
+    payload = AgentMessageStreamRequest(content="", attachment_ids=["  asset-1  "])
+    assert payload.attachment_ids == ["asset-1"]
+    with pytest.raises(ValidationError):
+        AgentMessageStreamRequest(content="", attachment_ids=["same", " same "])
+    with pytest.raises(ValidationError):
+        AgentMessageStreamRequest(content="", attachment_ids=["x" * 37])
+
+
 def test_agent_image_overview_flows_into_knowledge_tool_and_history(tmp_path) -> None:
     engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'agent-images.db'}")
     Base.metadata.create_all(engine)
@@ -138,5 +150,13 @@ def test_agent_image_overview_flows_into_knowledge_tool_and_history(tmp_path) ->
         usage = list(session.scalars(select(ModelUsageRecord)))
         assert any(item.surface == "vision_agent" and item.total_tokens == 168 for item in usage)
         assert all(item.usage_group_id == messages[1].id for item in usage)
+        stored_path = PrivateMediaStorage(settings).resolve(asset.storage_key)
+        assert stored_path.exists()
+        AgentThreadService(
+            session,
+            media_service=MediaAssetService(session, settings),
+        ).delete(user.id, thread.id)
+        assert session.get(MediaAsset, asset.id).status == "deleted"
+        assert not stored_path.exists()
     finally:
         session.close(); engine.dispose()

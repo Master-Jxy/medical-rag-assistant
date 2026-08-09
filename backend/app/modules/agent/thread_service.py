@@ -17,13 +17,21 @@ from app.modules.agent.thread_schemas import (
     AgentThreadReadResponse,
     AgentThreadResponse,
 )
+from app.modules.media.service import MediaAssetService
 
 
 class AgentThreadService:
-    def __init__(self, session: Session, *, recent_message_count: int = 8) -> None:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        recent_message_count: int = 8,
+        media_service: MediaAssetService | None = None,
+    ) -> None:
         self.session = session
         self.repository = AgentThreadRepository(session)
         self.recent_message_count = recent_message_count
+        self.media_service = media_service
 
     def create(
         self,
@@ -134,8 +142,14 @@ class AgentThreadService:
             if runtime.active_run_id:
                 self.session.rollback()
                 raise AgentRunConflictError()
+            asset_ids = (
+                self.media_service.detach_agent_thread(user_id, thread_id)
+                if self.media_service else []
+            )
             self.repository.delete_thread(user_id, thread_id)
             self.session.commit()
+            if self.media_service:
+                self.media_service.purge_detached(user_id, asset_ids)
         except AgentThreadNotFoundError as exc:
             self.session.rollback()
             raise AgentThreadNotFoundAppError() from exc

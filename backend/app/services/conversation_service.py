@@ -8,6 +8,7 @@ from app.core.exceptions import ConversationNotFoundError, ConversationStoreErro
 from app.models import Conversation, Message
 from app.modules.usage.models import ModelUsageRecord
 from app.modules.media.models import MediaAsset, MessageAttachment
+from app.modules.media.service import MediaAssetService
 from app.modules.vision.models import VisionObservationRecord
 from app.models.conversation import utc_now
 from app.schemas.conversation import (
@@ -26,8 +27,9 @@ from app.services.generation_lock_service import (
 class ConversationService:
     """对路由隐藏 SQLAlchemy 查询和事务细节。"""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, media_service: MediaAssetService | None = None) -> None:
         self.session = session
+        self.media_service = media_service
 
     def create(self, user_id: str, title: str) -> ConversationSummary:
         conversation = Conversation(user_id=user_id, title=title)
@@ -255,8 +257,14 @@ class ConversationService:
             if has_pending:
                 self.session.rollback()
                 raise ConversationGenerationInProgressError()
+            asset_ids = (
+                self.media_service.detach_rag_conversation(user_id, conversation_id)
+                if self.media_service else []
+            )
             self.session.delete(conversation)
             self.session.commit()
+            if self.media_service:
+                self.media_service.purge_detached(user_id, asset_ids)
             return ConversationDeleteResponse(conversation_id=conversation_id)
         except SQLAlchemyError as exc:
             self.session.rollback()

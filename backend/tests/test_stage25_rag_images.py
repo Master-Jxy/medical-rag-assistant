@@ -11,7 +11,7 @@ from app.core.config import Settings, get_settings
 from app.db.base import Base
 from app.db.session import build_engine, get_db_session
 from app.main import app
-from app.models import MessageAttachment, ModelUsageRecord, VisionObservationRecord
+from app.models import MediaAsset, MessageAttachment, ModelUsageRecord, VisionObservationRecord
 from app.modules.auth.tokens import get_token_service
 from app.modules.rag.ports import ModelUsage
 from app.schemas.chat import SourceItem
@@ -116,6 +116,14 @@ def test_pure_image_rag_persists_attachment_observation_and_combined_usage(tmp_p
                 assert len(list(session.scalars(select(MessageAttachment)))) == 1
                 assert len(list(session.scalars(select(VisionObservationRecord)))) == 1
                 assert {row.surface for row in session.scalars(select(ModelUsageRecord))} == {"vision_rag", "rag"}
+                asset = session.get(MediaAsset, asset_id)
+                stored_path = tmp_path / "media" / asset.storage_key
+                assert stored_path.exists()
+            deleted = client.delete(f"/api/v1/conversations/{conversation_id}", headers=headers)
+            assert deleted.status_code == 200
+            with factory() as session:
+                assert session.get(MediaAsset, asset_id).status == "deleted"
+            assert not stored_path.exists()
     finally:
         app.dependency_overrides.clear(); engine.dispose()
 

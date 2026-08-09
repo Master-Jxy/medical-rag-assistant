@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import delete, exists, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
@@ -71,10 +71,80 @@ class MediaAssetService:
         return MediaDeleteResponse(id=asset.id)
 
     def cleanup_expired(self, *, limit: int = 100) -> int:
-        assets = list(self.session.scalars(select(MediaAsset).where(MediaAsset.status == "uploaded", MediaAsset.expires_at <= datetime.now(timezone.utc)).limit(limit)))
+        has_attachment = exists(
+            select(MessageAttachment.id).where(
+                MessageAttachment.media_asset_id == MediaAsset.id
+            )
+        )
+        assets = list(self.session.scalars(
+            select(MediaAsset).where(or_(
+                (
+                    (MediaAsset.status == "uploaded")
+                    & (MediaAsset.expires_at <= datetime.now(timezone.utc))
+                ),
+                (MediaAsset.status == "attached") & ~has_attachment,
+            )).limit(limit)
+        ))
         for asset in assets:
             self.storage.delete(asset.storage_key)
             asset.status = "expired"
+        self.session.commit()
+        return len(assets)
+
+    def asset_ids_for_rag_conversation(self, user_id: str, conversation_id: str) -> list[str]:
+        from app.models import Message
+
+        return list(self.session.scalars(
+            select(MessageAttachment.media_asset_id)
+            .join(Message, Message.id == MessageAttachment.conversation_message_id)
+            .join(MediaAsset, MediaAsset.id == MessageAttachment.media_asset_id)
+            .where(Message.conversation_id == conversation_id, MediaAsset.user_id == user_id)
+        ))
+
+    def asset_ids_for_agent_thread(self, user_id: str, thread_id: str) -> list[str]:
+        from app.modules.agent.thread_models import AgentMessage
+
+        return list(self.session.scalars(
+            select(MessageAttachment.media_asset_id)
+            .join(AgentMessage, AgentMessage.id == MessageAttachment.agent_message_id)
+            .join(MediaAsset, MediaAsset.id == MessageAttachment.media_asset_id)
+            .where(AgentMessage.thread_id == thread_id, MediaAsset.user_id == user_id)
+        ))
+
+    def detach_rag_conversation(self, user_id: str, conversation_id: str) -> list[str]:
+        asset_ids = self.asset_ids_for_rag_conversation(user_id, conversation_id)
+        if asset_ids:
+            self.session.execute(delete(MessageAttachment).where(
+                MessageAttachment.media_asset_id.in_(asset_ids)
+            ))
+            self.session.flush()
+        return asset_ids
+
+    def detach_agent_thread(self, user_id: str, thread_id: str) -> list[str]:
+        asset_ids = self.asset_ids_for_agent_thread(user_id, thread_id)
+        if asset_ids:
+            self.session.execute(delete(MessageAttachment).where(
+                MessageAttachment.media_asset_id.in_(asset_ids)
+            ))
+            self.session.flush()
+        return asset_ids
+
+    def purge_detached(self, user_id: str, asset_ids: list[str]) -> int:
+        if not asset_ids:
+            return 0
+        assets = list(self.session.scalars(
+            select(MediaAsset).where(
+                MediaAsset.user_id == user_id,
+                MediaAsset.id.in_(asset_ids),
+                MediaAsset.status == "attached",
+                ~exists(select(MessageAttachment.id).where(
+                    MessageAttachment.media_asset_id == MediaAsset.id
+                )),
+            )
+        ))
+        for asset in assets:
+            self.storage.delete(asset.storage_key)
+            asset.status = "deleted"
         self.session.commit()
         return len(assets)
 
