@@ -22,6 +22,7 @@ from app.modules.usage.models import (
     QuotaReservation, UserQuotaAssignment,
 )
 from app.modules.media.models import MediaAsset, MessageAttachment
+from app.modules.vision.models import VisionObservationRecord
 
 __all__ = [
     "AuditEvent",
@@ -54,4 +55,5 @@ __all__ = [
     "QuotaReservation",
     "MediaAsset",
     "MessageAttachment",
+    "VisionObservationRecord",
 ]

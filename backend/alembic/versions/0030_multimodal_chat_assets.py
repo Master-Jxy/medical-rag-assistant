@@ -71,6 +71,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_vision_observations_media_asset_id", "vision_observations", ["media_asset_id"])
     op.create_index("ix_vision_observations_user_id", "vision_observations", ["user_id"])
+    op.create_index("ix_vision_observations_asset_sequence", "vision_observations", ["media_asset_id", "sequence_no"])
 
 
 def downgrade() -> None:

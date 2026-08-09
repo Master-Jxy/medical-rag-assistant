@@ -167,6 +167,16 @@ class MediaConflictError(AppError):
         super().__init__(message, code="MEDIA_CONFLICT", status_code=409)
 
 
+class VisionUnavailableError(AppError):
+    def __init__(self, message: str = "图片识别暂时不可用，文字聊天仍可继续") -> None:
+        super().__init__(message, code="VISION_UNAVAILABLE", status_code=503)
+
+
+class VisionPolicyError(AppError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message, code="VISION_POLICY_LIMIT", status_code=409)
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """把业务异常统一转换成稳定的 JSON，避免向前端暴露 Traceback。"""
 

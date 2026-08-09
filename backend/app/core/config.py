@@ -94,7 +94,7 @@ class Settings(BaseSettings):
     media_asset_dir: Path = BACKEND_DIR / "data" / "media"
     media_retention_days: int = Field(default=30, ge=1, le=365)
     vision_chat_enabled: bool = False
-    vision_provider: Literal["disabled", "fake", "dashscope"] = "disabled"
+    vision_provider: Literal["disabled", "fake", "dashscope"] = "dashscope"
     vision_model: str = "qwen-vl-max-latest"
     vision_max_images: int = Field(default=3, ge=1, le=3)
     vision_max_image_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=10 * 1024 * 1024)
