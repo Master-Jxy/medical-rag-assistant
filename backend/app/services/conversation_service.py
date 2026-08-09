@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.exceptions import ConversationNotFoundError, ConversationStoreError
 from app.models import Conversation, Message
 from app.modules.usage.models import ModelUsageRecord
+from app.modules.media.models import MediaAsset, MessageAttachment
+from app.modules.vision.models import VisionObservationRecord
 from app.models.conversation import utc_now
 from app.schemas.conversation import (
     ConversationDeleteResponse,
@@ -96,12 +98,42 @@ class ConversationService:
         usage_rows = self.session.scalars(select(ModelUsageRecord).where(
             ModelUsageRecord.usage_group_id.in_([m.id for m in conversation.messages])
         )).all()
+        attachment_rows = self.session.execute(
+            select(MessageAttachment, MediaAsset)
+            .join(MediaAsset, MediaAsset.id == MessageAttachment.media_asset_id)
+            .where(MessageAttachment.conversation_message_id.in_([m.id for m in conversation.messages]))
+            .order_by(MessageAttachment.position)
+        ).all()
+        attachments_by_message: dict[str, list[dict]] = {}
+        for attachment, asset in attachment_rows:
+            attachments_by_message.setdefault(attachment.conversation_message_id, []).append({
+                "id": attachment.id, "media_asset_id": asset.id, "position": attachment.position,
+                "original_name": asset.original_name, "mime_type": asset.mime_type,
+                "byte_size": asset.byte_size, "width": asset.width, "height": asset.height,
+                "preview_url": f"/api/v1/media/assets/{asset.id}/preview",
+            })
+        observation_rows = list(self.session.scalars(
+            select(VisionObservationRecord).where(
+                VisionObservationRecord.assistant_message_id.in_([m.id for m in conversation.messages]),
+                VisionObservationRecord.status == "completed",
+            ).order_by(VisionObservationRecord.sequence_no)
+        ))
+        observations_by_message: dict[str, list[dict]] = {}
+        for observation in observation_rows:
+            observations_by_message.setdefault(observation.assistant_message_id, []).append({
+                "media_asset_id": observation.media_asset_id,
+                "kind": observation.kind,
+                "sequence_no": observation.sequence_no,
+                "observation": observation.observation_json or {},
+            })
         usage_by_message = {}
         for row in usage_rows:
             usage_by_message.setdefault(row.usage_group_id, []).append(row)
         messages = []
         for message in conversation.messages:
             payload = MessageResponse.model_validate(message).model_dump()
+            payload["attachments"] = attachments_by_message.get(message.id, [])
+            payload["vision_observations"] = observations_by_message.get(message.id, [])
             rows = usage_by_message.get(message.id, [])
             if rows:
                 if any(row.token_measurement == "unknown" for row in rows):

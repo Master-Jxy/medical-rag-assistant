@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from app.core.exceptions import AppError, RagServiceError
+from app.core.exceptions import AppError, MediaConflictError, RagServiceError
 from app.core.sse import format_sse
 from app.core.request_context import get_request_id
 from app.modules.auth.dependencies import get_current_user
@@ -33,6 +33,8 @@ def chat(
     """把已校验的问题交给 RAG 服务，不在路由中编写检索和模型逻辑。"""
     request_id = get_request_id()
     rate_limiter.check(current_user.id)
+    if request.attachment_ids:
+        raise MediaConflictError("图片消息请在会话问答中发送")
     answer, sources = rag_service.ask(request.question, request.top_k)
     return ChatResponse(answer=answer, sources=sources, request_id=request_id)
 
@@ -51,6 +53,8 @@ def stream_chat(
     """路由只负责把服务层事件转换为 SSE，不编写检索和模型逻辑。"""
     request_id = get_request_id()
     rate_limiter.check(current_user.id)
+    if request.attachment_ids:
+        raise MediaConflictError("图片消息请在会话问答中发送")
 
     def event_generator():
         try:

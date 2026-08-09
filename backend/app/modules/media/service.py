@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.exceptions import MediaConflictError, MediaNotFoundError
-from app.modules.media.models import MediaAsset
+from app.modules.media.models import MediaAsset, MessageAttachment
 from app.modules.media.repository import MediaRepository
 from app.modules.media.schemas import MediaAssetResponse, MediaDeleteResponse
 from app.modules.media.storage import PrivateMediaStorage
@@ -77,6 +77,26 @@ class MediaAssetService:
             asset.status = "expired"
         self.session.commit()
         return len(assets)
+
+    def bind_rag(self, user_id: str, asset_ids: list[str], message_id: str) -> list[MediaAsset]:
+        return self._bind(user_id, asset_ids, surface="rag", target_id=message_id)
+
+    def bind_agent(self, user_id: str, asset_ids: list[str], message_id: str) -> list[MediaAsset]:
+        return self._bind(user_id, asset_ids, surface="agent", target_id=message_id)
+
+    def _bind(self, user_id: str, asset_ids: list[str], *, surface: str, target_id: str) -> list[MediaAsset]:
+        if len(asset_ids) > self.settings.vision_max_images or len(set(asset_ids)) != len(asset_ids):
+            raise MediaConflictError("每条消息最多绑定 3 张且不能重复")
+        assets = [self.owned_asset(user_id, asset_id, allow_attached=False) for asset_id in asset_ids]
+        for position, asset in enumerate(assets, start=1):
+            self.session.add(MessageAttachment(
+                media_asset_id=asset.id, surface=surface, position=position,
+                conversation_message_id=target_id if surface == "rag" else None,
+                agent_message_id=target_id if surface == "agent" else None,
+            ))
+            asset.status = "attached"
+        self.session.commit()
+        return assets
 
     @staticmethod
     def _response(asset: MediaAsset) -> MediaAssetResponse:

@@ -7,6 +7,14 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.chat import ChatResponse
+from app.modules.media.schemas import MessageAttachmentResponse
+
+
+class VisionObservationResponse(BaseModel):
+    media_asset_id: str
+    kind: str
+    sequence_no: int
+    observation: dict
 
 
 class ConversationCreate(BaseModel):
@@ -65,6 +73,8 @@ class MessageResponse(BaseModel):
     request_id: str | None
     created_at: datetime
     sources: list[MessageSourceResponse]
+    attachments: list[MessageAttachmentResponse] = Field(default_factory=list)
+    vision_observations: list[VisionObservationResponse] = Field(default_factory=list)
     usage: UsageSummaryResponse | None = None
 
 

@@ -10,6 +10,7 @@ from app.db.session import get_db_session
 from app.core.exceptions import AppError, RagServiceError
 from app.core.sse import format_sse
 from app.core.request_context import get_request_id
+from app.core.config import Settings, get_settings
 from app.modules.auth.dependencies import get_current_user
 from app.modules.auth.schemas import UserResponse
 from app.schemas.chat import ChatRequest
@@ -156,18 +157,20 @@ def chat_in_conversation(
     idempotency: IdempotencyService = Depends(get_idempotency_service),
     session: Session = Depends(get_db_session),
     rag_service: RagService = Depends(get_rag_service),
+    settings: Settings = Depends(get_settings),
 ) -> ConversationChatResponse:
     """保存用户问题和助手回答，具体事务由服务层负责。"""
     rate_limiter.check(current_user.id)
     ensure_conversation_recovery(http_request, session)
     return ConversationChatService(
-        session, rag_service, generation_lock, idempotency
+        session, rag_service, generation_lock, idempotency, settings=settings
     ).ask(
         current_user.id,
         conversation_id,
         request.question,
         request.top_k,
         idempotency_key,
+        request.attachment_ids,
     )
 
 
@@ -212,12 +215,13 @@ async def stream_chat_in_conversation(
     ),
     session: Session = Depends(get_db_session),
     rag_service: RagService = Depends(get_rag_service),
+    settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
     request_id = get_request_id()
     rate_limiter.check(current_user.id)
     ensure_conversation_recovery(http_request, session)
     service_iterator = ConversationChatService(
-        session, rag_service, generation_lock, idempotency, cancellation
+        session, rag_service, generation_lock, idempotency, cancellation, settings=settings
     ).stream(
         current_user.id,
         conversation_id,
@@ -225,6 +229,7 @@ async def stream_chat_in_conversation(
         request.top_k,
         request_id,
         idempotency_key,
+        request.attachment_ids,
     )
 
     async def event_generator():

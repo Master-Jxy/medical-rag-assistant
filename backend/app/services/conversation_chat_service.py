@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.exceptions import (
     AppError,
     ConversationNotFoundError,
@@ -43,6 +43,9 @@ from app.modules.usage.estimator import (
 from app.modules.usage.contracts import QuotaPolicyMode
 from app.modules.rag.adapters import RAG_SYSTEM_PROMPT
 from app.schemas.conversation import UsageSummaryResponse
+from app.modules.media.service import MediaAssetService
+from app.modules.vision.contracts import VisionObservation
+from app.modules.vision.service import VisionChatService
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +66,9 @@ class ConversationChatService:
         memory_extraction=None,
         quota_gate=None,
         quota_estimator: QuotaReservationEstimatorPort | None = None,
+        media_service: MediaAssetService | None = None,
+        vision_service: VisionChatService | None = None,
+        settings: Settings | None = None,
     ) -> None:
         self.session = session
         self.rag_service = rag_service
@@ -73,7 +79,10 @@ class ConversationChatService:
         self.memory_context_provider = memory_context_provider or SqlAlchemyMemoryContextProvider(session)
         self.memory_extraction = memory_extraction or build_memory_scheduler(session)
         self.usage_recorder = usage_recorder or ModelUsageRecorder(session)
-        settings = get_settings()
+        settings = settings or get_settings()
+        self.settings = settings
+        self.media_service = media_service or MediaAssetService(session, settings)
+        self.vision_service = vision_service or VisionChatService(session, settings)
         self.quota_gate = quota_gate or build_quota_gate(session, settings)
         self.quota_estimator = (
             quota_estimator
@@ -96,7 +105,9 @@ class ConversationChatService:
         question: str,
         top_k: int,
         client_request_id: str,
+        attachment_ids: list[str] | None = None,
     ) -> ConversationChatResponse:
+        attachment_ids = attachment_ids or []
         request_id = str(uuid4())
         self._assert_conversation_owned(user_id, conversation_id)
         claim = self.idempotency.begin(
@@ -106,6 +117,7 @@ class ConversationChatService:
             conversation_id,
             question,
             top_k,
+            attachment_ids,
         )
         if claim.completed_record is not None:
             return self._load_completed_response(
@@ -123,11 +135,22 @@ class ConversationChatService:
                 user_id, conversation_id, question, request_id
             )
             try:
+                _vision_payload, effective_question = self._prepare_visual_context(
+                    user_id=user_id,
+                    attachment_ids=attachment_ids,
+                    user_message_id=user_message.id,
+                    assistant_message_id=assistant_message.id,
+                    question=question,
+                )
+            except Exception:
+                self._mark_failed(user_id, conversation_id, assistant_message.id, request_id)
+                raise
+            try:
                 reservation = self._reserve_rag_quota(
                     user_id=user_id,
                     idempotency_key=f"rag:{client_request_id}",
                     usage_group_id=assistant_message.id,
-                    question=question,
+                    question=effective_question,
                     history=history,
                     top_k=top_k,
                 )
@@ -140,12 +163,12 @@ class ConversationChatService:
                 ask_with_usage = getattr(self.rag_service, "ask_with_usage", None)
                 if ask_with_usage is None:
                     answer, sources = self.rag_service.ask(
-                        question, top_k, history=history
+                        effective_question, top_k, history=history
                     )
                     model_usage = ModelUsage.unknown()
                 else:
                     answer, sources, model_usage = ask_with_usage(
-                        question, top_k, history=history
+                        effective_question, top_k, history=history
                     )
             except AppError:
                 self._mark_failed(
@@ -211,8 +234,10 @@ class ConversationChatService:
         top_k: int,
         request_id: str,
         client_request_id: str,
+        attachment_ids: list[str] | None = None,
     ):
         """先同步校验归属，再返回 SSE 迭代器，越权请求因此能直接返回404。"""
+        attachment_ids = attachment_ids or []
         self._assert_conversation_owned(user_id, conversation_id)
         claim = self.idempotency.begin(
             user_id,
@@ -221,6 +246,7 @@ class ConversationChatService:
             conversation_id,
             question,
             top_k,
+            attachment_ids,
         )
         if claim.completed_record is not None:
             response = self._load_completed_response(
@@ -233,11 +259,20 @@ class ConversationChatService:
         reservation = None
         user_message = None
         assistant_message = None
+        vision_payload: list[dict] = []
+        effective_question = question
         try:
             lease = self.generation_lock.acquire(user_id, conversation_id)
             history = self._load_recent_history(user_id, conversation_id, question)
             user_message, assistant_message = self._create_pending_messages(
                 user_id, conversation_id, question, request_id
+            )
+            vision_payload, effective_question = self._prepare_visual_context(
+                user_id=user_id,
+                attachment_ids=attachment_ids,
+                user_message_id=user_message.id,
+                assistant_message_id=assistant_message.id,
+                question=question,
             )
             cancellation_lease = self.cancellation.register(
                 user_id, conversation_id, client_request_id
@@ -246,7 +281,7 @@ class ConversationChatService:
                 user_id=user_id,
                 idempotency_key=f"rag-stream:{client_request_id}",
                 usage_group_id=assistant_message.id,
-                question=question,
+                question=effective_question,
                 history=history,
                 top_k=top_k,
             )
@@ -268,7 +303,12 @@ class ConversationChatService:
             model_usage = ModelUsage.unknown()
             quota_finalized = False
 
-            rag_iterator = self._async_rag_stream(question, top_k, history)
+            if vision_payload:
+                yield {
+                    "event": "vision_observations",
+                    "data": {"label": "图片识别结果", "observations": vision_payload},
+                }
+            rag_iterator = self._async_rag_stream(effective_question, top_k, history)
             try:
                 while True:
                     next_item = asyncio.create_task(anext(rag_iterator))
@@ -693,6 +733,40 @@ class ConversationChatService:
                 remaining_chars -= len(clipped)
         return [*selected_prefixes, *recent]
 
+    def _prepare_visual_context(
+        self,
+        *,
+        user_id: str,
+        attachment_ids: list[str],
+        user_message_id: str,
+        assistant_message_id: str,
+        question: str,
+    ) -> tuple[list[dict], str]:
+        if not attachment_ids:
+            return [], question
+        assets = self.media_service.bind_rag(user_id, attachment_ids, user_message_id)
+        observations: list[tuple[str, VisionObservation]] = []
+        for asset in assets:
+            observation = self.vision_service.observe_overview(
+                user_id=user_id,
+                asset_id=asset.id,
+                user_question=question or "请说明图片中的可见信息",
+                surface="vision_rag",
+                usage_group_id=assistant_message_id,
+            )
+            observations.append((asset.id, observation))
+        base_question = question or "请根据图片中的可见信息，结合知识库提供说明。"
+        visual_facts = "\n\n".join(
+            f"图片 {index} 的结构化观察（仅为可见事实，不是诊断）：\n{observation.retrieval_text()}"
+            for index, (_asset_id, observation) in enumerate(observations, start=1)
+        )
+        effective_question = f"{base_question}\n\n{visual_facts}"[:12000]
+        payload = [
+            {"media_asset_id": asset_id, "observation": observation.model_dump(mode="json")}
+            for asset_id, observation in observations
+        ]
+        return payload, effective_question
+
     def _estimate_rag_reservation(
         self,
         question: str,
@@ -842,4 +916,6 @@ class ConversationChatService:
 
     @staticmethod
     def _title_from_question(question: str) -> str:
+        if not question:
+            return "图片问答"
         return question[:30] + ("…" if len(question) > 30 else "")

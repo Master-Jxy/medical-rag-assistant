@@ -21,3 +21,15 @@ class MediaAssetResponse(BaseModel):
 class MediaDeleteResponse(BaseModel):
     id: str
     status: str = "deleted"
+
+
+class MessageAttachmentResponse(BaseModel):
+    id: str
+    media_asset_id: str
+    position: int
+    original_name: str
+    mime_type: str
+    byte_size: int
+    width: int
+    height: int
+    preview_url: str
