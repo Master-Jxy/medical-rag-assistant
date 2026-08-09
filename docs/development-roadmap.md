@@ -772,7 +772,7 @@
    服务器只重建 backend。四容器健康，HTTP 308、HTTPS 200、未授权 401、配置 900 秒
    和错误日志检查通过；未调用真实模型。
 
-## 24. Stage 24: Stability Wrap-up and Document Intelligence `[release candidate validated, awaiting deployment authorization]`
+## 24. Stage 24: Stability Wrap-up and Document Intelligence `[已完成并发布]`
 
 完整架构、数据契约、安全闸门和验收标准见
 [`docs/stage24-document-intelligence-and-stability-design.md`](stage24-document-intelligence-and-stability-design.md)，
@@ -795,7 +795,22 @@
 7. **24.5 `[已完成]`**：persisted metadata suggestions, explicit administrator generate action, Disabled/Fake port, administrator accept/edit/reject confirmation, formal `document_versions` writes, review UI, audit, migration, and follow-up acceptance.
 8. **24.6 `[已完成并通过独立验收]`**：补充 exact/normalized/near 三层重复信号、版本沿袭、失效治理筛选、显式作为新版本发布、JobPort 治理扫描，并完成 RAG/Agent 检索资格、扫描上限与失败回滚 hardening。
 9. **24.7 `[已完成并通过独立验收]`**：建立不可覆盖 v1 的 `corpus_v2` manifest、覆盖矩阵、清洗/重复报告、`eval_v2` 和无费用 preflight；当前只登记待审 fixture/intake，不读取真实上传资料，不导入生产。覆盖矩阵已区分 planned 与 current，当前 10 个资料均非 ready，缺口按真实可执行覆盖计算；Embedding 和生产导入另设闸门。
-10. **24.8 `[发布候选已验收，待用户授权部署]`**：完整后端、前端、SSE、构建、迁移往返、安全扫描、Stage24 focused matrix、部署静态预检和发布审计已完成；Docker/Nginx CLI 与本地浏览器点击因本机缺少工具且禁止下载依赖而记录 SKIP。未获当次授权不部署。
+10. **24.8 `[已完成并发布]`**：完整后端、前端、SSE、构建、迁移往返、安全扫描、Stage24 focused matrix、部署静态预检和发布审计已完成；提交 `39a56ab` 已部署，生产迁移至 `0029`，HTTP/HTTPS和四容器健康通过。
+
+## 25. Stage 25：多模态聊天与输入器升级 `[开发中]`
+
+完整设计、架构边界、安全策略和验收标准见
+[`docs/stage25-multimodal-chat-design.md`](stage25-multimodal-chat-design.md)。
+
+1. **25.0 `[设计完成]`**：完成现有Vision/OCR、Agent循环、RAG SSE、用量和前端输入器审计，冻结私有附件与结构化视觉观察契约。
+2. **25.1 `[待开发]`**：私有媒体资产、迁移、上传、授权读取、删除/过期和安全存储。
+3. **25.2 `[待开发]`**：聊天视觉端口、Fake/Disabled、真实DashScope适配器和配置工厂。
+4. **25.3 `[待开发]`**：RAG图片消息、首次观察、检索查询、SSE与历史恢复。
+5. **25.4 `[待开发]`**：Agent视觉工具、结构化观察、按需二次观察和循环限制。
+6. **25.5 `[待开发]`**：RAG/Agent共享图片选择、粘贴、预览、上传与全宽输入器。
+7. **25.6 `[待开发]`**：侧栏220px宽度、收起按钮重叠和响应式修复。
+8. **25.7 `[待开发]`**：视觉用量、额度、幂等、隐私、安全拒答和清理策略。
+9. **25.8 `[待开发]`**：全量测试、迁移往返、浏览器验收、真实受控视觉调用、发布审计和部署。
 
 ## 21. 每个任务的完成模板
 

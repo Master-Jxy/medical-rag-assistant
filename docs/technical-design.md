@@ -2250,3 +2250,8 @@ worktree, verified backups of MySQL/app_data/chroma_data/Redis, Alembic upgrade,
 service rebuild, health checks, and rollback readiness. `corpus_v2` remains a
 planning asset: 10 placeholder documents, 0 ready documents, and 10 coverage
 gaps.
+## Stage 25 Multimodal Chat Boundary (2026-08-10)
+
+Stage 25 introduces user-private chat image assets and a chat-specific vision application boundary. It does not repurpose the Stage 24 `VisionDocumentPort`, because document ingestion approval and private chat authorization are different use cases. RAG and Agent receive only authorized asset IDs and normalized `VisionObservation` data; provider SDKs remain infrastructure adapters.
+
+The original image remains the source asset. OCR and vision output are persisted derived observations, so the Agent can request a targeted second inspection of the original image when the first observation does not answer the user's question. The existing LangGraph tool loop is retained, with separate per-image call and repeated-focus limits. Full contracts, data model, UI behavior and release gates are defined in `docs/stage25-multimodal-chat-design.md`.

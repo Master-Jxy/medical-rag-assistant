@@ -1,11 +1,13 @@
 # 当前开发交接
 
-> 最后更新：2026-08-09
+> 最后更新：2026-08-10
 > 本文只保留当前事实、工作区边界和一个下一任务。
 
 ## 1. 当前真实状态
 
 Stage 24.8 完整验收与发布候选已完成本地验证，并已推送和部署到服务器提交 `39a56ab6f8d6ad8179ce1be4449f5d5e112c44c8`。生产备份成功，数据库迁移到 `0029_dedup_version_governance`，HTTP/HTTPS、健康接口和四个容器均已验收通过。未调用真实 Qwen、Embedding、Reranker、OCR、Vision、SMTP、Docling、生产抓取或任何收费供应商。
+
+Stage 25 多模态聊天与输入器升级已完成设计，当前进入开发。设计入口为 `docs/stage25-multimodal-chat-design.md`，范围包括私有图片附件、粘贴图片、真实视觉模型、主Agent按需二次观察、RAG图片检索、用量/额度/隐私，以及侧栏和输入器三个UI缺陷。
 
 Stage 24 当前候选边界：
 
@@ -103,18 +105,18 @@ SKIP 项：
 
 ## 4. 新任务阅读范围
 
-新窗口先完整阅读 `AGENTS.md` 和本文。若执行唯一下一任务，只读：
+新窗口先完整阅读 `AGENTS.md` 和本文。执行唯一下一任务时读取：
 
-- `docs/deployment.md`
-- `docs/release-audit-stage24-document-intelligence.md`
-- `docs/stage24-document-intelligence-and-stability-design.md` 的 24.8、安全和验收段落
-- `docs/technical-design.md` 的 Stage 24.8 Release Candidate Validation Boundary
-- 必要时读取 deploy 脚本、Compose/Nginx 配置和当前提交元数据
+- `docs/stage25-multimodal-chat-design.md`
+- `docs/technical-design.md` 的 Stage 25 Multimodal Chat Boundary
+- `docs/development-roadmap.md` 的 Stage 25
+- 与当前子任务直接相关的源码和测试
+- 只有到25.8发布时才读取 `docs/deployment.md` 和部署脚本
 
 禁止读取真实 `.env`、生产正文日志、真实上传文件、Chroma 数据或受保护 auth 文件正文。
 
 ## 5. 唯一下一任务
 
-**观察 Stage 24 线上运行状态，收集真实错误和用户体验问题；不要立即启用 Docling、OCR、Vision 或导入 `corpus_v2` 真实资料。**
+**依次完成 Stage 25.1 到 25.8，形成可发布候选并按用户本次明确授权完成部署。**
 
-下一次发布前必须再次确认目标提交、服务器当前提交、备份目录、迁移顺序、回滚点和无真实供应商调用边界。
+开发必须保护 `backend/app/modules/auth/service.py` 既有改动；测试默认使用Fake视觉适配器。真实视觉调用只在25.8无费用预检通过后做最小受控验收，随后备份、推送和部署。
