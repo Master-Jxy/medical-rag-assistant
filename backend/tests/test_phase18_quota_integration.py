@@ -103,9 +103,9 @@ class RecordingConversationIdempotency:
 
     def begin(
         self, user_id, endpoint, client_request_id, conversation_id,
-        question, top_k,
+        question, top_k, attachment_ids=None,
     ):
-        del user_id, endpoint, client_request_id, conversation_id, question, top_k
+        del user_id, endpoint, client_request_id, conversation_id, question, top_k, attachment_ids
         return IdempotencyClaim(
             "key",
             "fingerprint",

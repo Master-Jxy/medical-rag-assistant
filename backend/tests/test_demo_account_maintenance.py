@@ -1,14 +1,17 @@
 """任务16.1e：演示账号清理预检、保护闸门和临时库执行。"""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from io import BytesIO
 import json
 
 import pytest
+from PIL import Image
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.db.base import Base
 from app.db.session import build_engine
+from app.core.config import Settings
 from app.models.conversation import Conversation, Message
 from app.maintenance.demo_accounts import (
     DEMO_ACCOUNT_CONFIRM_PHRASE,
@@ -18,6 +21,8 @@ from app.maintenance.demo_accounts import (
 )
 from app.modules.auth.models import User
 from app.modules.knowledge.models import KnowledgeDocument, KnowledgeSubmission
+from app.modules.media.models import MediaAsset
+from app.modules.media.storage import PrivateMediaStorage
 from app.modules.usage.models import ModelUsageRecord
 
 
@@ -194,6 +199,48 @@ def test_temp_database_cleanup_transfers_public_assets_and_deletes_personal_data
         assert session.get(Message, "message") is None
         usage = session.get(ModelUsageRecord, "usage")
         assert usage is not None and usage.user_id is None
+
+
+def test_cleanup_requires_storage_and_removes_private_media(tmp_path) -> None:
+    engine = build_maintenance_engine()
+    settings = Settings(_env_file=None, media_asset_dir=tmp_path / "media")
+    storage = PrivateMediaStorage(settings)
+    output = BytesIO()
+    Image.new("RGB", (12, 8), "white").save(output, format="PNG")
+    stored = storage.store(
+        original_name="demo.png",
+        claimed_mime="image/png",
+        data=output.getvalue(),
+    )
+    with Session(engine) as session:
+        session.add(MediaAsset(
+            id="demo-media",
+            user_id="demo",
+            original_name="demo.png",
+            mime_type=stored.mime_type,
+            byte_size=stored.byte_size,
+            width=stored.width,
+            height=stored.height,
+            sha256=stored.sha256,
+            storage_key=stored.storage_key,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+        ))
+        session.commit()
+        plan = DemoAccountMaintenanceService(session).preflight("owner@example.com")
+        assert plan.media_assets_to_delete == 1
+        with pytest.raises(DemoAccountCleanupBlockedError, match="私有图片"):
+            DemoAccountMaintenanceService(session).execute(
+                "owner@example.com",
+                expected_fingerprint=plan.fingerprint,
+                confirmation=DEMO_ACCOUNT_CONFIRM_PHRASE,
+            )
+        DemoAccountMaintenanceService(session, media_storage=storage).execute(
+            "owner@example.com",
+            expected_fingerprint=plan.fingerprint,
+            confirmation=DEMO_ACCOUNT_CONFIRM_PHRASE,
+        )
+        assert session.get(MediaAsset, "demo-media") is None
+    assert not storage.resolve(stored.storage_key).exists()
 
 
 def test_preflight_stops_on_unknown_user_foreign_key() -> None:

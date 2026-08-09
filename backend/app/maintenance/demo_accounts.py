@@ -22,8 +22,11 @@ from app.modules.memory.models import (
     UserMemory,
     UserMemorySetting,
 )
+from app.modules.media.models import MediaAsset, MessageAttachment
+from app.modules.media.storage import PrivateMediaStorage
 from app.modules.quality.models import AnswerFeedback
 from app.modules.usage.models import ModelUsageRecord, QuotaPolicyEvent
+from app.modules.vision.models import VisionObservationRecord
 
 DEMO_ACCOUNT_CONFIRM_PHRASE = "DELETE_DEMO_ACCOUNTS"
 KNOWN_USER_FOREIGN_KEYS = {
@@ -39,6 +42,7 @@ KNOWN_USER_FOREIGN_KEYS = {
     ("metadata_suggestions", "reviewed_by"),
     ("model_usage_records", "user_id"),
     ("memory_extraction_runs", "user_id"),
+    ("media_assets", "user_id"),
     ("quota_periods", "user_id"),
     ("quota_policy_events", "user_id"),
     ("quota_reservations", "user_id"),
@@ -46,6 +50,7 @@ KNOWN_USER_FOREIGN_KEYS = {
     ("user_quota_assignments", "updated_by"),
     ("user_memories", "user_id"),
     ("user_memory_settings", "user_id"),
+    ("vision_observations", "user_id"),
 }
 
 
@@ -73,14 +78,21 @@ class DemoAccountCleanupPlan:
     memories_to_delete: int
     usage_records_to_anonymize: int
     quota_policy_events_to_delete: int
+    media_assets_to_delete: int
     fingerprint: str
 
 
 class DemoAccountMaintenanceService:
     """预检和受控执行使用同一份可校验计划；不接触文件、Chroma或Redis。"""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        media_storage: PrivateMediaStorage | None = None,
+    ) -> None:
         self.session = session
+        self.media_storage = media_storage
 
     def preflight(self, owner_email: str) -> DemoAccountCleanupPlan:
         self._assert_known_user_foreign_keys()
@@ -133,12 +145,22 @@ class DemoAccountMaintenanceService:
         target_ids = list(plan.user_ids_to_delete)
         if not target_ids:
             return plan
+        if plan.media_assets_to_delete and self.media_storage is None:
+            raise DemoAccountCleanupBlockedError(
+                "目标账号存在私有图片，必须配置私有媒体存储后再执行"
+            )
+        storage_keys = list(self.session.scalars(
+            select(MediaAsset.storage_key).where(MediaAsset.user_id.in_(target_ids))
+        ))
         try:
             self._execute_database_cleanup(plan.owner_user_id, target_ids)
             self.session.commit()
         except Exception:
             self.session.rollback()
             raise
+        if self.media_storage is not None:
+            for storage_key in storage_keys:
+                self.media_storage.delete(storage_key)
         return plan
 
     def _counts(
@@ -159,6 +181,7 @@ class DemoAccountMaintenanceService:
                 "memories_to_delete": 0,
                 "usage_records_to_anonymize": 0,
                 "quota_policy_events_to_delete": 0,
+                "media_assets_to_delete": 0,
             }
         public_submission = (
             KnowledgeSubmission.submitter_id.in_(target_ids)
@@ -227,6 +250,9 @@ class DemoAccountMaintenanceService:
                     QuotaPolicyEvent.user_id.in_(target_ids)
                 )
             ),
+            "media_assets_to_delete": self._count(
+                select(MediaAsset.id).where(MediaAsset.user_id.in_(target_ids))
+            ),
         }
 
     def _execute_database_cleanup(
@@ -293,6 +319,23 @@ class DemoAccountMaintenanceService:
                 QuotaPolicyEvent.user_id.in_(target_ids)
             )
         )
+        asset_ids = list(self.session.scalars(
+            select(MediaAsset.id).where(MediaAsset.user_id.in_(target_ids))
+        ))
+        if asset_ids:
+            self.session.execute(
+                delete(VisionObservationRecord).where(
+                    VisionObservationRecord.media_asset_id.in_(asset_ids)
+                )
+            )
+            self.session.execute(
+                delete(MessageAttachment).where(
+                    MessageAttachment.media_asset_id.in_(asset_ids)
+                )
+            )
+            self.session.execute(
+                delete(MediaAsset).where(MediaAsset.id.in_(asset_ids))
+            )
         conversation_ids = list(
             self.session.scalars(
                 select(Conversation.id).where(

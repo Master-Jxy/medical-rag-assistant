@@ -6,11 +6,13 @@ import json
 from sqlalchemy.orm import Session
 
 from app.db.session import get_engine
+from app.core.config import get_settings
 from app.maintenance.demo_accounts import (
     DEMO_ACCOUNT_CONFIRM_PHRASE,
     DemoAccountMaintenanceService,
     cleanup_plan_as_dict,
 )
+from app.modules.media.storage import PrivateMediaStorage
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,7 +35,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     with Session(get_engine()) as session:
-        service = DemoAccountMaintenanceService(session)
+        service = DemoAccountMaintenanceService(
+            session,
+            media_storage=PrivateMediaStorage(get_settings()),
+        )
         if args.preflight:
             plan = service.preflight(args.owner_email)
         else:
