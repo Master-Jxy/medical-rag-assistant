@@ -7,7 +7,9 @@
 
 Stage 24.8 完整验收与发布候选已完成本地验证，并已推送和部署到服务器提交 `39a56ab6f8d6ad8179ce1be4449f5d5e112c44c8`。生产备份成功，数据库迁移到 `0029_dedup_version_governance`，HTTP/HTTPS、健康接口和四个容器均已验收通过。未调用真实 Qwen、Embedding、Reranker、OCR、Vision、SMTP、Docling、生产抓取或任何收费供应商。
 
-Stage 25 多模态聊天与输入器升级已完成设计，当前进入开发。设计入口为 `docs/stage25-multimodal-chat-design.md`，范围包括私有图片附件、粘贴图片、真实视觉模型、主Agent按需二次观察、RAG图片检索、用量/额度/隐私，以及侧栏和输入器三个UI缺陷。
+Stage 25 多模态聊天与输入器升级已完成 25.1～25.8 的全部本地开发和发布候选验收。新增 `0030_multimodal_chat_assets`、私有图片资产与授权预览、聊天专用结构化视觉边界、RAG/Agent图片消息、受控Agent观察工具、共享附件草稿和输入器/侧栏修复。完整实现边界见 `docs/stage25-multimodal-chat-design.md`、`docs/technical-design.md` 的 Stage 25 章节和 `docs/release-audit-stage25-multimodal-chat.md`。
+
+本窗口没有调用真实 DashScope/Qwen/Embedding/Reranker/OCR/Vision/SMTP，没有 push、连接生产、备份、部署或修改服务器。真实视觉最小调用和最终发布仍由总控窗口在独立安全闸门下执行。
 
 Stage 24 当前候选边界：
 
@@ -29,53 +31,44 @@ Stage 24 当前候选边界：
 
 ## 2. 本地验证结果
 
-Stage 24.8 已通过：
+Stage 25 本地发布候选已通过：
 
 ```text
 backend\.venv\Scripts\python.exe -m pytest -q backend\tests
-605 passed, 1 skipped, 140 warnings
+618 passed, 1 skipped, 140 warnings
 
 D:\Nodejs\npm.cmd --prefix frontend test
-19 files / 79 tests passed
+20 files / 82 tests passed
 
 D:\Nodejs\npm.cmd --prefix frontend run test:stream
 SSE parser test passed
 
 D:\Nodejs\npm.cmd --prefix frontend run build
 Vite production build passed
-assets: index-DlOXPwXa.css / index-CGLlwHMM.js
+assets: index-Xv-mGLQX.css / index-CPEwi2bu.js
 
-backend\.venv\Scripts\python.exe -m alembic -c backend\alembic.ini heads
-0029_dedup_version_governance (head)
+Stage 25 focused matrix
+media + vision + RAG images + Agent images + deletion/recovery: 25 passed
 
 Alembic 临时 SQLite roundtrip
-upgrade head -> downgrade 0028_metadata_suggestions -> upgrade head passed
+0029 -> 0030 -> 0029 -> 0030 passed；三张Stage25表随升级/降级正确出现和移除
 
 Python compile/import smoke
-py_compile OK: 249 files, auth service excluded
-import smoke OK: app.main, app.evaluation.corpus_v2, scripts.preflight_corpus_v2
+compileall passed：Stage25触及模块、0030迁移和维护命令，auth service excluded
+import smoke passed：media、vision、Agent thread、RAG conversation、demo maintenance 6个关键模块
 
-Stage24 focused matrix
-167 passed, 1 skipped, 2 warnings
+Frontend browser acceptance (Playwright CLI, local Vite, mocked no-cost API)
+1440x900 / 1280x800 / 1024x768 / 390x844 layout passed
+RAG and Agent image selection/preview/removal and pure-image send enablement passed
+desktop sidebar 220px/76px and mobile drawer passed; console errors=0
+真实后端提交、上传失败重试和视觉结果由Fake自动化测试覆盖，未伪造为浏览器端到端生产验收
 
-Security focused matrix
-37 passed, 2 warnings
+Impeccable detector
+Only existing global Inter font warning; no Stage25 layout blocker
 
-cd backend
-.\.venv\Scripts\python.exe -m scripts.preflight_corpus_v2 --check
-corpus_v2 OK: documents=10; cases=9; coverage_gaps=10; dedup_unknown=10; provider_calls=0
-
-Static deploy config
-compose yaml parsed, Dockerfiles/Nginx key directives present
-
-Tracked runtime data scan
-No tracked .env/upload/Chroma/backup/local_reviews/dist/node_modules/SQLite DB paths matched
-
-High-risk secret filename scan
-No tracked file matched DashScope/AKIA/private-key high-risk patterns
-
-Local service health smoke
-temporary SQLite backend health 200; temporary static frontend index 200; processes stopped and temp DB removed
+Security checks
+tracked credential literal scan passed；未提交backend/data/media运行数据
+临时迁移库已删除；浏览器和Vite进程已关闭
 
 git diff --check
 passed（仅 CRLF 提示）
@@ -89,34 +82,34 @@ Protected auth hash
 
 SKIP 项：
 
-- Docker/Compose CLI 语法：本机没有 `docker` 命令，不安装。
-- Nginx `-t`：本机没有 `nginx` 命令，不安装。
-- 本地浏览器点击/控制台验收：项目没有可用 Playwright/browser 自动化依赖；`npm exec` 会触发临时下载，因本阶段禁止网络下载/新增依赖而停止，没有伪造截图或控制台结果。
+- 真实DashScope视觉最小调用：需要当次预算、调用次数和停止条件确认，留给总控。
+- push、服务器备份、`0029 -> 0030`生产迁移、容器重建、生产健康和回滚验收：本窗口明确禁止，全部留给总控。
+- 生产测试账号清理：仍需独立授权；本次只更新维护命令对Stage25私有媒体的安全边界。
 
-提交前最终检查已记录。
+本地Stage25提交依次为：`a7a15f2`、`c894329`、`9a128cd`、`6fbe243`、`d6d86b9`、`265f111`、`364ecd2`；文档提交以当前Git记录为准。均未push。
 
 ## 3. 工作区与安全边界
 
 - 当前分支：`main`。
-- 本次 Stage 24 已完成推送和部署；后续任务仍禁止直接修改生产源码，必须先本地验证、备份，再按提交部署。
+- Stage 25 仅完成本地发布候选；当前生产仍停留在Stage 24提交 `39a56ab` 和迁移 `0029`。
 - `backend/app/modules/auth/service.py` 是受保护用户改动，禁止修改、格式化、暂存、提交、回退或覆盖；提交前后只允许 SHA-256 校验，目标值必须保持：
   `9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。
 - 不读取 `.env`、真实上传资料、Chroma 数据、数据库备份、历史大型 reports JSON 或正文日志。
 
 ## 4. 新任务阅读范围
 
-新窗口先完整阅读 `AGENTS.md` 和本文。执行唯一下一任务时读取：
+总控发布窗口先完整阅读 `AGENTS.md` 和本文，再定向读取：
 
-- `docs/stage25-multimodal-chat-design.md`
-- `docs/technical-design.md` 的 Stage 25 Multimodal Chat Boundary
-- `docs/development-roadmap.md` 的 Stage 25
-- 与当前子任务直接相关的源码和测试
-- 只有到25.8发布时才读取 `docs/deployment.md` 和部署脚本
+- `docs/release-audit-stage25-multimodal-chat.md`
+- `docs/stage25-multimodal-chat-design.md` 的真实调用与发布闸门
+- `docs/deployment.md` 和实际使用的部署/备份脚本
+- `backend/alembic/versions/0030_multimodal_chat_assets.py`
+- 真实视觉配置工厂、DashScope适配器和最小验收测试
 
 禁止读取真实 `.env`、生产正文日志、真实上传文件、Chroma 数据或受保护 auth 文件正文。
 
 ## 5. 唯一下一任务
 
-**依次完成 Stage 25.1 到 25.8，形成可发布候选并按用户本次明确授权完成部署。**
+**等待总控执行真实视觉最小验收与部署**
 
-开发必须保护 `backend/app/modules/auth/service.py` 既有改动；测试默认使用Fake视觉适配器。真实视觉调用只在25.8无费用预检通过后做最小受控验收，随后备份、推送和部署。
+总控仍必须保护 `backend/app/modules/auth/service.py`，先核验本地提交、工作区和目标哈希；真实视觉调用前单独说明图片、调用次数、预计费用、停止条件和不落正文日志边界。随后才可按授权执行push、生产备份、迁移、重建、健康验收和回滚检查。

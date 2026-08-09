@@ -2255,3 +2255,59 @@ gaps.
 Stage 25 introduces user-private chat image assets and a chat-specific vision application boundary. It does not repurpose the Stage 24 `VisionDocumentPort`, because document ingestion approval and private chat authorization are different use cases. RAG and Agent receive only authorized asset IDs and normalized `VisionObservation` data; provider SDKs remain infrastructure adapters.
 
 The original image remains the source asset. OCR and vision output are persisted derived observations, so the Agent can request a targeted second inspection of the original image when the first observation does not answer the user's question. The existing LangGraph tool loop is retained, with separate per-image call and repeated-focus limits. Full contracts, data model, UI behavior and release gates are defined in `docs/stage25-multimodal-chat-design.md`.
+
+The implemented request and persistence flow is:
+
+```text
+POST /media/assets -> MediaAssetService -> PrivateMediaStorage + media_assets
+RAG/Agent request attachment_ids -> owner check -> message_attachments
+-> VisionChatService -> VisionChatPort -> Fake/Disabled/DashScope adapter
+-> vision_observations + ModelUsageRecorder + QuotaGate
+```
+
+`0030_multimodal_chat_assets` owns `media_assets`, `message_attachments`, and
+`vision_observations`. Storage keys are server-generated relative paths; preview
+requires the owning Bearer identity and returns `private, no-store`. Uploads are
+decoded and canonically re-encoded before persistence, which strips EXIF and
+rejects extension/MIME/magic mismatches, invalid frames, path traversal, files
+over 10 MiB, and images over the configured pixel ceiling. A message binds at
+most three unique assets. Deleting a RAG conversation or Agent thread detaches
+bindings in the same database transaction, then removes detached files; the
+expiry job also reclaims orphaned `attached` assets. The controlled demo-account
+maintenance command refuses execution when private media exists but no media
+storage adapter was supplied.
+
+RAG `ChatRequest` and Agent `AgentMessageStreamRequest` accept normalized
+`attachment_ids`; empty text is valid only when at least one attachment exists.
+RAG performs one overview per image before retrieval and builds the retrieval
+query from the user's text plus structured visible text and measurements. It
+emits `vision_observations` separately from knowledge `sources`. The legacy
+non-conversation `/chat` endpoint explicitly rejects attachments so private
+message ownership, stop, history and idempotency cannot be bypassed.
+
+Agent overview runs before the existing bounded graph and is injected only as
+public structured context. `observe_image` and `inspect_image` are normal
+whitelisted Agent tools and can only access assets bound to the current run.
+Each asset permits one overview plus at most two focused inspections, three
+calls total. Repeating a focus target, inspecting before overview, or receiving
+an empty/unchanged observation stops further calls. General, patient, clinician
+and knowledge modes expose the image tools while preserving their existing
+knowledge and medical-safety boundaries.
+
+Vision is disabled by default. `vision_provider=fake` is test-only; the real
+DashScope adapter is constructed only when chat vision is explicitly enabled.
+Every attempted provider call reserves quota before reading model output,
+records actual provider usage through the existing vendor-neutral ledger, and
+settles or releases the reservation. Stored usage and errors contain identifiers,
+counts and stable codes, not image bytes, prompts, questions, answers or visible
+medical text. Vision prompts and UI labels describe visible facts only and state
+that observations do not constitute diagnosis, prescription or treatment.
+
+The frontend uses one shared attachment-draft composable for RAG and Agent. It
+owns selection, Ctrl+V image interception, ordinary-text paste passthrough,
+sequential upload, retry, deletion and object-URL lifetime. Historical previews
+fetch protected blobs with Authorization rather than using public image URLs.
+Both composers use an optional image tray, a full-width one-to-four-line
+textarea and a bottom toolbar. Desktop shell widths are 220px expanded and 76px
+collapsed; the collapse control remains in normal layout flow, while mobile uses
+the existing touch-width drawer.
