@@ -43,7 +43,7 @@ from app.modules.memory.agent_context import SqlAlchemyAgentMemoryContext
 from app.modules.auth.dependencies import get_current_user
 from app.services.memory_extraction_runtime import run_memory_extraction_recovery
 from app.modules.auth.schemas import UserResponse
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.services.chat_rate_limit_service import (
     ChatRateLimitService,
     get_chat_rate_limit_service,
@@ -85,8 +85,8 @@ AgentIdempotencyKey = Annotated[
 def get_agent_application_service(
     request: Request,
     session: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
 ) -> AgentApplicationService:
-    settings = get_settings()
     cancellation = request.app.state.agent_cancellation_service
     return AgentApplicationService(
         session,
@@ -109,9 +109,9 @@ def get_agent_conversation_application_service(
         get_generation_lock_service
     ),
     idempotency: IdempotencyService = Depends(get_idempotency_service),
+    settings: Settings = Depends(get_settings),
 ) -> AgentConversationApplication:
     ensure_agent_recovery(request, session)
-    settings = get_settings()
     cancellation = request.app.state.agent_cancellation_service
     return AgentConversationApplication(
         session,
@@ -132,6 +132,7 @@ def get_agent_conversation_application_service(
         ),
         model_name=settings.chat_model_name,
         telemetry=request.app.state.telemetry,
+        settings=settings,
     )
 
 

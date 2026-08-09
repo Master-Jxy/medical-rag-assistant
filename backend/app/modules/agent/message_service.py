@@ -13,6 +13,9 @@ from app.modules.agent.thread_repository import (
 )
 from app.modules.agent.thread_schemas import AgentMessageResponse
 from app.modules.usage.query_service import UsageQueryService
+from app.modules.media.models import MediaAsset, MessageAttachment
+from app.modules.vision.models import VisionObservationRecord
+from sqlalchemy import select
 
 
 class AgentMessageService:
@@ -22,7 +25,40 @@ class AgentMessageService:
         self.usage = UsageQueryService(session)
 
     def _response(self, message) -> AgentMessageResponse:
-        response = AgentMessageResponse.model_validate(message)
+        payload = AgentMessageResponse.model_validate(message).model_dump()
+        payload["message_metadata"] = payload.pop("metadata")
+        rows = self.session.execute(
+            select(MessageAttachment, MediaAsset)
+            .join(MediaAsset, MediaAsset.id == MessageAttachment.media_asset_id)
+            .where(MessageAttachment.agent_message_id == message.id)
+            .order_by(MessageAttachment.position)
+        ).all()
+        payload["attachments"] = [
+            {
+                "id": attachment.id, "media_asset_id": asset.id,
+                "position": attachment.position, "original_name": asset.original_name,
+                "mime_type": asset.mime_type, "byte_size": asset.byte_size,
+                "width": asset.width, "height": asset.height,
+                "preview_url": f"/api/v1/media/assets/{asset.id}/preview",
+            }
+            for attachment, asset in rows
+        ]
+        observations = list(self.session.scalars(
+            select(VisionObservationRecord).where(
+                VisionObservationRecord.run_id == message.run_id,
+                VisionObservationRecord.status == "completed",
+            ).order_by(VisionObservationRecord.sequence_no)
+        )) if message.run_id else []
+        payload["vision_observations"] = [
+            {
+                "media_asset_id": item.media_asset_id,
+                "kind": item.kind,
+                "sequence_no": item.sequence_no,
+                "observation": item.observation_json or {},
+            }
+            for item in observations
+        ]
+        response = AgentMessageResponse.model_validate(payload)
         if message.role == "assistant":
             return response.model_copy(update={
                 "usage": self.usage.group_summary(message.id, message.user_id)

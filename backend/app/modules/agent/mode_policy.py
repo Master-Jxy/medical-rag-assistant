@@ -17,8 +17,9 @@ ALL_SPECIALISTS = frozenset(
     }
 )
 
+VISION_TOOLS = frozenset({"observe_image", "inspect_image"})
 PATIENT_TOOLS = frozenset(
-    {"search_knowledge", "get_document_info", "summarize_document"}
+    {"search_knowledge", "get_document_info", "summarize_document", *VISION_TOOLS}
 )
 KNOWLEDGE_TOOLS = frozenset(
     {
@@ -27,6 +28,7 @@ KNOWLEDGE_TOOLS = frozenset(
         "summarize_document",
         "compare_documents",
         "generate_learning_report",
+        *VISION_TOOLS,
     }
 )
 
@@ -50,7 +52,7 @@ _POLICIES = {
     "general": AgentModePolicy(
         mode="general",
         primary_specialist=GENERAL_SPECIALIST,
-        allowed_tools=frozenset(),
+        allowed_tools=VISION_TOOLS,
         allowed_handoffs=frozenset(
             {PATIENT_SPECIALIST, CLINICIAN_SPECIALIST, KNOWLEDGE_SPECIALIST}
         ),
@@ -121,7 +123,7 @@ def get_mode_policy(mode: str) -> AgentModePolicy:
 
 def tools_for_specialist(specialist: str) -> frozenset[str]:
     if specialist == GENERAL_SPECIALIST:
-        return frozenset()
+        return VISION_TOOLS
     if specialist == PATIENT_SPECIALIST:
         return PATIENT_TOOLS
     if specialist in {CLINICIAN_SPECIALIST, KNOWLEDGE_SPECIALIST}:

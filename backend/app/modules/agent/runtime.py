@@ -18,6 +18,10 @@ from app.modules.knowledge.retrieval_eligibility import (
 )
 from app.modules.rag.hybrid_search import create_current_knowledge_search
 from app.modules.agent.usage import AgentModelCallBudget, AgentModelUsageCollector
+from app.modules.agent.repository import AgentRepository
+from app.modules.agent.vision_tools import InspectImageTool, ObserveImageTool
+from app.modules.media.repository import MediaRepository
+from app.modules.vision.service import VisionChatService
 
 
 def create_agent_graph_factory(
@@ -42,6 +46,21 @@ def create_agent_graph_factory(
         )
         generator = LangChainAgentContentGenerator(model)
         registry = create_read_only_knowledge_registry(search, catalog, generator)
+        run = AgentRepository(session).get_run(user_id, run_id)
+        allowed_asset_ids = MediaRepository(session).asset_ids_for_agent_message(
+            run.trigger_message_id
+        )
+        if allowed_asset_ids:
+            vision = VisionChatService(session, settings)
+            usage_group_id = run.response_message_id or run.id
+            registry.register(ObserveImageTool(
+                vision, allowed_asset_ids=allowed_asset_ids,
+                run_id=run.id, usage_group_id=usage_group_id,
+            ))
+            registry.register(InspectImageTool(
+                vision, allowed_asset_ids=allowed_asset_ids,
+                run_id=run.id, usage_group_id=usage_group_id,
+            ))
         planner = LangChainAgentPlanner(model, registry)
         return BoundedAgentGraph(
             planner=planner,

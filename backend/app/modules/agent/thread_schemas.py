@@ -79,10 +79,20 @@ class AgentMessageCreate(BaseModel):
 class AgentMessageStreamRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    content: str = Field(min_length=1, max_length=4000)
+    content: str = Field(default="", max_length=4000)
+    attachment_ids: list[str] = Field(default_factory=list, max_length=3)
     referenced_message_ids: list[str] = Field(default_factory=list, max_length=20)
     source_ids: list[str] = Field(default_factory=list, max_length=20)
     artifact_ids: list[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def require_content_or_attachments(self):
+        self.content = self.content.strip()
+        if not self.content and not self.attachment_ids:
+            raise ValueError("消息或图片至少提供一项")
+        if len(set(self.attachment_ids)) != len(self.attachment_ids) or any(not item.strip() for item in self.attachment_ids):
+            raise ValueError("附件标识无效或重复")
+        return self
 
 
 class AgentThreadListResponse(BaseModel):
@@ -124,3 +134,5 @@ class AgentMessageResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     usage: dict[str, object] | None = None
+    attachments: list[dict[str, object]] = Field(default_factory=list)
+    vision_observations: list[dict[str, object]] = Field(default_factory=list)

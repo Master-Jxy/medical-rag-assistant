@@ -35,18 +35,19 @@ class VisionChatService:
         self.usage_recorder = usage_recorder or ModelUsageRecorder(session, settings)
         self.media = MediaAssetService(session, settings)
 
-    def observe_overview(self, *, user_id: str, asset_id: str, user_question: str, surface: str, usage_group_id: str) -> VisionObservation:
-        return self._observe(user_id=user_id, asset_id=asset_id, user_question=user_question, focus_instruction=None, surface=surface, usage_group_id=usage_group_id)
+    def observe_overview(self, *, user_id: str, asset_id: str, user_question: str, surface: str, usage_group_id: str, run_id: str | None = None) -> VisionObservation:
+        return self._observe(user_id=user_id, asset_id=asset_id, user_question=user_question, focus_instruction=None, surface=surface, usage_group_id=usage_group_id, run_id=run_id)
 
-    def inspect(self, *, user_id: str, asset_id: str, user_question: str, focus_instruction: str, surface: str, usage_group_id: str) -> VisionObservation:
-        return self._observe(user_id=user_id, asset_id=asset_id, user_question=user_question, focus_instruction=focus_instruction, surface=surface, usage_group_id=usage_group_id)
+    def inspect(self, *, user_id: str, asset_id: str, user_question: str, focus_instruction: str, surface: str, usage_group_id: str, run_id: str | None = None) -> VisionObservation:
+        return self._observe(user_id=user_id, asset_id=asset_id, user_question=user_question, focus_instruction=focus_instruction, surface=surface, usage_group_id=usage_group_id, run_id=run_id)
 
-    def _observe(self, *, user_id: str, asset_id: str, user_question: str, focus_instruction: str | None, surface: str, usage_group_id: str) -> VisionObservation:
+    def _observe(self, *, user_id: str, asset_id: str, user_question: str, focus_instruction: str | None, surface: str, usage_group_id: str, run_id: str | None) -> VisionObservation:
         if surface not in {"vision_rag", "vision_agent"}:
             raise ValueError("invalid vision surface")
         asset = self.media.owned_asset(user_id, asset_id)
         requested_hash = focus_hash(focus_instruction)
-        existing = self._existing(user_id, asset_id, usage_group_id, requested_hash)
+        record_group_id = run_id or usage_group_id
+        existing = self._existing(user_id, asset_id, record_group_id, requested_hash)
         if existing and existing.status == "completed" and existing.observation_json:
             return VisionObservation.model_validate(existing.observation_json)
         completed = list(self.session.scalars(select(VisionObservationRecord).where(VisionObservationRecord.user_id == user_id, VisionObservationRecord.media_asset_id == asset_id, VisionObservationRecord.status == "completed").order_by(VisionObservationRecord.sequence_no)))
@@ -55,7 +56,7 @@ class VisionChatService:
             raise VisionUnavailableError("请先完成图片整体观察，再进行定向观察")
         record = existing or VisionObservationRecord(
             media_asset_id=asset_id, user_id=user_id,
-            run_id=usage_group_id if surface == "vision_agent" else None,
+            run_id=record_group_id if surface == "vision_agent" else None,
             assistant_message_id=usage_group_id if surface == "vision_rag" else None,
             kind="overview" if requested_hash == OVERVIEW_HASH else "focused",
             focus_instruction_hash=requested_hash,
@@ -120,11 +121,11 @@ class VisionChatService:
                 raise
             raise
 
-    def _existing(self, user_id: str, asset_id: str, usage_group_id: str, requested_hash: str) -> VisionObservationRecord | None:
+    def _existing(self, user_id: str, asset_id: str, record_group_id: str, requested_hash: str) -> VisionObservationRecord | None:
         statement = select(VisionObservationRecord).where(
             VisionObservationRecord.user_id == user_id,
             VisionObservationRecord.media_asset_id == asset_id,
             VisionObservationRecord.focus_instruction_hash == requested_hash,
         )
         records = list(self.session.scalars(statement))
-        return next((item for item in records if item.run_id == usage_group_id or item.assistant_message_id == usage_group_id), None)
+        return next((item for item in records if item.run_id == record_group_id or item.assistant_message_id == record_group_id), None)

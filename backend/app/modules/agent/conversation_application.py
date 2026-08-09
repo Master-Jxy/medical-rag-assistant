@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.exceptions import (
     AgentDisabledError,
     AgentMessageConflictError,
@@ -42,6 +42,8 @@ from app.modules.usage.estimator import (
     QuotaReservationEstimatorPort,
 )
 from app.modules.usage.contracts import QuotaPolicyMode
+from app.modules.media.service import MediaAssetService
+from app.modules.vision.service import VisionChatService
 
 
 class AgentConversationApplication:
@@ -60,6 +62,9 @@ class AgentConversationApplication:
         memory_extraction=None,
         quota_gate=None,
         quota_estimator: QuotaReservationEstimatorPort | None = None,
+        media_service: MediaAssetService | None = None,
+        vision_service: VisionChatService | None = None,
+        settings: Settings | None = None,
     ) -> None:
         self.session = session
         self.policy = policy
@@ -70,7 +75,10 @@ class AgentConversationApplication:
         self.runs = AgentRepository(session)
         self.thread_service = AgentThreadService(session)
         self.memory_extraction = memory_extraction or build_memory_scheduler(session)
-        settings = get_settings()
+        settings = settings or get_settings()
+        self.settings = settings
+        self.media_service = media_service or MediaAssetService(session, settings)
+        self.vision_service = vision_service or VisionChatService(session, settings)
         self.quota_gate = quota_gate or build_quota_gate(session, settings)
         self.quota_estimator = (
             quota_estimator or ConservativeQuotaReservationEstimator()
@@ -112,6 +120,7 @@ class AgentConversationApplication:
             "referenced_message_ids": list(payload.referenced_message_ids),
             "source_ids": list(payload.source_ids),
             "artifact_ids": list(payload.artifact_ids),
+            "attachment_ids": list(payload.attachment_ids),
         }
         reference_fingerprint = json.dumps(metadata, sort_keys=True)
         claim = self.idempotency.begin_agent(
@@ -157,7 +166,7 @@ class AgentConversationApplication:
             )
             run = self.runs.create_run(
                 user_id=user_id,
-                task=payload.content,
+                task=payload.content or "请分析上传的图片，并在需要时检索知识库。",
                 policy=self.policy,
                 model_name=self.agent.model_name,
                 thread_id=thread_id,
@@ -179,11 +188,37 @@ class AgentConversationApplication:
                 user_id, run.id, assistant_message.id
             )
             self.session.commit()
+            vision_payload: list[dict[str, object]] = []
+            if payload.attachment_ids:
+                assets = self.media_service.bind_agent(
+                    user_id, payload.attachment_ids, user_message.id
+                )
+                for asset in assets:
+                    observation = self.vision_service.observe_overview(
+                        user_id=user_id,
+                        asset_id=asset.id,
+                        user_question=payload.content or "请说明图片中的可见信息",
+                        surface="vision_agent",
+                        usage_group_id=assistant_message.id,
+                        run_id=run.id,
+                    )
+                    vision_payload.append({
+                        "media_asset_id": asset.id,
+                        "observation": observation.model_dump(mode="json"),
+                    })
             context = self.context_builder.build(
                 user_id=user_id,
                 thread_id=thread_id,
                 current_message=user_message,
             )
+            rendered_context = context.rendered
+            if vision_payload:
+                visible_facts = "\n\n".join(
+                    f"图片 {index} 结构化观察（仅为可见事实，不是诊断）：\n"
+                    f"{item['observation']}"
+                    for index, item in enumerate(vision_payload, start=1)
+                )
+                rendered_context = f"{rendered_context}\n\n[图片观察]\n{visible_facts}"
             if getattr(
                 self.quota_gate,
                 "policy_mode",
@@ -199,7 +234,7 @@ class AgentConversationApplication:
             else:
                 estimate = self.quota_estimator.estimate_agent(
                     AgentReservationInput(
-                        rendered_context=context.rendered,
+                        rendered_context=rendered_context,
                         estimated_context_tokens=context.estimated_tokens,
                         max_output_tokens=self.agent_model_max_output_tokens,
                         policy_token_limit=self.quota_agent_policy_tokens,
@@ -228,10 +263,31 @@ class AgentConversationApplication:
                     "turn_id": turn_id,
                 },
             }
+            if vision_payload:
+                yield {
+                    "event": "tool_started",
+                    "data": {
+                        "tool_name": "observe_image", "public_code": "tool_started",
+                        "public_summary": "正在观察用户授权图片", "status": "running",
+                        "sequence": 0,
+                    },
+                }
+                yield {
+                    "event": "tool_completed",
+                    "data": {
+                        "tool_name": "observe_image", "public_code": "tool_completed",
+                        "public_summary": "已完成图片可见事实观察", "status": "completed",
+                        "sequence": 0,
+                    },
+                }
+                yield {
+                    "event": "vision_observations",
+                    "data": {"label": "图片识别结果", "observations": vision_payload},
+                }
             agent_stream = self.agent.stream_run(
                 user_id,
                 run.id,
-                task_context=context.rendered,
+                task_context=rendered_context,
                 assistant_mode=thread.assistant_mode,
                 resolved_references=context.resolved_references,
                 previous_clarification_key=context.previous_clarification_key,
@@ -469,6 +525,7 @@ class AgentConversationApplication:
         metadata = original.message_metadata or {}
         payload = AgentMessageStreamRequest(
             content=original.content,
+            attachment_ids=[],
             referenced_message_ids=[
                 original.id,
                 *metadata.get("referenced_message_ids", []),

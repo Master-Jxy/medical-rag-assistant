@@ -21,3 +21,12 @@ class MediaRepository:
 
     def attachment_for_asset(self, asset_id: str) -> MessageAttachment | None:
         return self.session.scalar(select(MessageAttachment).where(MessageAttachment.media_asset_id == asset_id))
+
+    def asset_ids_for_agent_message(self, message_id: str | None) -> list[str]:
+        if not message_id:
+            return []
+        return list(self.session.scalars(
+            select(MessageAttachment.media_asset_id)
+            .where(MessageAttachment.agent_message_id == message_id)
+            .order_by(MessageAttachment.position)
+        ))
