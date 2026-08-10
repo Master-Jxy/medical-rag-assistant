@@ -95,7 +95,7 @@ class Settings(BaseSettings):
     media_retention_days: int = Field(default=30, ge=1, le=365)
     vision_chat_enabled: bool = False
     vision_provider: Literal["disabled", "fake", "dashscope"] = "dashscope"
-    vision_model: str = "qwen-vl-max-latest"
+    vision_model: str = "qwen3-vl-plus"
     vision_max_images: int = Field(default=3, ge=1, le=3)
     vision_max_image_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=10 * 1024 * 1024)
     vision_max_image_pixels: int = Field(default=40_000_000, ge=1, le=40_000_000)

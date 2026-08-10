@@ -1,7 +1,7 @@
 # Stage 25 多模态聊天与输入器升级设计
 
-> 日期：2026-08-10  
-> 状态：设计已确认，待实现  
+> 日期：2026-08-10
+> 状态：设计已确认，已完成本地发布候选
 > 目标：在不破坏现有 RAG、Agent、知识库和用量体系的前提下，为 RAG 与 Agent 增加私有图片附件、图片粘贴、结构化视觉观察、按需二次观察和真实多模态模型能力，同时完成侧栏与输入器缺陷修复。
 
 ## 1. 产品结果
@@ -157,7 +157,7 @@ RAG图片消息先完成整体观察，再由专用查询构造器使用“用�
 ```text
 VISION_CHAT_ENABLED=false
 VISION_PROVIDER=dashscope
-VISION_MODEL=qwen-vl-max-latest
+VISION_MODEL=qwen3-vl-plus
 VISION_MAX_IMAGES=3
 VISION_MAX_IMAGE_BYTES=10485760
 VISION_MAX_CALLS_PER_IMAGE=3

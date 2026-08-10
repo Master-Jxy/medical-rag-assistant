@@ -2,7 +2,7 @@
 
 > 日期：2026-08-10
 > 范围：Stage 25.1～25.8 本地开发与发布候选
-> 结论：本地候选 PASS；真实视觉、push 和生产发布 SKIP，等待总控
+> 结论：本地候选与真实视觉最小验收 PASS；push 和生产发布待总控执行
 
 ## 1. 交付结论
 
@@ -34,7 +34,7 @@ Stage 25 已在模块化单体边界内完成。RAG 与 Agent 共享私有媒体
 | 会话/线程删除和孤儿清理 | PASS | RAG、Agent和cleanup测试 |
 | 0030 三表与回滚 | PASS | 0029→0030→0029→0030临时SQLite |
 | `VisionChatPort` 与结构化观察 | PASS | Fake/Disabled及契约测试 |
-| DashScope真实适配器 | CODE PASS / CALL SKIP | 已实现、未执行供应商调用 |
+| DashScope真实适配器 | PASS | `qwen3-vl-plus` 真实调用返回结构化观察；旧别名403后已修正 |
 | 视觉用量与额度 | PASS | actual结算、失败释放、幂等不重复计费 |
 | RAG纯图片、观察、检索、SSE、历史 | PASS | Stage25 RAG focused tests |
 | Agent overview/inspect与知识库继续调用 | PASS | Stage25 Agent focused tests |
@@ -104,7 +104,8 @@ protected auth SHA256
 ## 5. 隐私、成本与清理
 
 - 未读取 `.env`、密钥、生产上传、Chroma、备份或正文日志。
-- 未调用真实 Qwen、Embedding、Reranker、OCR、Vision、SMTP 或网页抓取。
+- 仅调用真实 DashScope 视觉做发布前最小验收；未调用 Embedding、Reranker、OCR、SMTP 或网页抓取。
+- 真实视觉使用一张非医疗 UI 截图；不输出密钥、图片正文或完整提示词。
 - 视觉账本只保存脱敏ID、模型、Token、价格快照和稳定错误码，不保存图片、问题或观察正文。
 - 临时迁移数据库已删除；Playwright会话和Vite进程已关闭。
 - `backend/data/media/` 已忽略，不提交运行图片。
@@ -114,7 +115,7 @@ protected auth SHA256
 
 | 动作 | 状态 | 总控要求 |
 |---|---|---|
-| 真实视觉最小验收 | SKIP | 明确图片、调用次数、费用、停止条件后执行 |
+| 真实视觉最小验收 | PASS | `qwen3-vl-plus` 返回结构化观察；请求ID存在 |
 | Git push | SKIP | 复核提交范围与受保护hash后执行 |
 | 生产备份 | SKIP | MySQL、app_data/media、Chroma、Redis按部署文档验证 |
 | 生产0030迁移 | SKIP | 先备份，核验当前0029，再upgrade |
@@ -124,4 +125,4 @@ protected auth SHA256
 
 ## 7. 唯一下一任务
 
-**等待总控执行真实视觉最小验收与部署**
+**由总控推送 Stage 25，完成生产备份、0030迁移、容器重建和线上验收**

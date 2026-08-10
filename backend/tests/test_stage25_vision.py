@@ -64,6 +64,7 @@ def setup(tmp_path, *, quota_mode="shadow"):
 
 def test_default_factory_is_disabled_and_never_calls_provider() -> None:
     settings = Settings(_env_file=None)
+    assert settings.vision_model == "qwen3-vl-plus"
     with pytest.raises(VisionUnavailableError):
         build_vision_adapter(settings).observe()
 

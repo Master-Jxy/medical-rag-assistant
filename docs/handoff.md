@@ -9,7 +9,11 @@ Stage 24.8 完整验收与发布候选已完成本地验证，并已推送和部
 
 Stage 25 多模态聊天与输入器升级已完成 25.1～25.8 的全部本地开发和发布候选验收。新增 `0030_multimodal_chat_assets`、私有图片资产与授权预览、聊天专用结构化视觉边界、RAG/Agent图片消息、受控Agent观察工具、共享附件草稿和输入器/侧栏修复。完整实现边界见 `docs/stage25-multimodal-chat-design.md`、`docs/technical-design.md` 的 Stage 25 章节和 `docs/release-audit-stage25-multimodal-chat.md`。
 
-本窗口没有调用真实 DashScope/Qwen/Embedding/Reranker/OCR/Vision/SMTP，没有 push、连接生产、备份、部署或修改服务器。真实视觉最小调用和最终发布仍由总控窗口在独立安全闸门下执行。
+总控窗口已使用一张非医疗 UI 截图完成真实 DashScope 最小视觉验收。旧设计别名
+`qwen-vl-max-latest` 对当前 API Key 返回 `403 AccessDenied`；模型目录预检确认
+`qwen3-vl-plus` 可用，随后真实调用成功返回可由 `VisionObservation` 校验的结构化结果，
+且没有输出密钥、图片正文或完整提示词。默认视觉模型已修正为 `qwen3-vl-plus`。
+当前仍未 push、连接生产、备份、部署或修改服务器。
 
 Stage 24 当前候选边界：
 
@@ -82,7 +86,7 @@ Protected auth hash
 
 SKIP 项：
 
-- 真实DashScope视觉最小调用：需要当次预算、调用次数和停止条件确认，留给总控。
+- 真实DashScope视觉最小调用：PASS；`qwen3-vl-plus` 返回结构化观察，供应商请求ID存在。
 - push、服务器备份、`0029 -> 0030`生产迁移、容器重建、生产健康和回滚验收：本窗口明确禁止，全部留给总控。
 - 生产测试账号清理：仍需独立授权；本次只更新维护命令对Stage25私有媒体的安全边界。
 
@@ -110,6 +114,6 @@ SKIP 项：
 
 ## 5. 唯一下一任务
 
-**等待总控执行真实视觉最小验收与部署**
+**由总控推送 Stage 25，完成生产备份、0030迁移、容器重建和线上验收**
 
-总控仍必须保护 `backend/app/modules/auth/service.py`，先核验本地提交、工作区和目标哈希；真实视觉调用前单独说明图片、调用次数、预计费用、停止条件和不落正文日志边界。随后才可按授权执行push、生产备份、迁移、重建、健康验收和回滚检查。
+总控仍必须保护 `backend/app/modules/auth/service.py`，并在发布中保持生产数据卷、HTTPS overlay、备份和回滚边界。
