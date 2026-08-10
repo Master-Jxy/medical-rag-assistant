@@ -69,6 +69,19 @@ def test_default_factory_is_disabled_and_never_calls_provider() -> None:
         build_vision_adapter(settings).observe()
 
 
+def test_compose_exposes_bounded_vision_settings() -> None:
+    compose_text = (Path(__file__).resolve().parents[2] / "compose.yaml").read_text(encoding="utf-8")
+    for expected in (
+        "MEDIA_ASSET_DIR: /app/data/media",
+        "VISION_CHAT_ENABLED: ${VISION_CHAT_ENABLED:-false}",
+        "VISION_PROVIDER: ${VISION_PROVIDER:-dashscope}",
+        "VISION_MODEL: ${VISION_MODEL:-qwen3-vl-plus}",
+        "VISION_MAX_CALLS_PER_IMAGE: ${VISION_MAX_CALLS_PER_IMAGE:-3}",
+        "VISION_AUTOMATIC_RETRIES: ${VISION_AUTOMATIC_RETRIES:-0}",
+    ):
+        assert expected in compose_text
+
+
 def test_overview_is_idempotent_and_settles_usage(tmp_path) -> None:
     engine, factory, user_id, asset_id, settings = setup(tmp_path)
     adapter = SequenceVisionAdapter(["overview"])
