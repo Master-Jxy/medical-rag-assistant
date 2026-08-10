@@ -19,6 +19,9 @@ Stage 26 已完成本地任务26.0。Agent图片草稿现在复用共享附件�
 `message_created`确认后才立即从输入器移除并由历史消息接管，因此同一图片在生成中只
 显示一次，A会话结束也不会清空B会话草稿。Composer位于正常三行网格文档流，消息区不再
 依赖固定底部留白；历史私有图片预览使用代次令牌丢弃过期异步结果，重复运行提示已合并。
+本地Blob URL采用单一所有权：Gallery只释放自己从授权预览响应创建的URL，timeline负责
+传入`localUrl`的最终释放。登录切换、登出和401会统一清空模块级草稿、引用、图片与未绑定
+已上传asset，上一账号状态不会进入下一账号。
 26.0仅使用Fake/静态API浏览器路由，没有真实模型调用、费用、GitHub推送或生产变更。
 
 生产当前状态：
@@ -55,7 +58,7 @@ backend full suite（从仓库根目录执行）
 621 passed, 1 skipped, 140 warnings
 
 frontend full suite
-22 files / 89 tests passed
+22 files / 90 tests passed
 
 SSE parser
 PASS
@@ -70,7 +73,7 @@ Playwright no-cost browser acceptance
 1440x900 / 1280x800 / 1024x768 / 390x844 PASS
 
 Stage26.0 focused
-Agent draft/timeline/gallery/view: 23 passed
+Agent draft/timeline/gallery/auth lifecycle: 30 passed
 impeccable detector: []
 browser: 3 images + 4 lines, A/B draft isolation, no overlap/overflow,
 console 0 error / 0 warning

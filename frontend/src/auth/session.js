@@ -8,6 +8,7 @@ import {
   setAccessToken,
 } from './token.js'
 import { clearAgentTimelines } from '../features/agent-chat/useAgentTimeline.js'
+import { clearAgentDrafts } from '../features/agent-chat/useAgentDraftRegistry.js'
 import { abortAllConversationStreams } from '../features/agent-chat/useConversationStreamRegistry.js'
 
 const state = reactive({
@@ -19,6 +20,12 @@ let initialization = null
 
 export function useAuthSession() {
   return state
+}
+
+function clearPrivateSessionState() {
+  abortAllConversationStreams()
+  clearAgentTimelines()
+  clearAgentDrafts()
 }
 
 export async function initializeAuth() {
@@ -37,6 +44,7 @@ export async function initializeAuth() {
       state.user = await getCurrentUser()
       return state.user
     } catch {
+      clearPrivateSessionState()
       clearAccessToken()
       state.user = null
       return null
@@ -49,6 +57,10 @@ export async function initializeAuth() {
 }
 
 export async function signIn(credentials) {
+  clearPrivateSessionState()
+  clearAccessToken()
+  state.user = null
+  state.ready = true
   const token = await loginUser(credentials)
   setAccessToken(token.access_token)
   try {
@@ -68,16 +80,14 @@ export async function signUp(registration) {
 }
 
 export function signOut() {
-  abortAllConversationStreams()
-  clearAgentTimelines()
+  clearPrivateSessionState()
   clearAccessToken()
   state.user = null
   state.ready = true
 }
 
 window.addEventListener(AUTH_UNAUTHORIZED_EVENT, () => {
-  abortAllConversationStreams()
-  clearAgentTimelines()
+  clearPrivateSessionState()
   state.user = null
   state.ready = true
 })

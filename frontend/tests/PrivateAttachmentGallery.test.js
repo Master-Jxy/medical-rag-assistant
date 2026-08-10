@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getMediaPreview } from '../src/api/media.js'
 import PrivateAttachmentGallery from '../src/features/attachments/PrivateAttachmentGallery.vue'
+import {
+  createAgentTimelineState,
+  hydrateAgentTimeline,
+  reduceAgentTimeline,
+} from '../src/features/agent-chat/useAgentTimeline.js'
 
 vi.mock('../src/api/media.js', () => ({ getMediaPreview: vi.fn() }))
 
@@ -39,18 +44,38 @@ describe('私有历史图片预览', () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:old')
   })
 
-  it('等价本地附件更新不重复撤销URL，卸载时才释放', async () => {
+  it('A到B再回A时本地URL保持有效，最终只由timeline释放', async () => {
+    let timeline = createAgentTimelineState()
+    timeline = reduceAgentTimeline(timeline, 'optimistic_user', {
+      id: 'pending-a',
+      submissionId: 'submission-a',
+      content: 'A图片',
+    })
+    timeline = reduceAgentTimeline(timeline, 'message_created', {
+      user_message_id: 'user-a',
+      assistant_message_id: 'assistant-a',
+      user_sequence_no: 1,
+      assistant_sequence_no: 2,
+      run_id: 'run-a',
+      optimistic_attachments: [{ id: 'asset-a', localUrl: 'blob:a', original_name: 'a.png' }],
+    })
     const wrapper = mount(PrivateAttachmentGallery, {
-      props: { attachments: [{ id: 'asset-1', localUrl: 'blob:local', original_name: 'a.png' }] },
+      props: { attachments: timeline.messages['user-a'].attachments },
     })
     await flushPromises()
     await wrapper.setProps({
-      attachments: [{ id: 'asset-1', localUrl: 'blob:local', original_name: 'a.png' }],
+      attachments: [{ id: 'asset-b', localUrl: 'blob:b', original_name: 'b.png' }],
     })
     await flushPromises()
+    await wrapper.setProps({ attachments: timeline.messages['user-a'].attachments })
+    await flushPromises()
+    expect(wrapper.get('img').attributes('src')).toBe('blob:a')
     expect(URL.revokeObjectURL).not.toHaveBeenCalled()
     wrapper.unmount()
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled()
+
+    hydrateAgentTimeline(timeline, [], {})
     expect(URL.revokeObjectURL).toHaveBeenCalledOnce()
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:local')
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:a')
   })
 })

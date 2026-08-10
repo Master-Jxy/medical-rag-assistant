@@ -7,12 +7,18 @@ const authApi = vi.hoisted(() => ({
   registerUser: vi.fn(),
   requestEmailVerification: vi.fn(),
 }))
+const mediaApi = vi.hoisted(() => ({
+  deleteMediaAsset: vi.fn(() => Promise.resolve()),
+  uploadMediaAsset: vi.fn(),
+}))
 
 vi.mock('../src/api/auth.js', () => authApi)
+vi.mock('../src/api/media.js', () => mediaApi)
 
 import router from '../src/router/index.js'
-import { signOut, useAuthSession } from '../src/auth/session.js'
+import { signIn, signOut, useAuthSession } from '../src/auth/session.js'
 import { getAccessToken } from '../src/auth/token.js'
+import { useAgentDraftRegistry } from '../src/features/agent-chat/useAgentDraftRegistry.js'
 import LoginView from '../src/views/LoginView.vue'
 
 const user = {
@@ -37,6 +43,8 @@ beforeEach(async () => {
   authApi.requestEmailVerification.mockResolvedValue({
     message: '如果该邮箱可用于注册，验证码将发送到邮箱。',
   })
+  globalThis.URL.createObjectURL = vi.fn(() => 'blob:previous-account')
+  globalThis.URL.revokeObjectURL = vi.fn()
   await router.replace('/')
 })
 
@@ -103,6 +111,35 @@ describe('前端认证流程', () => {
     expect(router.currentRoute.value.name).toBe('admin-reviews')
     await router.push('/super-admin/users')
     expect(router.currentRoute.value.name).toBe('super-admin-users')
+  })
+
+  it('账号切换和登出会清空未发送私有草稿并删除已上传asset', async () => {
+    const registry = useAgentDraftRegistry()
+    const previous = registry.draftFor(registry.NEW_THREAD_KEY)
+    previous.state.content = '上一账号未发送文本'
+    previous.state.references.messageIds = ['private-message']
+    previous.attachments.addFiles([
+      new File([new Uint8Array(8)], 'private.png', { type: 'image/png' }),
+    ])
+    mediaApi.uploadMediaAsset.mockResolvedValueOnce({ id: 'private-asset' })
+    await registry.prepareSubmission(registry.NEW_THREAD_KEY)
+
+    await signIn({ email: 'next@example.com', password: 'password123' })
+    expect(registry.states.size).toBe(0)
+    expect(mediaApi.deleteMediaAsset).toHaveBeenCalledWith('private-asset')
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:previous-account')
+    const next = registry.draftFor(registry.NEW_THREAD_KEY)
+    expect(next.state.content).toBe('')
+    expect(next.state.references.messageIds).toEqual([])
+    expect(next.attachments.items.value).toEqual([])
+
+    next.state.content = '当前账号退出前草稿'
+    next.attachments.addFiles([
+      new File([new Uint8Array(8)], 'current.png', { type: 'image/png' }),
+    ])
+    signOut()
+    expect(registry.states.size).toBe(0)
+    expect(useAuthSession().user).toBeNull()
   })
 
   it('注册先请求验证码并在成功后回到登录模式', async () => {

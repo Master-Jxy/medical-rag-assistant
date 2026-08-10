@@ -26,7 +26,7 @@ watch(() => props.attachments.map((attachment) => [
   clear()
   const next = await Promise.all((props.attachments || []).map(async (attachment) => {
     if (attachment.localUrl) {
-      return { ...attachment, url: attachment.localUrl, ownedUrl: true }
+      return { ...attachment, url: attachment.localUrl, ownedUrl: false }
     }
     try {
       const blob = await getMediaPreview(attachment.media_asset_id || attachment.id)

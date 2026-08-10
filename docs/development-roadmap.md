@@ -817,7 +817,7 @@
 完整设计、依赖顺序和完成定义见
 [`docs/stage26-enterprise-hardening-design.md`](stage26-enterprise-hardening-design.md)。
 
-1. **26.0 `[已完成]`**：Agent草稿改为按`thread_id + submission_id`隔离的共享registry；`message_created`即接管不可变附件快照，历史消息不再与草稿重复。Composer回归三行网格正常文档流，历史图片增加异步代次保护并释放被历史刷新丢弃的本地URL，运行状态只保留消息内统一进度。多会话带图、失败恢复、旧预览竞态、89项前端回归、SSE、正式构建及1440/1280/1024/390浏览器验收通过；未调用真实模型、未推送或部署。
+1. **26.0 `[已完成]`**：Agent草稿改为按`thread_id + submission_id`隔离的共享registry；`message_created`即接管不可变附件快照，历史消息不再与草稿重复。Composer回归三行网格正常文档流，历史图片增加异步代次保护；传入的本地URL只由timeline在替换/删除/清空时释放，Gallery只释放自己创建的预览URL。登录切换、登出和401会统一清空上一账号草稿与未绑定私有asset。多会话带图、失败恢复、旧预览竞态、90项前端回归、SSE、正式构建及1440/1280/1024/390浏览器验收通过；未调用真实模型、未推送或部署。
 2. **26.1 `[待开发]`**：增加CI、livez/readyz和统一发布预检。
 3. **26.2 `[待开发]`**：视觉幂等作用域、质量闸门、OCR-mode路由和固定图片评估。
 4. **26.3 `[待开发]`**：把processing_jobs升级为MySQL租约队列并增加独立Worker。
