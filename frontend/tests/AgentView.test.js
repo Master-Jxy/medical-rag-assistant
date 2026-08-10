@@ -20,9 +20,15 @@ const citationApi = vi.hoisted(() => ({
   openDocumentPreview: vi.fn(),
 }))
 const modelApi = vi.hoisted(() => ({ getModelCatalog: vi.fn() }))
+const mediaApi = vi.hoisted(() => ({
+  deleteMediaAsset: vi.fn(() => Promise.resolve()),
+  getMediaPreview: vi.fn(),
+  uploadMediaAsset: vi.fn(),
+}))
 vi.mock('../src/api/agent.js', () => agentApi)
 vi.mock('../src/api/citations.js', () => citationApi)
 vi.mock('../src/api/models.js', () => modelApi)
+vi.mock('../src/api/media.js', () => mediaApi)
 
 import AgentView from '../src/views/AgentView.vue'
 import AgentRunProgress from '../src/features/agent-chat/AgentRunProgress.vue'
@@ -33,9 +39,11 @@ import {
 import {
   createAgentTimelineState,
   clearAgentTimelines,
+  hydrateAgentTimeline,
   reduceAgentTimeline,
 } from '../src/features/agent-chat/useAgentTimeline.js'
 import { abortAllConversationStreams } from '../src/features/agent-chat/useConversationStreamRegistry.js'
+import { clearAgentDrafts } from '../src/features/agent-chat/useAgentDraftRegistry.js'
 
 const thread = {
   id: 'thread-1',
@@ -127,7 +135,10 @@ function mountView(options = {}) {
 beforeEach(() => {
   abortAllConversationStreams()
   clearAgentTimelines()
+  clearAgentDrafts()
   vi.clearAllMocks()
+  globalThis.URL.createObjectURL = vi.fn(() => 'blob:agent-draft')
+  globalThis.URL.revokeObjectURL = vi.fn()
   modelApi.getModelCatalog.mockResolvedValue({
     active_model_id: 'qwen',
     options: [],
@@ -156,6 +167,7 @@ beforeEach(() => {
     file_name: '患者安全.pdf',
     version: 1,
   })
+  mediaApi.uploadMediaAsset.mockResolvedValue({ id: 'asset-default' })
 })
 
 describe('Codex式资料Agent工作台', () => {
@@ -504,6 +516,26 @@ describe('Codex式资料Agent工作台', () => {
     expect(state.messages['user-1'].sequence_no).toBe(9)
   })
 
+  it('历史刷新丢弃未挂载的乐观图片时释放本地URL', () => {
+    let state = createAgentTimelineState()
+    state = reduceAgentTimeline(state, 'optimistic_user', {
+      id: 'pending-image',
+      submissionId: 'submission-image',
+      content: '后台会话图片',
+    })
+    state = reduceAgentTimeline(state, 'message_created', {
+      user_message_id: 'user-image',
+      assistant_message_id: 'assistant-image',
+      user_sequence_no: 1,
+      assistant_sequence_no: 2,
+      run_id: 'run-image',
+      optimistic_attachments: [{ id: 'asset-image', localUrl: 'blob:background-image' }],
+    })
+
+    hydrateAgentTimeline(state, [], {})
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:background-image')
+  })
+
   it('乱序事件会在消息创建后回放，重复消息和工具事件保持幂等', () => {
     let state = createAgentTimelineState()
     state = reduceAgentTimeline(state, 'message_created', {
@@ -671,6 +703,88 @@ describe('Codex式资料Agent工作台', () => {
     const signals = agentApi.streamAgentMessage.mock.calls.map((call) => call[3].signal)
     wrapper.unmount()
     expect(signals.every((signal) => !signal.aborted)).toBe(true)
+  })
+
+  it('message_created立即接管图片且A完成不清空B的跨会话草稿', async () => {
+    const activeThreads = [{ ...thread }, { ...secondThread }]
+    const streams = {}
+    let aCompleted = false
+    agentApi.listAgentThreads.mockResolvedValue({ items: activeThreads })
+    agentApi.listAgentMessages.mockImplementation(async (id) => ({
+      items: id === 'thread-1' && aCompleted ? [{
+        ...messages[0],
+        id: 'a-user',
+        sequence_no: 1,
+        content: '分析A',
+        attachments: [{ id: 'asset-a', original_name: 'a.png' }],
+      }, {
+        ...messages[1],
+        id: 'a-assistant',
+        sequence_no: 2,
+        content: 'A完成',
+        run_id: 'run-a',
+      }] : [],
+    }))
+    mediaApi.uploadMediaAsset.mockResolvedValueOnce({ id: 'asset-a' })
+    mediaApi.getMediaPreview.mockResolvedValue({ name: 'server-a' })
+    agentApi.streamAgentMessage.mockImplementation((id, _payload, _key, handlers) => (
+      new Promise((resolve, reject) => { streams[id] = { handlers, resolve, reject } })
+    ))
+
+    const wrapper = mountView()
+    await flushPromises()
+    const fileA = new File([new Uint8Array(8)], 'a.png', { type: 'image/png' })
+    const inputA = wrapper.get('input[type="file"]')
+    Object.defineProperty(inputA.element, 'files', { configurable: true, value: [fileA] })
+    await inputA.trigger('change')
+    await wrapper.get('textarea').setValue('分析A')
+    await wrapper.get('form.composer').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.findAll('.attachment-draft-tray img')).toHaveLength(1)
+    expect(wrapper.findAll('.private-attachment-gallery img')).toHaveLength(0)
+    streams['thread-1'].handlers.onEvent('message_created', {
+      user_message_id: 'a-user',
+      assistant_message_id: 'a-assistant',
+      user_sequence_no: 1,
+      assistant_sequence_no: 2,
+      run_id: 'run-a',
+    })
+    await flushPromises()
+    expect(wrapper.findAll('.attachment-draft-tray img')).toHaveLength(0)
+    expect(wrapper.findAll('.private-attachment-gallery img')).toHaveLength(1)
+    expect(wrapper.get('textarea').attributes('disabled')).toBeUndefined()
+    await wrapper.get('textarea').setValue('A运行中准备的下一条')
+    expect(wrapper.get('textarea').element.value).toBe('A运行中准备的下一条')
+    expect(wrapper.findAll('button').some((item) => item.text() === '发送任务')).toBe(false)
+
+    await wrapper.get('[data-thread-id="thread-2"] .thread-main').trigger('click')
+    await flushPromises()
+    const fileB = new File([new Uint8Array(8)], 'b.png', { type: 'image/png' })
+    const inputB = wrapper.get('input[type="file"]')
+    Object.defineProperty(inputB.element, 'files', { configurable: true, value: [fileB] })
+    await inputB.trigger('change')
+    await wrapper.get('textarea').setValue('保留B草稿')
+    expect(wrapper.findAll('.attachment-draft-tray img')).toHaveLength(1)
+
+    streams['thread-1'].handlers.onEvent('token', { content: 'A完成' })
+    streams['thread-1'].handlers.onEvent('message_completed', {
+      message_id: 'a-assistant',
+      sequence_no: 2,
+      status: 'completed',
+    })
+    aCompleted = true
+    streams['thread-1'].resolve()
+    await flushPromises()
+    expect(wrapper.get('textarea').element.value).toBe('保留B草稿')
+    expect(wrapper.findAll('.attachment-draft-tray img')).toHaveLength(1)
+
+    await wrapper.get('[data-thread-id="thread-1"] .thread-main').trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('.private-attachment-gallery img')).toHaveLength(1)
+    expect(wrapper.findAll('.attachment-draft-tray img')).toHaveLength(0)
+    expect(wrapper.get('textarea').element.value).toBe('A运行中准备的下一条')
+    wrapper.unmount()
   })
 
   it('服务端has_unread可在刷新后恢复，模式可更新并用于新建会话', async () => {

@@ -56,7 +56,7 @@ watch(
 </template>
 
 <style scoped>
-.conversation { min-height: 0; padding: 16px clamp(16px, 3vw, 40px) 108px; overflow: auto; }
+.conversation { min-height: 0; padding: 16px clamp(16px, 3vw, 40px); overflow: auto; }
 .empty {
   max-width: 520px;
   margin: 92px auto;
@@ -69,6 +69,6 @@ watch(
 .empty strong { color: var(--ink); font-size: 18px; }
 .empty span { font-size: 13px; }
 @media (max-width: 760px) {
-  .conversation { padding: 12px 12px 104px; }
+  .conversation { padding: 12px; }
 }
 </style>

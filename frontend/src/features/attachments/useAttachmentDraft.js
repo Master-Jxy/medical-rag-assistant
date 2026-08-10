@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, toRef } from 'vue'
 
 import { deleteMediaAsset, uploadMediaAsset } from '../../api/media.js'
 import { getApiErrorMessage } from '../../api/http.js'
@@ -15,30 +15,34 @@ function revoke(url) {
   if (url && globalThis.URL?.revokeObjectURL) URL.revokeObjectURL(url)
 }
 
-export function useAttachmentDraft() {
-  const items = ref([])
-  const error = ref('')
-  const uploading = computed(() => items.value.some((item) => item.status === 'uploading'))
-  const hasAttachments = computed(() => items.value.length > 0)
+export function createAttachmentDraftState() {
+  return reactive({ items: [], error: '' })
+}
+
+export function createAttachmentDraftController(state = createAttachmentDraftState()) {
+  const items = toRef(state, 'items')
+  const error = toRef(state, 'error')
+  const uploading = computed(() => state.items.some((item) => item.status === 'uploading'))
+  const hasAttachments = computed(() => state.items.length > 0)
 
   function addFiles(files) {
-    error.value = ''
+    state.error = ''
     const incoming = Array.from(files || []).filter((file) => file instanceof File)
     if (!incoming.length) return
-    if (items.value.length + incoming.length > MAX_IMAGES) {
-      error.value = '每条消息最多添加 3 张图片。'
+    if (state.items.length + incoming.length > MAX_IMAGES) {
+      state.error = '每条消息最多添加 3 张图片。'
       return
     }
     for (const file of incoming) {
       if (!ALLOWED_TYPES.has(file.type)) {
-        error.value = '仅支持 JPG、PNG、WEBP 图片。'
+        state.error = '仅支持 JPG、PNG、WEBP 图片。'
         continue
       }
       if (file.size > MAX_BYTES) {
-        error.value = '单张图片不能超过 10 MiB。'
+        state.error = '单张图片不能超过 10 MiB。'
         continue
       }
-      items.value.push({
+      state.items.push({
         key: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
         file,
         localUrl: localUrl(file),
@@ -66,16 +70,16 @@ export function useAttachmentDraft() {
   }
 
   async function uploadAll() {
-    error.value = ''
+    state.error = ''
     const ids = []
-    for (const item of items.value) ids.push(await upload(item))
+    for (const item of state.items) ids.push(await upload(item))
     return ids
   }
 
   async function remove(item) {
-    const index = items.value.findIndex((candidate) => candidate.key === item.key)
+    const index = state.items.findIndex((candidate) => candidate.key === item.key)
     if (index < 0 || item.status === 'uploading') return
-    items.value.splice(index, 1)
+    state.items.splice(index, 1)
     revoke(item.localUrl)
     if (item.assetId) deleteMediaAsset(item.assetId).catch(() => {})
   }
@@ -91,7 +95,7 @@ export function useAttachmentDraft() {
   }
 
   function snapshot() {
-    return items.value.map((item, index) => ({
+    return state.items.map((item, index) => ({
       id: item.assetId,
       media_asset_id: item.assetId,
       position: index + 1,
@@ -104,23 +108,28 @@ export function useAttachmentDraft() {
 
   function completeSend({ preserveLocalUrls = false } = {}) {
     if (!preserveLocalUrls) {
-      for (const item of items.value) revoke(item.localUrl)
+      for (const item of state.items) revoke(item.localUrl)
     }
-    items.value = []
-    error.value = ''
+    state.items = []
+    state.error = ''
   }
 
   function dispose() {
-    for (const item of items.value) {
+    for (const item of state.items) {
       revoke(item.localUrl)
       if (item.assetId) deleteMediaAsset(item.assetId).catch(() => {})
     }
-    items.value = []
+    state.items = []
   }
 
-  onBeforeUnmount(dispose)
   return {
     items, error, uploading, hasAttachments,
-    addFiles, upload, uploadAll, remove, handlePaste, snapshot, completeSend,
+    addFiles, upload, uploadAll, remove, handlePaste, snapshot, completeSend, dispose,
   }
+}
+
+export function useAttachmentDraft() {
+  const controller = createAttachmentDraftController()
+  onBeforeUnmount(controller.dispose)
+  return controller
 }

@@ -6,8 +6,23 @@ export function createAgentTimelineState() {
   return {
     messages: {},
     pendingUserId: '',
+    pendingSubmission: null,
     currentAssistantId: '',
     pendingEvents: [],
+  }
+}
+
+function revokeDiscardedLocalUrls(state, retainedMessages = []) {
+  if (!globalThis.URL?.revokeObjectURL) return
+  const retained = new Set(retainedMessages.flatMap(
+    (message) => (message.attachments || []).map((item) => item.localUrl).filter(Boolean),
+  ))
+  for (const message of Object.values(state?.messages || {})) {
+    for (const attachment of message.attachments || []) {
+      if (attachment.localUrl && !retained.has(attachment.localUrl)) {
+        URL.revokeObjectURL(attachment.localUrl)
+      }
+    }
   }
 }
 
@@ -25,6 +40,7 @@ function normalizedMessage(message, run = null) {
 }
 
 export function hydrateAgentTimeline(state, messages, runDetails = {}) {
+  revokeDiscardedLocalUrls(state, messages)
   const entities = {}
   for (const message of messages) {
     entities[message.id] = normalizedMessage(
@@ -45,22 +61,17 @@ export function reduceAgentTimeline(state, event, data = {}) {
     next.pendingUserId = id
     next.currentAssistantId = ''
     next.pendingEvents = []
-    next.messages[id] = normalizedMessage({
+    next.pendingSubmission = {
       id,
-      role: 'user',
       content: data.content,
-      status: 'pending',
-      sequence_no: Number.MAX_SAFE_INTEGER - 1,
-      metadata: {},
-      attachments: data.attachments || [],
-    })
+      submissionId: data.submissionId || '',
+    }
     return next
   }
   if (event === 'message_created') {
-    const pending = next.messages[next.pendingUserId]
+    const pending = next.pendingSubmission
     const storedUser = next.messages[data.user_message_id]
     const storedAssistant = next.messages[data.assistant_message_id]
-    if (next.pendingUserId) delete next.messages[next.pendingUserId]
     next.messages[data.user_message_id] = normalizedMessage({
       ...storedUser,
       id: data.user_message_id,
@@ -70,7 +81,9 @@ export function reduceAgentTimeline(state, event, data = {}) {
       sequence_no: data.user_sequence_no,
       turn_id: data.turn_id,
       metadata: {},
-      attachments: pending?.attachments || storedUser?.attachments || [],
+      attachments: data.optimistic_attachments?.length
+        ? data.optimistic_attachments
+        : storedUser?.attachments || [],
     })
     next.messages[data.assistant_message_id] = normalizedMessage({
       ...storedAssistant,
@@ -87,6 +100,7 @@ export function reduceAgentTimeline(state, event, data = {}) {
     }, storedAssistant ? { steps: storedAssistant.parts?.steps || [], artifacts: storedAssistant.parts?.artifacts || [] } : null)
     if (storedAssistant?.parts) next.messages[data.assistant_message_id].parts = storedAssistant.parts
     next.pendingUserId = ''
+    next.pendingSubmission = null
     next.currentAssistantId = data.assistant_message_id
     const pendingEvents = next.pendingEvents
     next.pendingEvents = []
@@ -204,12 +218,12 @@ export function useAgentTimeline() {
     states.set(threadId, hydrateAgentTimeline(ensure(threadId), rows, runDetails))
   }
 
-  function beginUser(threadId, content, attachments = []) {
-    const id = `pending-${Date.now()}`
+  function beginUser(threadId, submissionId, content) {
+    const id = `pending-${submissionId}`
     states.set(threadId, reduceAgentTimeline(
       ensure(threadId),
       'optimistic_user',
-      { id, content, attachments },
+      { id, submissionId, content },
     ))
   }
 
@@ -218,6 +232,7 @@ export function useAgentTimeline() {
   }
 
   function remove(threadId) {
+    revokeDiscardedLocalUrls(states.get(threadId))
     states.delete(threadId)
   }
 
@@ -225,5 +240,6 @@ export function useAgentTimeline() {
 }
 
 export function clearAgentTimelines() {
+  for (const state of sharedStates.values()) revokeDiscardedLocalUrls(state)
   sharedStates.clear()
 }

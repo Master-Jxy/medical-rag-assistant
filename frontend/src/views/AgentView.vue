@@ -11,6 +11,7 @@ import AgentThreadSidebar from '../features/agent-chat/AgentThreadSidebar.vue'
 import { useAgentStream } from '../features/agent-chat/useAgentStream.js'
 import { useAgentThread } from '../features/agent-chat/useAgentThread.js'
 import { useAgentTimeline } from '../features/agent-chat/useAgentTimeline.js'
+import { useAgentDraftRegistry } from '../features/agent-chat/useAgentDraftRegistry.js'
 
 const threadState = useAgentThread()
 const timeline = useAgentTimeline()
@@ -22,7 +23,7 @@ const threadDrawerOpen = ref(false)
 const contextDrawerOpen = ref(false)
 const downloadingId = ref('')
 const composer = ref(null)
-const references = ref({ messageIds: [], sourceIds: [], artifactIds: [] })
+const drafts = useAgentDraftRegistry()
 const renameTarget = ref(null)
 const renameTitle = ref('')
 const deleteTarget = ref(null)
@@ -40,6 +41,11 @@ async function focusComposer() {
   await nextTick()
   composer.value?.focus()
 }
+
+const currentThreadId = computed(() => threadState.currentThread.value?.id || '')
+const currentDraftKey = computed(() => currentThreadId.value || drafts.NEW_THREAD_KEY)
+const currentDraft = computed(() => drafts.draftFor(currentDraftKey.value).state)
+const references = computed(() => currentDraft.value.references)
 
 const referenceLabels = computed(() => [
   ...references.value.messageIds.map((id) => ({
@@ -82,9 +88,11 @@ const stream = useAgentStream(async (threadId) => {
   } else {
     stream.registry.markUnread(threadId)
   }
-}, (threadId, event, data) => timeline.handle(threadId, event, data))
+}, (threadId, event, data) => timeline.handle(threadId, event, data), async (threadId, submissionId) => {
+  drafts.acceptSubmission(threadId, submissionId)
+  if (currentThreadId.value === threadId) await focusComposer()
+})
 
-const currentThreadId = computed(() => threadState.currentThread.value?.id || '')
 const currentStreamState = computed(() => stream.stateFor(currentThreadId.value))
 const currentRunning = computed(() => stream.runningFor(
   currentThreadId.value,
@@ -136,7 +144,6 @@ async function selectThread(thread) {
     }
     stream.registry.clearUnread(thread.id)
     assistantMode.value = threadState.currentThread.value?.assistant_mode || 'general'
-    references.value = { messageIds: [], sourceIds: [], artifactIds: [] }
     threadDrawerOpen.value = false
     await focusComposer()
   } catch (error) {
@@ -236,7 +243,7 @@ async function confirmRemoveThread() {
       threadState.messages.value,
       threadState.runDetails.value,
     )
-    references.value = { messageIds: [], sourceIds: [], artifactIds: [] }
+    drafts.remove(deleteTarget.value.id)
     selectedSource.value = null
     selectedArtifact.value = null
     contextDrawerOpen.value = false
@@ -249,25 +256,30 @@ async function confirmRemoveThread() {
   }
 }
 
-async function send({ content, attachmentIds = [], attachments = [] }) {
+async function send(submission) {
   errorMessage.value = ''
   notice.value = ''
+  let submissionThreadKey = submission.threadKey
   try {
     let thread = threadState.currentThread.value
-    if (!thread) thread = await threadState.newThread('新对话', assistantMode.value)
+    if (!thread) {
+      thread = await threadState.newThread('新对话', assistantMode.value)
+      drafts.moveSubmission(submissionThreadKey, thread.id, submission.submissionId)
+      submissionThreadKey = thread.id
+    }
     if (thread.title === '新对话') {
-      await threadState.renameThread(thread, content.slice(0, 30) || '图片问答')
+      await threadState.renameThread(thread, submission.content.slice(0, 30) || '图片问答')
     }
-    const selectedReferences = {
-      messageIds: [...references.value.messageIds],
-      sourceIds: [...references.value.sourceIds],
-      artifactIds: [...references.value.artifactIds],
-    }
-    references.value = { messageIds: [], sourceIds: [], artifactIds: [] }
-    timeline.beginUser(thread.id, content, attachments)
-    await stream.send(thread.id, content, selectedReferences, attachmentIds)
-    composer.value?.completeSend()
+    timeline.beginUser(thread.id, submission.submissionId, submission.content)
+    await stream.send(
+      thread.id,
+      submission.content,
+      submission.references,
+      submission.attachmentIds,
+      submission,
+    )
   } catch (error) {
+    drafts.failSubmission(submissionThreadKey, submission.submissionId)
     errorMessage.value = getApiErrorMessage(error)
   }
 }
@@ -280,12 +292,9 @@ function toggleReference(type, item) {
       ? item.document_id
       : item.id
   const values = references.value[field]
-  references.value = {
-    ...references.value,
-    [field]: values.includes(id)
-      ? values.filter((value) => value !== id)
-      : [...values, id],
-  }
+  currentDraft.value.references[field] = values.includes(id)
+    ? values.filter((value) => value !== id)
+    : [...values, id]
 }
 
 function removeReference(item) {
@@ -438,7 +447,6 @@ onMounted(async () => {
                 </option>
               </select>
             </label>
-            <span v-if="currentRunning" class="current-run"><i></i> Agent 正在工作</span>
           </div>
         </div>
         <AgentConversation
@@ -454,7 +462,8 @@ onMounted(async () => {
         />
         <AgentComposer
           ref="composer"
-          :disabled="currentRunning"
+          :draft-key="currentDraftKey"
+          :send-disabled="currentRunning"
           :running="currentRunning"
           :references="referenceLabels"
           @send="send"
@@ -524,9 +533,10 @@ onMounted(async () => {
 .drawer-shell { min-width: 0; min-height: 0; overflow: hidden; }
 .drawer-close, .mobile-tools { display: none; }
 .conversation-shell {
-  position: relative;
   min-width: 0;
   min-height: 0;
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr) auto;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -546,21 +556,6 @@ onMounted(async () => {
 .conversation-controls label { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
 .conversation-controls select { height: 28px; padding: 0 28px 0 9px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: #fff; font: inherit; font-size: 12px; }
 .conversation-controls select:disabled { cursor: not-allowed; opacity: .65; }
-.current-run {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--primary);
-  font-size: 12px;
-}
-.current-run i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ui-success);
-  box-shadow: 0 0 0 5px rgba(58, 155, 114, .1);
-}
-.conversation-shell :deep(.conversation) { height: calc(100% - 42px); box-sizing: border-box; }
 .detail-overlay { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; padding: 24px; background: rgb(15 30 24 / 36%); }
 .detail-overlay .context { display: block; position: relative; width: min(560px, 100%); max-height: min(680px, calc(100vh - 48px)); }
 .detail-overlay .context :deep(aside) { max-height: inherit; box-shadow: 0 18px 50px rgb(20 40 31 / 24%); }
@@ -599,7 +594,7 @@ onMounted(async () => {
   .conversation-title { padding: 0 10px; }
   .conversation-title > strong { max-width: 38%; }
   .conversation-controls { min-width: 0; gap: 7px; }
-  .conversation-controls label > span, .current-run { display: none; }
+  .conversation-controls label > span { display: none; }
   .conversation-controls select { max-width: 126px; }
 }
 </style>

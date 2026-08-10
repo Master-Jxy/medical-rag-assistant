@@ -4,33 +4,48 @@ import { getMediaPreview } from '../../api/media.js'
 
 const props = defineProps({ attachments: { type: Array, default: () => [] } })
 const previews = ref([])
+let generation = 0
 
-function clear() {
-  for (const item of previews.value) {
+function revokeOwned(items) {
+  for (const item of items) {
     if (item.ownedUrl && globalThis.URL?.revokeObjectURL) URL.revokeObjectURL(item.url)
   }
+}
+
+function clear() {
+  revokeOwned(previews.value)
   previews.value = []
 }
 
-watch(() => props.attachments, async (attachments) => {
+watch(() => props.attachments.map((attachment) => [
+  attachment.media_asset_id || attachment.id || '',
+  attachment.localUrl || '',
+  attachment.original_name || '',
+].join(':')).join('|'), async () => {
+  const currentGeneration = ++generation
   clear()
-  const next = []
-  for (const attachment of attachments || []) {
+  const next = await Promise.all((props.attachments || []).map(async (attachment) => {
     if (attachment.localUrl) {
-      next.push({ ...attachment, url: attachment.localUrl, ownedUrl: true })
-      continue
+      return { ...attachment, url: attachment.localUrl, ownedUrl: true }
     }
     try {
       const blob = await getMediaPreview(attachment.media_asset_id || attachment.id)
-      next.push({ ...attachment, url: URL.createObjectURL(blob), ownedUrl: true })
+      return { ...attachment, url: URL.createObjectURL(blob), ownedUrl: true }
     } catch {
-      next.push({ ...attachment, url: '', ownedUrl: false, failed: true })
+      return { ...attachment, url: '', ownedUrl: false, failed: true }
     }
+  }))
+  if (currentGeneration !== generation) {
+    revokeOwned(next)
+    return
   }
   previews.value = next
-}, { immediate: true, deep: true })
+}, { immediate: true })
 
-onBeforeUnmount(clear)
+onBeforeUnmount(() => {
+  generation += 1
+  clear()
+})
 </script>
 
 <template>
@@ -45,7 +60,7 @@ onBeforeUnmount(clear)
 
 <style scoped>
 .private-attachment-gallery { display: flex; flex-wrap: wrap; justify-content: inherit; gap: 8px; margin-bottom: 8px; }
-.private-attachment-gallery figure { width: min(180px, 46vw); margin: 0; text-align: left; }
-.private-attachment-gallery img, .preview-failed { width: 100%; height: 128px; display: grid; place-items: center; object-fit: cover; border: 1px solid rgba(92,108,158,.14); border-radius: 13px; background: rgba(238,241,247,.82); color: var(--muted); font-size: 11px; }
+.private-attachment-gallery figure { width: min(112px, 30vw); margin: 0; text-align: left; }
+.private-attachment-gallery img, .preview-failed { width: 100%; height: 84px; display: grid; place-items: center; object-fit: cover; border: 1px solid rgba(92,108,158,.14); border-radius: 8px; background: rgba(238,241,247,.82); color: var(--muted); font-size: 11px; }
 .private-attachment-gallery figcaption { margin-top: 4px; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 </style>

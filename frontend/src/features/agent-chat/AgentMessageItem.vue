@@ -64,21 +64,16 @@ const usage = computed(() => props.message.usage || props.live?.usage || null)
       />
 
       <div
-        v-if="content || isActive"
+        v-if="content"
         class="bubble"
-        :class="{ thinking: isActive && !content, failed: message.status === 'failed' }"
+        :class="{ failed: message.status === 'failed' }"
       >
-        <template v-if="content">
-          <MarkdownContent
-            v-if="isAssistant"
-            :content="content"
-            :streaming="isActive"
-          />
-          <template v-else>{{ content }}</template>
-        </template>
-        <template v-else>
-          <i></i><i></i><i></i><span>正在理解任务并准备下一步</span>
-        </template>
+        <MarkdownContent
+          v-if="isAssistant"
+          :content="content"
+          :streaming="isActive"
+        />
+        <template v-else>{{ content }}</template>
       </div>
       <VisionObservationPanel v-if="isAssistant" :observations="message.vision_observations || []" />
 
@@ -257,18 +252,6 @@ const usage = computed(() => props.message.usage || props.live?.usage || null)
 .message-actions { display: flex; gap: 12px; margin-top: 9px; }
 .user .message-actions { justify-content: flex-end; }
 .message-actions button { color: #81908b; }
-.thinking { display: flex; align-items: center; gap: 5px; color: var(--muted); }
-.thinking > i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--primary);
-  animation: pulse 1.1s infinite alternate;
-}
-.thinking > i:nth-child(2) { animation-delay: .2s; }
-.thinking > i:nth-child(3) { animation-delay: .4s; }
-.thinking span { margin-left: 5px; font-size: 13px; }
-@keyframes pulse { to { opacity: .25; transform: translateY(-2px); } }
 @media (max-width: 760px) {
   .message-body { width: calc(100% - 47px); }
 }

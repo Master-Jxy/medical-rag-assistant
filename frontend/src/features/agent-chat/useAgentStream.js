@@ -14,7 +14,7 @@ function requestId() {
     || `agent-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-export function useAgentStream(onSettled, onEvent) {
+export function useAgentStream(onSettled, onEvent, onAccepted) {
   const registry = useConversationStreamRegistry('agent')
 
   function stateFor(threadId) {
@@ -29,12 +29,19 @@ export function useAgentStream(onSettled, onEvent) {
     if (!registry.acceptEvent(threadId, data)) return
     const entry = registry.get(threadId)
     if (!entry) return
-    entry.state = reduceAgentEvent(entry.state, event, data)
+    const eventData = event === 'message_created'
+      ? { ...data, optimistic_attachments: entry.optimisticAttachments || [] }
+      : data
+    entry.state = reduceAgentEvent(entry.state, event, eventData)
     entry.phase = ['completed', 'failed', 'stopped'].includes(entry.state.phase)
       ? 'settling'
       : entry.state.phase
     entry.runId = entry.state.runId || entry.runId
-    onEvent?.(threadId, event, data)
+    if (event === 'message_created' && !entry.accepted) {
+      entry.accepted = true
+      onAccepted?.(threadId, entry.submissionId, eventData)
+    }
+    onEvent?.(threadId, event, eventData)
   }
 
   async function runStream(threadId, operation) {
@@ -70,8 +77,12 @@ export function useAgentStream(onSettled, onEvent) {
     }
   }
 
-  function send(threadId, content, references = {}, attachmentIds = []) {
-    return runStream(threadId, (entry, handleEvent) => streamAgentMessage(
+  function send(threadId, content, references = {}, attachmentIds = [], submission = {}) {
+    return runStream(threadId, (entry, handleEvent) => {
+      entry.submissionId = submission.submissionId || ''
+      entry.optimisticAttachments = submission.attachments || []
+      entry.accepted = false
+      return streamAgentMessage(
       threadId,
       {
         content,
@@ -82,7 +93,8 @@ export function useAgentStream(onSettled, onEvent) {
       },
       requestId(),
       { onEvent: handleEvent, signal: entry.controller.signal },
-    ))
+      )
+    })
   }
 
   function retry(threadId, messageId) {

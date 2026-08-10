@@ -2,46 +2,48 @@
 import { computed, nextTick, ref } from 'vue'
 import { ImagePlus } from '@lucide/vue'
 import ModelSelector from '../../components/ModelSelector.vue'
-import { useAttachmentDraft } from '../attachments/useAttachmentDraft.js'
+import { useAgentDraftRegistry } from './useAgentDraftRegistry.js'
 import AttachmentDraftTray from '../attachments/AttachmentDraftTray.vue'
 
 const props = defineProps({
-  disabled: Boolean,
+  draftKey: { type: String, required: true },
+  sendDisabled: Boolean,
   running: Boolean,
   references: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['send', 'stop', 'remove-reference'])
-const value = ref('')
 const textarea = ref(null)
 const imageInput = ref(null)
-const attachmentDraft = useAttachmentDraft()
-const draftItems = attachmentDraft.items
-const attachmentError = attachmentDraft.error
-const uploadingAttachments = attachmentDraft.uploading
+const draftRegistry = useAgentDraftRegistry()
+const currentDraft = computed(() => draftRegistry.draftFor(props.draftKey))
+const value = computed({
+  get: () => currentDraft.value.state.content,
+  set: (content) => { currentDraft.value.state.content = content },
+})
+const draftItems = computed(() => currentDraft.value.attachments.items.value)
+const attachmentError = computed(() => currentDraft.value.attachments.error.value)
+const uploadingAttachments = computed(() => currentDraft.value.attachments.uploading.value)
+const awaitingAcceptance = computed(() => (
+  currentDraft.value.state.phase === 'awaiting_acceptance'
+  || currentDraft.value.state.phase === 'uploading'
+))
 const canSend = computed(() => (
-  (value.value.trim() || attachmentDraft.hasAttachments.value)
-  && !props.disabled && !uploadingAttachments.value
+  (value.value.trim() || currentDraft.value.attachments.hasAttachments.value)
+  && !props.sendDisabled && !awaitingAcceptance.value
 ))
 
 function focus() {
   resizeTextarea()
-  if (!props.disabled) textarea.value?.focus()
+  if (!awaitingAcceptance.value) textarea.value?.focus()
 }
 
-function completeSend() {
-  value.value = ''
-  attachmentDraft.completeSend({ preserveLocalUrls: true })
-  nextTick(resizeTextarea)
-}
-
-defineExpose({ focus, completeSend })
+defineExpose({ focus })
 
 async function submit() {
   const content = value.value.trim()
-  if ((!content && !attachmentDraft.hasAttachments.value) || props.disabled) return
+  if ((!content && !currentDraft.value.attachments.hasAttachments.value) || !canSend.value) return
   try {
-    const attachmentIds = await attachmentDraft.uploadAll()
-    emit('send', { content, attachmentIds, attachments: attachmentDraft.snapshot() })
+    emit('send', await draftRegistry.prepareSubmission(props.draftKey))
   } catch {
     // 失败状态和可重试提示由共享草稿状态机维护。
   }
@@ -49,10 +51,12 @@ async function submit() {
 
 function chooseImages() { imageInput.value?.click() }
 function handleImageSelection(event) {
-  attachmentDraft.addFiles(event.target.files)
+  currentDraft.value.attachments.addFiles(event.target.files)
   event.target.value = ''
 }
-function retryUpload(item) { attachmentDraft.upload(item).catch(() => {}) }
+function retryUpload(item) { currentDraft.value.attachments.upload(item).catch(() => {}) }
+function removeImage(item) { currentDraft.value.attachments.remove(item) }
+function handlePaste(event) { currentDraft.value.attachments.handlePaste(event) }
 
 function resizeTextarea() {
   const input = textarea.value
@@ -86,7 +90,7 @@ function handleKeydown(event) {
         @ {{ item.label }} ×
       </button>
     </div>
-    <AttachmentDraftTray :items="draftItems" @remove="attachmentDraft.remove" @retry="retryUpload" />
+    <AttachmentDraftTray :items="draftItems" @remove="removeImage" @retry="retryUpload" />
     <textarea
       ref="textarea"
       id="agent-message"
@@ -94,15 +98,15 @@ function handleKeydown(event) {
       maxlength="4000"
       rows="1"
       placeholder="输入任务，Enter 发送，Shift + Enter 换行"
-      :disabled="disabled"
+      :disabled="awaitingAcceptance"
       @input="resizeTextarea"
       @keydown="handleKeydown"
-      @paste="attachmentDraft.handlePaste"
+      @paste="handlePaste"
     />
     <div class="composer-footer">
       <div class="composer-tools">
         <input ref="imageInput" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden @change="handleImageSelection" />
-        <button type="button" class="add-image-button" aria-label="添加图片" :disabled="disabled || draftItems.length >= 3" @click="chooseImages"><ImagePlus :size="17" /><span>添加图片</span></button>
+        <button type="button" class="add-image-button" aria-label="添加图片" :disabled="awaitingAcceptance || draftItems.length >= 3" @click="chooseImages"><ImagePlus :size="17" /><span>添加图片</span></button>
       </div>
       <div class="composer-actions">
         <ModelSelector surface="agent" />
@@ -119,14 +123,13 @@ function handleKeydown(event) {
 
 <style scoped>
 .composer {
-  position: absolute;
+  position: relative;
   z-index: 4;
-  right: max(18px, calc((100% - 960px) / 2));
-  bottom: 8px;
-  left: max(18px, calc((100% - 960px) / 2));
+  width: min(calc(100% - 36px), 960px);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 9px;
+  margin: 0 auto 8px;
   padding: 10px 12px;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
@@ -190,7 +193,7 @@ function handleKeydown(event) {
 .add-image-button:disabled { cursor: not-allowed; opacity: .45; }
 .attachment-error { margin: -2px 2px 0; color: var(--ui-danger); font-size: 11px; }
 @media (max-width: 760px) {
-  .composer { right: 10px; bottom: 8px; left: 10px; }
+  .composer { width: calc(100% - 20px); margin-bottom: 8px; }
   .add-image-button { width: 44px; justify-content: center; padding: 0; }
   .add-image-button span { display: none; }
 }

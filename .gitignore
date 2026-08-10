@@ -22,6 +22,7 @@ deploy/.env
 frontend/node_modules/
 frontend/dist/
 .playwright-cli/
+output/playwright/
 
 # Runtime data
 backend/logs/

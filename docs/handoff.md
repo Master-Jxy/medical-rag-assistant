@@ -14,6 +14,13 @@ RAG先形成结构化视觉观察再检索与回答；Agent通过`observe_image`
 输入器已改为全宽文本区和底部控制栏；桌面侧栏为220px/收起76px，移动端保持约300px
 抽屉。1440、1280、1024和390四视口已完成浏览器验收，收起按钮不再与工作台图标重叠。
 
+Stage 26 已完成本地任务26.0。Agent图片草稿现在复用共享附件状态机并通过
+`thread_id + submission_id` registry隔离；提交快照不可变，只有服务端
+`message_created`确认后才立即从输入器移除并由历史消息接管，因此同一图片在生成中只
+显示一次，A会话结束也不会清空B会话草稿。Composer位于正常三行网格文档流，消息区不再
+依赖固定底部留白；历史私有图片预览使用代次令牌丢弃过期异步结果，重复运行提示已合并。
+26.0仅使用Fake/静态API浏览器路由，没有真实模型调用、费用、GitHub推送或生产变更。
+
 生产当前状态：
 
 - GitHub `main`：`b8e1719fa3be90b53822e58f07d2179737ae46b6`。
@@ -48,7 +55,7 @@ backend full suite（从仓库根目录执行）
 621 passed, 1 skipped, 140 warnings
 
 frontend full suite
-20 files / 82 tests passed
+22 files / 89 tests passed
 
 SSE parser
 PASS
@@ -61,6 +68,12 @@ Alembic temporary roundtrip
 
 Playwright no-cost browser acceptance
 1440x900 / 1280x800 / 1024x768 / 390x844 PASS
+
+Stage26.0 focused
+Agent draft/timeline/gallery/view: 23 passed
+impeccable detector: []
+browser: 3 images + 4 lines, A/B draft isolation, no overlap/overflow,
+console 0 error / 0 warning
 
 Protected auth SHA-256
 9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0
@@ -78,11 +91,12 @@ Protected auth SHA-256
 
 ## 4. 新任务阅读范围
 
-新窗口先完整阅读`AGENTS.md`和本文。Stage25定向问题再读取：
+新窗口先完整阅读`AGENTS.md`、本文和`docs/stage26-enterprise-hardening-design.md`。
+26.1只定向读取：
 
-- `docs/stage25-multimodal-chat-design.md`
-- `docs/release-audit-stage25-multimodal-chat.md`
-- 对应的media、vision、RAG或Agent单个模块及测试
+- 现有GitHub Actions、Compose healthcheck、FastAPI health路由与配置
+- `deploy/`发布脚本、部署文档中当前预检与回滚入口
+- 对应健康检查、配置装配与发布脚本测试
 
 普通观察期不要全文读取历史技术设计、旧发布审计或大型评估JSON。
 
@@ -94,5 +108,5 @@ Protected auth SHA-256
 
 ## 6. 唯一下一任务
 
-**执行26.0：修复Agent图片草稿/历史重复、跨会话草稿串扰、动态输入器遮挡和重复运行
-状态；完成前端自动化与四视口浏览器验收后，再进入26.1。**
+**执行26.1：增加CI、`/livez`与依赖感知`/readyz`，并建立统一无副作用发布预检；完成
+自动化、Compose配置和本地黑盒验收后，再进入26.2a。**
