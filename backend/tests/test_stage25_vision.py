@@ -1,6 +1,7 @@
 """Stage 25.2 structured vision, policy, usage and quota behavior."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
@@ -19,6 +20,7 @@ from app.modules.usage.contracts import ModelUsage
 from app.modules.vision.contracts import VisionObservation, VisionResult
 from app.modules.vision.models import VisionObservationRecord
 from app.modules.vision.service import VisionChatService, build_vision_adapter
+from app.infrastructure.dashscope_vision import DashScopeVisionChatAdapter
 from tests.auth_helpers import create_test_user
 
 
@@ -90,6 +92,34 @@ def test_empty_optional_vision_prices_are_normalized() -> None:
     )
     assert settings.vision_input_price_per_million_tokens_cny is None
     assert settings.vision_output_price_per_million_tokens_cny is None
+
+
+def test_dashscope_adapter_normalizes_provider_shape_drift(monkeypatch) -> None:
+    content = """```json
+{"image_type":"document","summary":"visible facts","visible_text":"标题","measurements":[{"name":"值","value":12.5}],"objects":[{"name":"rectangle","type":"shape"}],"spatial_notes":[],"uncertain_content":[],"safety_flags":[]}
+```"""
+    response = SimpleNamespace(
+        status_code=200,
+        output={"choices": [{"message": {"content": [{"text": content}]}}]},
+        usage={"input_tokens": 120, "output_tokens": 30},
+        request_id="vision-request",
+    )
+    monkeypatch.setattr(
+        "app.infrastructure.dashscope_vision.MultiModalConversation.call",
+        lambda **kwargs: response,
+    )
+    result = DashScopeVisionChatAdapter(
+        Settings(_env_file=None, dashscope_api_key="test-key", vision_model="qwen3-vl-plus")
+    ).observe(
+        image_bytes=b"image",
+        mime_type="image/png",
+        user_question="describe",
+        focus_instruction=None,
+    )
+    assert result.observation.visible_text == ["标题"]
+    assert '"name": "rectangle"' in result.observation.objects[0]
+    assert result.observation.measurements[0].value == "12.5"
+    assert result.usage.total_tokens == 150
 
 
 def test_overview_is_idempotent_and_settles_usage(tmp_path) -> None:
