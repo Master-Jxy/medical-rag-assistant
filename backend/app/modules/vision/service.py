@@ -2,12 +2,12 @@
 
 import json
 from datetime import datetime, timezone
+from time import monotonic, sleep
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.core.exceptions import VisionUnavailableError
+from app.core.exceptions import VisionPolicyError, VisionUnavailableError
 from app.infrastructure.dashscope_vision import DashScopeVisionChatAdapter
 from app.infrastructure.fake_vision import DisabledVisionChatAdapter, FakeVisionChatAdapter
 from app.modules.media.service import MediaAssetService
@@ -16,6 +16,8 @@ from app.modules.usage.service import ModelUsageRecorder
 from app.modules.vision.contracts import VisionChatPort, VisionObservation
 from app.modules.vision.models import VisionObservationRecord
 from app.modules.vision.policy import OVERVIEW_HASH, assert_call_allowed, focus_hash
+from app.modules.vision.quality import VisionQualityGate
+from app.modules.vision.repository import VisionObservationRepository
 
 
 def build_vision_adapter(settings: Settings) -> VisionChatPort:
@@ -27,13 +29,15 @@ def build_vision_adapter(settings: Settings) -> VisionChatPort:
 
 
 class VisionChatService:
-    def __init__(self, session: Session, settings: Settings, *, adapter: VisionChatPort | None = None, quota_gate=None, usage_recorder: ModelUsageRecorder | None = None) -> None:
+    def __init__(self, session: Session, settings: Settings, *, adapter: VisionChatPort | None = None, quota_gate=None, usage_recorder: ModelUsageRecorder | None = None, quality_gate: VisionQualityGate | None = None) -> None:
         self.session = session
         self.settings = settings
         self.adapter = adapter or build_vision_adapter(settings)
         self.quota_gate = quota_gate or build_quota_gate(session, settings)
         self.usage_recorder = usage_recorder or ModelUsageRecorder(session, settings)
+        self.quality_gate = quality_gate or VisionQualityGate()
         self.media = MediaAssetService(session, settings)
+        self.repository = VisionObservationRepository(session)
 
     def observe_overview(self, *, user_id: str, asset_id: str, user_question: str, surface: str, usage_group_id: str, run_id: str | None = None) -> VisionObservation:
         return self._observe(user_id=user_id, asset_id=asset_id, user_question=user_question, focus_instruction=None, surface=surface, usage_group_id=usage_group_id, run_id=run_id)
@@ -44,30 +48,79 @@ class VisionChatService:
     def _observe(self, *, user_id: str, asset_id: str, user_question: str, focus_instruction: str | None, surface: str, usage_group_id: str, run_id: str | None) -> VisionObservation:
         if surface not in {"vision_rag", "vision_agent"}:
             raise ValueError("invalid vision surface")
+        observation_scope_id = self._scope_id(
+            surface=surface,
+            usage_group_id=usage_group_id,
+            run_id=run_id,
+        )
         asset = self.media.owned_asset(user_id, asset_id)
         requested_hash = focus_hash(focus_instruction)
-        record_group_id = run_id or usage_group_id
-        existing = self._existing(user_id, asset_id, record_group_id, requested_hash)
-        if existing and existing.status == "completed" and existing.observation_json:
-            return VisionObservation.model_validate(existing.observation_json)
-        completed = list(self.session.scalars(select(VisionObservationRecord).where(VisionObservationRecord.user_id == user_id, VisionObservationRecord.media_asset_id == asset_id, VisionObservationRecord.status == "completed").order_by(VisionObservationRecord.sequence_no)))
-        assert_call_allowed(completed_hashes=[item.focus_instruction_hash or OVERVIEW_HASH for item in completed], requested_hash=requested_hash, max_calls=self.settings.vision_max_calls_per_image)
-        if requested_hash != OVERVIEW_HASH and not any((item.focus_instruction_hash or OVERVIEW_HASH) == OVERVIEW_HASH for item in completed):
-            raise VisionUnavailableError("请先完成图片整体观察，再进行定向观察")
-        record = existing or VisionObservationRecord(
-            media_asset_id=asset_id, user_id=user_id,
-            run_id=record_group_id if surface == "vision_agent" else None,
-            assistant_message_id=usage_group_id if surface == "vision_rag" else None,
-            kind="overview" if requested_hash == OVERVIEW_HASH else "focused",
+        kind = "overview" if requested_hash == OVERVIEW_HASH else "focused"
+        claim = self.repository.get_or_create(
+            user_id=user_id,
+            media_asset_id=asset_id,
+            observation_scope_id=observation_scope_id,
+            kind=kind,
             focus_instruction_hash=requested_hash,
             model_name=self.settings.vision_model,
-            status="pending", sequence_no=len(completed) + 1,
+            run_id=run_id if surface == "vision_agent" else None,
+            assistant_message_id=(
+                observation_scope_id if surface == "vision_rag" else None
+            ),
         )
-        if existing is None:
-            self.session.add(record)
-            self.session.commit()
+        record = claim.record
+        if not claim.created:
+            reused = self._reuse_terminal(record)
+            if reused is not None:
+                return reused
+
+        records = self.repository.list_for_asset(user_id, asset_id)
+        attempted = [
+            item.focus_instruction_hash
+            for item in records
+            if item.id != record.id and item.provider_call_count > 0
+        ]
+        if record.provider_call_count == 0:
+            try:
+                assert_call_allowed(
+                    attempted_hashes=attempted,
+                    requested_hash=requested_hash,
+                    max_calls=self.settings.vision_max_calls_per_image,
+                )
+            except VisionPolicyError as exc:
+                self._mark_failed(record.id, exc.code)
+                raise
+            if requested_hash != OVERVIEW_HASH and not any(
+                item.observation_scope_id == observation_scope_id
+                and item.focus_instruction_hash == OVERVIEW_HASH
+                and item.status == "completed"
+                for item in records
+            ):
+                self._mark_failed(record.id, "OVERVIEW_REQUIRED")
+                raise VisionUnavailableError("请先完成图片整体观察，再进行定向观察")
+
+        owns_provider_call = self.repository.reserve_provider_call(
+            record.id,
+            media_asset_id=asset_id,
+            max_calls=self.settings.vision_max_calls_per_image,
+        )
+        if not owns_provider_call:
+            current = self.repository.refresh(record.id)
+            if current is not None and current.provider_call_count > 0:
+                return self._wait_for_result(current.id)
+            self._mark_failed(record.id, "VISION_CALL_LIMIT")
+            raise VisionPolicyError(
+                "该图片已达到最多 3 次观察上限，请上传更清晰的图片"
+            )
+
+        record = self.repository.refresh(record.id) or record
         reservation = None
-        quota_key = f"vision:{user_id}:{asset_id}:{usage_group_id}:{requested_hash}"
+        quota_finalized = False
+        provider_usage = None
+        quota_key = (
+            f"vision:{user_id}:{asset_id}:{observation_scope_id}:"
+            f"{kind}:{requested_hash}"
+        )
         try:
             reservation = self.quota_gate.reserve(
                 user_id=user_id, surface=surface, idempotency_key=quota_key,
@@ -83,12 +136,10 @@ class VisionChatService:
                 image_bytes=path.read_bytes(), mime_type=asset.mime_type,
                 user_question=user_question, focus_instruction=focus_instruction,
             )
-            observation = result.observation
+            provider_usage = result.usage
+            observation = self.quality_gate.apply(result.observation)
             if not observation.summary.strip():
                 raise VisionUnavailableError("图片识别未返回有效结果")
-            normalized = json.dumps(observation.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
-            if any(json.dumps(item.observation_json, ensure_ascii=False, sort_keys=True) == normalized for item in completed if item.observation_json):
-                raise VisionUnavailableError("定向观察未获得新增信息，已停止继续调用")
             self.usage_recorder.record(
                 call_id=f"vision:{record.id}", request_id=None, user_id=user_id,
                 surface=surface, operation=record.kind, model_name=result.model_name,
@@ -97,35 +148,97 @@ class VisionChatService:
                 output_price_per_million_tokens_cny=self.settings.vision_output_price_per_million_tokens_cny,
                 usage_group_id=usage_group_id,
             )
+            if reservation is not None:
+                self.quota_gate.settle(reservation.id, result.usage)
+                quota_finalized = True
+            previous = [
+                item
+                for item in self.repository.list_for_asset(user_id, asset_id)
+                if item.id != record.id
+                and item.observation_scope_id == observation_scope_id
+                and item.status == "completed"
+            ]
+            normalized = self._observation_fingerprint(observation)
+            if any(
+                self._stored_fingerprint(item.observation_json) == normalized
+                for item in previous
+                if item.observation_json
+            ):
+                raise VisionUnavailableError("定向观察未获得新增信息，已停止继续调用")
+            record = self.repository.refresh(record.id) or record
             record.model_name = result.model_name
             record.status = "completed"
             record.observation_json = observation.model_dump(mode="json")
+            record.route_kind = observation.quality_summary.route_kind
+            record.quality_status = observation.quality_summary.quality_status
+            record.quality_codes = list(observation.quality_summary.quality_codes)
             record.input_tokens = result.usage.input_tokens
             record.output_tokens = result.usage.output_tokens
             record.completed_at = datetime.now(timezone.utc)
             self.session.commit()
-            if reservation is not None:
-                self.quota_gate.settle(reservation.id, result.usage)
             return observation
         except Exception as exc:
             self.session.rollback()
-            failed = self.session.get(VisionObservationRecord, record.id)
-            if failed is not None and failed.status != "completed":
-                failed.status = "failed"
-                failed.error_code = getattr(exc, "code", type(exc).__name__)[:100]
-                failed.completed_at = datetime.now(timezone.utc)
-                self.session.commit()
-            if reservation is not None:
-                self.quota_gate.release(reservation.id)
+            self._mark_failed(
+                record.id,
+                getattr(exc, "code", type(exc).__name__)[:100],
+            )
+            if reservation is not None and not quota_finalized:
+                if provider_usage is None:
+                    self.quota_gate.release(reservation.id)
+                else:
+                    self.quota_gate.settle(reservation.id, provider_usage)
             if isinstance(exc, VisionUnavailableError):
                 raise
             raise
 
-    def _existing(self, user_id: str, asset_id: str, record_group_id: str, requested_hash: str) -> VisionObservationRecord | None:
-        statement = select(VisionObservationRecord).where(
-            VisionObservationRecord.user_id == user_id,
-            VisionObservationRecord.media_asset_id == asset_id,
-            VisionObservationRecord.focus_instruction_hash == requested_hash,
-        )
-        records = list(self.session.scalars(statement))
-        return next((item for item in records if item.run_id == record_group_id or item.assistant_message_id == record_group_id), None)
+    @staticmethod
+    def _scope_id(*, surface: str, usage_group_id: str, run_id: str | None) -> str:
+        if surface == "vision_rag":
+            return usage_group_id
+        if not run_id:
+            raise ValueError("vision_agent requires run_id as observation scope")
+        return run_id
+
+    def _reuse_terminal(
+        self, record: VisionObservationRecord
+    ) -> VisionObservation | None:
+        if record.status == "completed" and record.observation_json:
+            return VisionObservation.model_validate(record.observation_json)
+        if record.status in {"failed", "stopped"}:
+            raise VisionUnavailableError("图片观察已结束，请勿重复提交相同请求")
+        return None
+
+    def _wait_for_result(self, record_id: str) -> VisionObservation:
+        deadline = monotonic() + self.settings.vision_timeout_seconds + 5
+        while monotonic() < deadline:
+            record = self.repository.refresh(record_id)
+            if record is None:
+                raise VisionUnavailableError("图片观察记录不可用")
+            reused = self._reuse_terminal(record)
+            if reused is not None:
+                return reused
+            sleep(0.02)
+        raise VisionUnavailableError("相同图片观察仍在处理中，请稍后查看结果")
+
+    def _mark_failed(self, record_id: str, error_code: str) -> None:
+        self.session.rollback()
+        failed = self.session.get(VisionObservationRecord, record_id)
+        if failed is None or failed.status == "completed":
+            return
+        failed.status = "failed"
+        failed.quality_status = "failed"
+        failed.error_code = error_code[:100]
+        failed.completed_at = datetime.now(timezone.utc)
+        self.session.commit()
+
+    @staticmethod
+    def _observation_fingerprint(observation: VisionObservation) -> str:
+        payload = observation.model_dump(mode="json", exclude={"quality_summary"})
+        return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+    @classmethod
+    def _stored_fingerprint(cls, payload: dict | None) -> str:
+        if not payload:
+            return ""
+        return cls._observation_fingerprint(VisionObservation.model_validate(payload))

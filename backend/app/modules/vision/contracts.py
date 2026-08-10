@@ -1,6 +1,6 @@
 """Vendor-neutral contracts for private chat image understanding."""
 
-from typing import Protocol
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -15,6 +15,12 @@ class VisionMeasurement(BaseModel):
     flag: str | None = Field(default=None, max_length=30)
 
 
+class VisionQualitySummary(BaseModel):
+    route_kind: Literal["general", "document", "report"]
+    quality_status: Literal["pass", "review", "retry"]
+    quality_codes: list[str] = Field(default_factory=list, max_length=20)
+
+
 class VisionObservation(BaseModel):
     image_type: str = Field(default="unknown", max_length=80)
     summary: str = Field(min_length=1, max_length=1000)
@@ -24,6 +30,7 @@ class VisionObservation(BaseModel):
     spatial_notes: list[str] = Field(default_factory=list, max_length=50)
     uncertain_content: list[str] = Field(default_factory=list, max_length=30)
     safety_flags: list[str] = Field(default_factory=list, max_length=20)
+    quality_summary: VisionQualitySummary | None = None
 
     @field_validator("visible_text", "objects", "spatial_notes", "uncertain_content", "safety_flags")
     @classmethod

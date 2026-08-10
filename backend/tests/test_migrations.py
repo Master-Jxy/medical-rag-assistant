@@ -4,10 +4,12 @@ from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 
+import pytest
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import func, inspect, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.session import build_engine
@@ -127,6 +129,19 @@ def test_empty_database_upgrades_to_owned_conversation_schema(tmp_path) -> None:
     } <= {
         column["name"] for column in inspector.get_columns("agent_messages")
     }
+    vision_columns = {
+        column["name"]: column
+        for column in inspector.get_columns("vision_observations")
+    }
+    assert {
+        "observation_scope_id",
+        "route_kind",
+        "quality_status",
+        "quality_codes",
+        "provider_call_count",
+    } <= set(vision_columns)
+    assert vision_columns["observation_scope_id"]["nullable"] is False
+    assert vision_columns["focus_instruction_hash"]["nullable"] is False
 
     columns = {column["name"]: column for column in inspector.get_columns("conversations")}
     assert columns["user_id"]["nullable"] is False
@@ -1143,6 +1158,103 @@ def test_agent_thread_migration_preserves_legacy_runs_and_downgrades(tmp_path) -
             text("SELECT COUNT(*) FROM agent_runs WHERE id = 'legacy-run'")
         ) == 1
 
+
+
+def test_stage26_vision_scope_migrates_and_roundtrips(tmp_path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'stage26-vision.db'}"
+    config = build_alembic_config(database_url)
+    command.upgrade(config, "0030_multimodal_chat_assets")
+    engine = build_engine(database_url)
+    now = datetime.now(timezone.utc)
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO vision_observations "
+                "(id, media_asset_id, user_id, run_id, assistant_message_id, "
+                "kind, focus_instruction_hash, model_name, status, sequence_no, "
+                "observation_json, input_tokens, output_tokens, created_at, "
+                "completed_at, error_code) VALUES "
+                "('legacy-observation', 'legacy-asset', 'legacy-user', NULL, "
+                "'assistant-scope', 'overview', NULL, 'legacy-model', "
+                "'completed', 1, '{}', 10, 2, :now, :now, NULL)"
+            ),
+            {"now": now},
+        )
+
+    command.upgrade(config, "0031_stage26_vision_scope")
+    inspector = inspect(engine)
+    columns = {
+        column["name"]: column
+        for column in inspector.get_columns("vision_observations")
+    }
+    assert columns["observation_scope_id"]["nullable"] is False
+    assert columns["focus_instruction_hash"]["nullable"] is False
+    assert "uq_vision_observations_scope" in {
+        constraint["name"]
+        for constraint in inspector.get_unique_constraints("vision_observations")
+    }
+    with engine.connect() as connection:
+        migrated = connection.execute(
+            text(
+                "SELECT observation_scope_id, focus_instruction_hash, route_kind, "
+                "quality_status, provider_call_count FROM vision_observations "
+                "WHERE id = 'legacy-observation'"
+            )
+        ).one()
+        assert tuple(migrated) == (
+            "assistant-scope",
+            "overview",
+            "legacy",
+            "legacy",
+            1,
+        )
+
+    with pytest.raises(IntegrityError):
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO vision_observations "
+                    "(id, media_asset_id, user_id, observation_scope_id, run_id, "
+                    "assistant_message_id, kind, focus_instruction_hash, model_name, "
+                    "status, sequence_no, route_kind, quality_status, quality_codes, "
+                    "provider_call_count, created_at) VALUES "
+                    "('duplicate-observation', 'legacy-asset', 'legacy-user', "
+                    "'assistant-scope', NULL, 'assistant-scope', 'overview', "
+                    "'overview', 'legacy-model', 'pending', 2, 'pending', "
+                    "'pending', '[]', 0, :now)"
+                ),
+                {"now": now},
+            )
+
+    command.downgrade(config, "0030_multimodal_chat_assets")
+    inspector = inspect(engine)
+    assert {
+        "observation_scope_id",
+        "route_kind",
+        "quality_status",
+        "quality_codes",
+        "provider_call_count",
+    }.isdisjoint(
+        {column["name"] for column in inspector.get_columns("vision_observations")}
+    )
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text(
+                "SELECT COUNT(*) FROM vision_observations "
+                "WHERE id = 'legacy-observation'"
+            )
+        ) == 1
+
+    command.upgrade(config, "0031_stage26_vision_scope")
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text(
+                "SELECT observation_scope_id FROM vision_observations "
+                "WHERE id = 'legacy-observation'"
+            )
+        ) == "assistant-scope"
+    engine.dispose()
 
 
 def test_legacy_json_import_creates_idempotent_system_documents(tmp_path) -> None:

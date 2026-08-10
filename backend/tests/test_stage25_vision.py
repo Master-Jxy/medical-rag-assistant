@@ -1,6 +1,9 @@
 """Stage 25.2 structured vision, policy, usage and quota behavior."""
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event, Lock
+from time import sleep
 from types import SimpleNamespace
 
 import pytest
@@ -19,6 +22,7 @@ from app.modules.usage.models import ModelUsageRecord, QuotaPeriod, QuotaReserva
 from app.modules.usage.contracts import ModelUsage
 from app.modules.vision.contracts import VisionObservation, VisionResult
 from app.modules.vision.models import VisionObservationRecord
+from app.modules.vision.quality import VisionQualityGate
 from app.modules.vision.service import VisionChatService, build_vision_adapter
 from app.infrastructure.dashscope_vision import DashScopeVisionChatAdapter
 from tests.auth_helpers import create_test_user
@@ -38,6 +42,30 @@ class SequenceVisionAdapter:
         return VisionResult(
             observation=VisionObservation(image_type="medical_report", summary=self.summaries[self.calls - 1], visible_text=[f"value-{self.calls}"]),
             usage=ModelUsage.actual(100, 20), model_name="fake-vision",
+        )
+
+
+class BlockingVisionAdapter:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.started = Event()
+        self.release = Event()
+        self.lock = Lock()
+
+    def observe(self, **kwargs) -> VisionResult:
+        del kwargs
+        with self.lock:
+            self.calls += 1
+        self.started.set()
+        assert self.release.wait(timeout=5)
+        return VisionResult(
+            observation=VisionObservation(
+                image_type="document",
+                summary="并发请求共享同一结构化观察",
+                visible_text=["固定无隐私文本"],
+            ),
+            usage=ModelUsage.actual(30, 10),
+            model_name="blocking-fake",
         )
 
 
@@ -138,6 +166,16 @@ def test_overview_is_idempotent_and_settles_usage(tmp_path) -> None:
             assert usage.surface == "vision_rag" and usage.total_tokens == 120
             assert reservation.status == "settled" and reservation.charged_tokens == 120
             assert period.used_tokens == 120 and period.reserved_tokens == 0
+            assert first.quality_summary is not None
+            assert first.quality_summary.route_kind == "report"
+            record = session.scalar(select(VisionObservationRecord))
+            assert record.observation_scope_id == "answer-1"
+            assert record.assistant_message_id == "answer-1"
+            assert record.run_id is None
+            assert record.provider_call_count == 1
+            assert record.route_kind == "report"
+            assert record.quality_status == "pass"
+            assert record.quality_codes == []
     finally:
         engine.dispose()
 
@@ -148,14 +186,19 @@ def test_focused_observation_is_bounded_and_duplicate_target_rejected(tmp_path) 
     try:
         with factory() as session:
             service = VisionChatService(session, settings, adapter=adapter)
-            service.observe_overview(user_id=user_id, asset_id=asset_id, user_question="问题", surface="vision_agent", usage_group_id="run-1")
-            service.inspect(user_id=user_id, asset_id=asset_id, user_question="问题", focus_instruction="读取右上角", surface="vision_agent", usage_group_id="run-1")
+            service.observe_overview(user_id=user_id, asset_id=asset_id, user_question="问题", surface="vision_agent", usage_group_id="answer-1", run_id="run-1")
+            service.inspect(user_id=user_id, asset_id=asset_id, user_question="问题", focus_instruction="读取右上角", surface="vision_agent", usage_group_id="answer-1", run_id="run-1")
             with pytest.raises(VisionPolicyError):
-                service.inspect(user_id=user_id, asset_id=asset_id, user_question="问题", focus_instruction=" 读取右上角 ", surface="vision_agent", usage_group_id="run-2")
-            service.inspect(user_id=user_id, asset_id=asset_id, user_question="问题", focus_instruction="读取下方指标", surface="vision_agent", usage_group_id="run-1")
+                service.inspect(user_id=user_id, asset_id=asset_id, user_question="问题", focus_instruction=" 读取右上角 ", surface="vision_agent", usage_group_id="answer-2", run_id="run-2")
+            service.inspect(user_id=user_id, asset_id=asset_id, user_question="问题", focus_instruction="读取下方指标", surface="vision_agent", usage_group_id="answer-1", run_id="run-1")
             with pytest.raises(VisionPolicyError):
-                service.inspect(user_id=user_id, asset_id=asset_id, user_question="问题", focus_instruction="再读取左侧", surface="vision_agent", usage_group_id="run-1")
+                service.inspect(user_id=user_id, asset_id=asset_id, user_question="问题", focus_instruction="再读取左侧", surface="vision_agent", usage_group_id="answer-1", run_id="run-1")
             assert adapter.calls == 3
+            records = list(session.scalars(select(VisionObservationRecord)))
+            assert sum(item.provider_call_count for item in records) == 3
+            assert {
+                item.observation_scope_id for item in records if item.provider_call_count
+            } == {"run-1"}
     finally:
         engine.dispose()
 
@@ -171,7 +214,84 @@ def test_provider_failure_releases_quota_and_records_no_body(tmp_path) -> None:
             observation = session.scalar(select(VisionObservationRecord))
             reservation = session.scalar(select(QuotaReservation))
             assert observation.status == "failed" and observation.observation_json is None
+            assert observation.provider_call_count == 1
+            assert observation.quality_status == "failed"
             assert reservation.status == "released"
             assert session.scalar(select(ModelUsageRecord)) is None
+            with pytest.raises(VisionUnavailableError):
+                service.observe_overview(user_id=user_id, asset_id=asset_id, user_question="再次包含敏感正文", surface="vision_rag", usage_group_id="answer-fail")
+            assert adapter.calls == 1
+            assert "敏感问题正文" not in repr(observation.__dict__)
     finally:
+        engine.dispose()
+
+
+def test_quality_gate_returns_public_deterministic_summary() -> None:
+    gate = VisionQualityGate()
+    complete = gate.apply(
+        VisionObservation(
+            image_type="medical_report",
+            summary="一份结构清晰的无隐私检查报告",
+            visible_text=["指标 A 12.3"],
+            measurements=[
+                {"name": "指标 A", "value": "12.3", "unit": "x", "flag": "high"}
+            ],
+        )
+    )
+    assert complete.quality_summary.model_dump() == {
+        "route_kind": "report",
+        "quality_status": "pass",
+        "quality_codes": [],
+    }
+
+    retry = gate.apply(
+        VisionObservation(
+            image_type="document",
+            summary="截图中的文字区域无法可靠读取",
+            uncertain_content=["图片模糊且右侧被裁切"],
+        )
+    )
+    assert retry.quality_summary.quality_status == "retry"
+    assert retry.quality_summary.quality_codes == [
+        "IMAGE_BLURRY",
+        "IMAGE_CROPPED",
+        "UNCERTAIN_CONTENT",
+        "LOW_STRUCTURED_COVERAGE",
+    ]
+
+
+def test_concurrent_duplicate_scope_calls_provider_and_quota_once(tmp_path) -> None:
+    engine, factory, user_id, asset_id, settings = setup(tmp_path)
+    adapter = BlockingVisionAdapter()
+
+    def observe_once():
+        with factory() as session:
+            return VisionChatService(session, settings, adapter=adapter).observe_overview(
+                user_id=user_id,
+                asset_id=asset_id,
+                user_question="固定并发测试问题",
+                surface="vision_rag",
+                usage_group_id="concurrent-answer",
+            )
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first_future = pool.submit(observe_once)
+            assert adapter.started.wait(timeout=5)
+            second_future = pool.submit(observe_once)
+            sleep(0.1)
+            assert adapter.calls == 1
+            adapter.release.set()
+            first = first_future.result(timeout=5)
+            second = second_future.result(timeout=5)
+        assert first == second
+        with factory() as session:
+            assert len(list(session.scalars(select(VisionObservationRecord)))) == 1
+            assert len(list(session.scalars(select(ModelUsageRecord)))) == 1
+            assert len(list(session.scalars(select(QuotaReservation)))) == 1
+            period = session.scalar(select(QuotaPeriod))
+            assert period.used_tokens == 40
+            assert period.reserved_tokens == 0
+    finally:
+        adapter.release.set()
         engine.dispose()
