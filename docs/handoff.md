@@ -157,7 +157,7 @@ overview+OCR+focused final-budget race / Stage25 image regressions: PASS
 combined focused and migration matrix: 37 passed
 Alembic: 0031 original constraint PASS
 Alembic: 0031 -> 0032 -> 0031 -> 0032 with downgrade mapping PASS
-backend full suite: NOT RUN（由总控从repo root执行）
+backend full suite from repo root: 660 passed, 1 skipped
 
 Protected auth SHA-256
 9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0
@@ -176,10 +176,10 @@ Protected auth SHA-256
 ## 4. 新任务阅读范围
 
 新窗口先完整阅读`AGENTS.md`、本文和`docs/stage26-enterprise-hardening-design.md`。
-26.2b完整回归收口只定向读取：
+26.3开发只定向读取：
 
-- Stage26.2b新增OCR适配器、Router、持久化测试和固定评估资产
-- 完整后端首次失败附近的直接依赖；成功输出不重复全文加载
+- `processing_jobs`模型、repository、service、API和既有资料发布补偿服务
+- Compose服务、迁移链和后台任务页面的直接依赖
 - `auth/service.py`继续只核对SHA-256，不读取正文
 
 普通观察期不要全文读取历史技术设计、旧发布审计或大型评估JSON。
@@ -192,5 +192,5 @@ Protected auth SHA-256
 
 ## 6. 唯一下一任务
 
-**总控从repo root完成26.2b修复提交后的完整后端回归；通过后再以迁移`0033`进入26.3，
-当前不得开始Worker或任务队列开发。**
+**按设计完成26.3：以迁移`0033_stage26_job_leases`把`processing_jobs`升级为MySQL租约
+队列，增加独立Worker、崩溃租约回收、有限重试/取消和至少一种复用现有应用服务的长任务。**
