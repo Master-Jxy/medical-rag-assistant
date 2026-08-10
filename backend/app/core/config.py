@@ -107,6 +107,11 @@ class Settings(BaseSettings):
     vision_reserve_output_tokens: int = Field(default=1000, ge=1, le=10000)
     vision_input_price_per_million_tokens_cny: float | None = Field(default=None, ge=0, le=1000)
     vision_output_price_per_million_tokens_cny: float | None = Field(default=None, ge=0, le=1000)
+    vision_ocr_mode_enabled: bool = False
+    vision_ocr_provider: Literal["disabled", "fake", "dashscope"] = "disabled"
+    vision_ocr_max_output_chars: int = Field(default=8000, ge=1, le=20000)
+    vision_ocr_reserve_input_tokens: int = Field(default=2000, ge=1, le=200000)
+    vision_ocr_reserve_output_tokens: int = Field(default=1500, ge=1, le=10000)
     document_enrichment_enabled: bool = False
     document_enrichment_approved: bool = False
     document_enrichment_max_pages: int = Field(default=5, ge=1, le=20)

@@ -8,12 +8,27 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.exceptions import VisionPolicyError, VisionUnavailableError
+from app.infrastructure.dashscope_chat_ocr import (
+    DashScopeVisionTextExtractionAdapter,
+)
 from app.infrastructure.dashscope_vision import DashScopeVisionChatAdapter
+from app.infrastructure.fake_chat_ocr import (
+    DisabledVisionTextExtractionAdapter,
+    FakeVisionTextExtractionAdapter,
+)
 from app.infrastructure.fake_vision import DisabledVisionChatAdapter, FakeVisionChatAdapter
 from app.modules.media.service import MediaAssetService
 from app.modules.usage.quota_service import build_quota_gate
 from app.modules.usage.service import ModelUsageRecorder
-from app.modules.vision.contracts import VisionChatPort, VisionObservation
+from app.modules.vision.contracts import (
+    VisionChatPort,
+    VisionObservation,
+    VisionQualitySummary,
+    VisionTextExtraction,
+    VisionTextExtractionPort,
+    VisionTextExtractionRequest,
+)
+from app.modules.vision.ocr_prompts import OCR_PROMPT_VERSION
 from app.modules.vision.models import VisionObservationRecord
 from app.modules.vision.policy import OVERVIEW_HASH, assert_call_allowed, focus_hash
 from app.modules.vision.quality import VisionQualityGate
@@ -28,11 +43,28 @@ def build_vision_adapter(settings: Settings) -> VisionChatPort:
     return DashScopeVisionChatAdapter(settings)
 
 
+def build_vision_text_extraction_adapter(
+    settings: Settings,
+) -> VisionTextExtractionPort:
+    if (
+        not settings.vision_ocr_mode_enabled
+        or settings.vision_ocr_provider == "disabled"
+    ):
+        return DisabledVisionTextExtractionAdapter()
+    if settings.vision_ocr_provider == "fake":
+        return FakeVisionTextExtractionAdapter()
+    return DashScopeVisionTextExtractionAdapter(settings)
+
+
+OCR_MODE_HASH = f"ocr:{OCR_PROMPT_VERSION}"
+
+
 class VisionChatService:
-    def __init__(self, session: Session, settings: Settings, *, adapter: VisionChatPort | None = None, quota_gate=None, usage_recorder: ModelUsageRecorder | None = None, quality_gate: VisionQualityGate | None = None) -> None:
+    def __init__(self, session: Session, settings: Settings, *, adapter: VisionChatPort | None = None, ocr_adapter: VisionTextExtractionPort | None = None, quota_gate=None, usage_recorder: ModelUsageRecorder | None = None, quality_gate: VisionQualityGate | None = None) -> None:
         self.session = session
         self.settings = settings
         self.adapter = adapter or build_vision_adapter(settings)
+        self.ocr_adapter = ocr_adapter or build_vision_text_extraction_adapter(settings)
         self.quota_gate = quota_gate or build_quota_gate(session, settings)
         self.usage_recorder = usage_recorder or ModelUsageRecorder(session, settings)
         self.quality_gate = quality_gate or VisionQualityGate()
@@ -44,6 +76,211 @@ class VisionChatService:
 
     def inspect(self, *, user_id: str, asset_id: str, user_question: str, focus_instruction: str, surface: str, usage_group_id: str, run_id: str | None = None) -> VisionObservation:
         return self._observe(user_id=user_id, asset_id=asset_id, user_question=user_question, focus_instruction=focus_instruction, surface=surface, usage_group_id=usage_group_id, run_id=run_id)
+
+    def extract_text(
+        self,
+        *,
+        user_id: str,
+        asset_id: str,
+        surface: str,
+        usage_group_id: str,
+        run_id: str | None = None,
+    ) -> VisionTextExtraction:
+        if surface not in {"vision_rag", "vision_agent"}:
+            raise ValueError("invalid vision surface")
+        observation_scope_id = self._scope_id(
+            surface=surface,
+            usage_group_id=usage_group_id,
+            run_id=run_id,
+        )
+        asset = self.media.owned_asset(user_id, asset_id)
+        claim = self.repository.get_or_create(
+            user_id=user_id,
+            media_asset_id=asset_id,
+            observation_scope_id=observation_scope_id,
+            kind="report_extract",
+            focus_instruction_hash=OCR_MODE_HASH,
+            model_name=self.settings.vision_model,
+            run_id=run_id if surface == "vision_agent" else None,
+            assistant_message_id=(
+                observation_scope_id if surface == "vision_rag" else None
+            ),
+        )
+        record = claim.record
+        if not claim.created:
+            reused = self._reuse_terminal_extraction(record)
+            if reused is not None:
+                return reused
+
+        records = self.repository.list_for_asset(user_id, asset_id)
+        attempted = [
+            item.focus_instruction_hash
+            for item in records
+            if item.id != record.id and item.provider_call_count > 0
+        ]
+        if record.provider_call_count == 0:
+            try:
+                assert_call_allowed(
+                    attempted_hashes=attempted,
+                    requested_hash=OCR_MODE_HASH,
+                    max_calls=self.settings.vision_max_calls_per_image,
+                )
+            except VisionPolicyError as exc:
+                self._mark_failed(record.id, exc.code)
+                raise
+            if not any(
+                item.observation_scope_id == observation_scope_id
+                and item.focus_instruction_hash == OVERVIEW_HASH
+                and item.status == "completed"
+                for item in records
+            ):
+                self._mark_failed(record.id, "OVERVIEW_REQUIRED")
+                raise VisionUnavailableError("请先完成图片整体观察，再进行文字提取")
+
+        owns_provider_call = self.repository.reserve_provider_call(
+            record.id,
+            media_asset_id=asset_id,
+            max_calls=self.settings.vision_max_calls_per_image,
+        )
+        if not owns_provider_call:
+            current = self.repository.refresh(record.id)
+            if current is not None and current.provider_call_count > 0:
+                return self._wait_for_extraction(current.id)
+            self._mark_failed(record.id, "VISION_CALL_LIMIT")
+            raise VisionPolicyError(
+                "该图片已达到最多 3 次观察上限，请上传更清晰的图片"
+            )
+
+        reservation = None
+        quota_finalized = False
+        provider_usage = None
+        quota_key = (
+            f"vision:{user_id}:{asset_id}:{observation_scope_id}:"
+            f"report_extract:{OCR_MODE_HASH}"
+        )
+        try:
+            reservation = self.quota_gate.reserve(
+                user_id=user_id,
+                surface=surface,
+                idempotency_key=quota_key,
+                requested_tokens=(
+                    self.settings.vision_ocr_reserve_input_tokens
+                    + self.settings.vision_ocr_reserve_output_tokens
+                ),
+                estimated_input_tokens=self.settings.vision_ocr_reserve_input_tokens,
+                estimated_output_tokens=self.settings.vision_ocr_reserve_output_tokens,
+                input_price_per_million_tokens_cny=self.settings.vision_input_price_per_million_tokens_cny,
+                output_price_per_million_tokens_cny=self.settings.vision_output_price_per_million_tokens_cny,
+                usage_group_id=usage_group_id,
+            )
+            path, _mime, _name = self.media.preview(user_id, asset_id)
+            result = self.ocr_adapter.extract(
+                VisionTextExtractionRequest(
+                    image_bytes=path.read_bytes(),
+                    mime_type=asset.mime_type,
+                    max_output_chars=self.settings.vision_ocr_max_output_chars,
+                )
+            )
+            provider_usage = result.usage
+            extraction = result.extraction
+            self.usage_recorder.record(
+                call_id=f"vision:{record.id}",
+                request_id=None,
+                user_id=user_id,
+                surface=surface,
+                operation="report_extract",
+                model_name=result.model_name,
+                usage=result.usage,
+                input_price_per_million_tokens_cny=self.settings.vision_input_price_per_million_tokens_cny,
+                output_price_per_million_tokens_cny=self.settings.vision_output_price_per_million_tokens_cny,
+                usage_group_id=usage_group_id,
+            )
+            if reservation is not None:
+                self.quota_gate.settle(reservation.id, result.usage)
+                quota_finalized = True
+            has_content = bool(
+                extraction.visible_text
+                or extraction.measurements
+                or extraction.table_rows
+            )
+            quality_codes = [] if has_content else ["OCR_NO_TEXT"]
+            stored = VisionObservation(
+                image_type="document",
+                summary="OCR-mode 文字提取结果",
+                visible_text=extraction.visible_text,
+                measurements=extraction.measurements,
+                table_rows=extraction.table_rows,
+                uncertain_content=extraction.uncertain_content,
+                quality_summary=VisionQualitySummary(
+                    route_kind="ocr_mode",
+                    quality_status=(
+                        "review"
+                        if extraction.uncertain_content or not has_content
+                        else "pass"
+                    ),
+                    quality_codes=quality_codes,
+                ),
+            )
+            record = self.repository.refresh(record.id) or record
+            record.model_name = result.model_name
+            record.status = "completed"
+            record.observation_json = stored.model_dump(mode="json")
+            record.route_kind = "ocr_mode"
+            record.quality_status = stored.quality_summary.quality_status
+            record.quality_codes = quality_codes
+            record.input_tokens = result.usage.input_tokens
+            record.output_tokens = result.usage.output_tokens
+            record.completed_at = datetime.now(timezone.utc)
+            self.session.commit()
+            return extraction
+        except Exception as exc:
+            self.session.rollback()
+            self._mark_failed(
+                record.id,
+                getattr(exc, "code", type(exc).__name__)[:100],
+            )
+            if reservation is not None and not quota_finalized:
+                if provider_usage is None:
+                    self.quota_gate.release(reservation.id)
+                else:
+                    self.quota_gate.settle(reservation.id, provider_usage)
+            if isinstance(exc, VisionUnavailableError):
+                raise
+            raise
+
+    def finalize_overview_route(
+        self,
+        *,
+        user_id: str,
+        asset_id: str,
+        surface: str,
+        usage_group_id: str,
+        observation: VisionObservation,
+        run_id: str | None = None,
+    ) -> VisionObservation:
+        observation_scope_id = self._scope_id(
+            surface=surface,
+            usage_group_id=usage_group_id,
+            run_id=run_id,
+        )
+        record = self.repository.get(
+            user_id=user_id,
+            media_asset_id=asset_id,
+            observation_scope_id=observation_scope_id,
+            kind="overview",
+            focus_instruction_hash=OVERVIEW_HASH,
+        )
+        if record is None or record.status != "completed":
+            raise VisionUnavailableError("图片整体观察记录不可用")
+        quality = observation.quality_summary
+        if quality is None:
+            raise ValueError("final vision route requires quality summary")
+        record.observation_json = observation.model_dump(mode="json")
+        record.route_kind = quality.route_kind
+        record.quality_status = quality.quality_status
+        record.quality_codes = list(quality.quality_codes)
+        self.session.commit()
+        return observation
 
     def _observe(self, *, user_id: str, asset_id: str, user_question: str, focus_instruction: str | None, surface: str, usage_group_id: str, run_id: str | None) -> VisionObservation:
         if surface not in {"vision_rag", "vision_agent"}:
@@ -220,6 +457,28 @@ class VisionChatService:
                 return reused
             sleep(0.02)
         raise VisionUnavailableError("相同图片观察仍在处理中，请稍后查看结果")
+
+    def _reuse_terminal_extraction(
+        self, record: VisionObservationRecord
+    ) -> VisionTextExtraction | None:
+        reused = self._reuse_terminal(record)
+        if reused is None:
+            return None
+        return VisionTextExtraction(
+            visible_text=reused.visible_text,
+            measurements=reused.measurements,
+            table_rows=reused.table_rows,
+            uncertain_content=reused.uncertain_content,
+        )
+
+    def _wait_for_extraction(self, record_id: str) -> VisionTextExtraction:
+        observation = self._wait_for_result(record_id)
+        return VisionTextExtraction(
+            visible_text=observation.visible_text,
+            measurements=observation.measurements,
+            table_rows=observation.table_rows,
+            uncertain_content=observation.uncertain_content,
+        )
 
     def _mark_failed(self, record_id: str, error_code: str) -> None:
         self.session.rollback()

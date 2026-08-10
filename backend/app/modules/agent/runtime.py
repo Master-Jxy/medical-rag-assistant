@@ -22,6 +22,7 @@ from app.modules.agent.repository import AgentRepository
 from app.modules.agent.vision_tools import InspectImageTool, ObserveImageTool
 from app.modules.media.repository import MediaRepository
 from app.modules.vision.service import VisionChatService
+from app.modules.vision.router_service import VisionRouterService
 
 
 def create_agent_graph_factory(
@@ -51,7 +52,7 @@ def create_agent_graph_factory(
             run.trigger_message_id
         )
         if allowed_asset_ids:
-            vision = VisionChatService(session, settings)
+            vision = VisionRouterService(VisionChatService(session, settings), settings)
             usage_group_id = run.response_message_id or run.id
             registry.register(ObserveImageTool(
                 vision, allowed_asset_ids=allowed_asset_ids,

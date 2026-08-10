@@ -4,7 +4,7 @@ from pydantic import Field
 
 from app.core.exceptions import MediaNotFoundError
 from app.modules.agent.contracts import AgentToolArguments, AgentToolContext, AgentToolResult
-from app.modules.vision.service import VisionChatService
+from app.modules.vision.router_service import VisionRouterService
 
 
 class ObserveImageArguments(AgentToolArguments):
@@ -18,7 +18,7 @@ class InspectImageArguments(AgentToolArguments):
 
 
 class _VisionTool:
-    def __init__(self, vision: VisionChatService, *, allowed_asset_ids: list[str], run_id: str, usage_group_id: str) -> None:
+    def __init__(self, vision: VisionRouterService, *, allowed_asset_ids: list[str], run_id: str, usage_group_id: str) -> None:
         self.vision = vision
         self.allowed_asset_ids = frozenset(allowed_asset_ids)
         self.run_id = run_id
@@ -38,7 +38,7 @@ class ObserveImageTool(_VisionTool):
         observations = []
         for asset_id in arguments.media_asset_ids:
             self._assert_allowed(asset_id)
-            observation = self.vision.observe_overview(
+            observation = self.vision.route_overview(
                 user_id=context.user_id, asset_id=asset_id,
                 user_question=arguments.user_question or context.task_context,
                 surface="vision_agent", usage_group_id=self.usage_group_id,

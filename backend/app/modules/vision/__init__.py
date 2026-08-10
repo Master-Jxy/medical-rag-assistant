@@ -5,6 +5,10 @@ from app.modules.vision.contracts import (
     VisionObservation,
     VisionQualitySummary,
     VisionResult,
+    VisionTextExtraction,
+    VisionTextExtractionPort,
+    VisionTextExtractionRequest,
+    VisionTextExtractionResult,
 )
 
 __all__ = [
@@ -12,4 +16,8 @@ __all__ = [
     "VisionObservation",
     "VisionQualitySummary",
     "VisionResult",
+    "VisionTextExtraction",
+    "VisionTextExtractionPort",
+    "VisionTextExtractionRequest",
+    "VisionTextExtractionResult",
 ]

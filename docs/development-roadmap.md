@@ -820,7 +820,7 @@
 1. **26.0 `[已完成]`**：Agent草稿改为按`thread_id + submission_id`隔离的共享registry；`message_created`即接管不可变附件快照，历史消息不再与草稿重复。Composer回归三行网格正常文档流，历史图片增加异步代次保护；传入的本地URL只由timeline在替换/删除/清空时释放，Gallery只释放自己创建的预览URL。登录切换、登出和401会统一清空上一账号草稿与未绑定私有asset。多会话带图、失败恢复、旧预览竞态、90项前端回归、SSE、正式构建及1440/1280/1024/390浏览器验收通过；未调用真实模型、未推送或部署。
 2. **26.1 `[已完成]`**：保留`/api/v1/health`兼容，新增零依赖`/livez`和通过小型Port检查MySQL、Redis、Chroma目录、私有媒体目录的`/readyz`；失败只返回503、依赖名和稳定代码。Compose/Nginx已接入readiness；GitHub CI覆盖后端633项、前端90项、SSE、build、Alembic往返、diff、敏感扫描与依赖审计。统一预检只扫描Git跟踪文件并输出PASS/FAIL/SKIP，不读取`.env`或调用模型；npm已固定3个高危传递依赖到修复版本并达到0 vulnerability。
 3. **26.2a `[已完成]`**：新增`0031_stage26_vision_scope`，将RAG观察作用域固定为assistant message、Agent固定为run，并使用`media_asset_id + observation_scope_id + kind + focus_hash`非空唯一键关闭MySQL NULL幂等漏洞。观察记录增加脱敏质量摘要和单记录供应商调用计数；媒体资产行锁、原子claim、终态复用及失败不自动重试共同保证并发重放不重复调用或计费。确定性质量闸门已覆盖普通图片、文档/报告、模糊、裁切、方向异常、结构不足和测量上下文缺失。迁移往返、Stage25多模态、并发、额度和完整后端637项回归通过；未调用真实模型、未推送或部署。
-4. **26.2b `[待开发]`**：增加聊天专用OCR-mode Port/适配器、视觉路由、固定无隐私图片集与可执行评估。
+4. **26.2b `[开发完成，专项验收通过，待完整回归]`**：新增聊天专用`VisionTextExtractionPort`及Disabled/Fake/DashScope OCR-mode适配器；`VisionRouterService`按`overview_only/ocr_mode/reupload_required`确定性路由并合并文字、表格和测量值，RAG和Agent整体观察已接入，`inspect`继续共用每图3次调用预算。OCR记录复用既有观察claim、额度和usage幂等，默认关闭且自动重试为0。提交8张完全合成PNG、SHA-256 manifest、可重建脚本和无费用评估；Stage26.2b与Stage25视觉专项18项、`0030→0031→0030→0031`往返均通过，未执行真实模型。按当前检查点要求，完整后端回归留到提交后单独收口，26.3尚未开始。
 5. **26.3 `[待开发]`**：把processing_jobs升级为MySQL租约队列并增加独立Worker。
 6. **26.4 `[待开发]`**：建立可执行corpus_v2/eval_v2、覆盖缺口和候选晋级闭环。
 7. **26.5 `[待开发]`**：增加确定性只读Agent工具与完整工具回归集。

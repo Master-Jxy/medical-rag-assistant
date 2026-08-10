@@ -1,0 +1,382 @@
+{
+  "schema_version": "vision-ocr-v1",
+  "generated_by": "build_assets.py",
+  "automatic_retries": 0,
+  "assets": [
+    {
+      "filename": "01_ordinary_complete.png",
+      "case_id": "ordinary_complete",
+      "expected_route": "overview_only",
+      "expected_text_tokens": [
+        "SYNTHETIC NOTE",
+        "DEMO ONLY"
+      ],
+      "expected_measurements": [],
+      "expected_table_rows": [],
+      "overview": {
+        "image_type": "photo",
+        "summary": "A complete synthetic desk scene",
+        "visible_text": [
+          "SYNTHETIC NOTE",
+          "DEMO ONLY"
+        ],
+        "objects": [
+          "note",
+          "cup"
+        ],
+        "spatial_notes": [
+          "note left of cup"
+        ]
+      },
+      "extraction": {},
+      "fake_usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      },
+      "sha256": "001e367005b55e3f89be33dea10fb863f50d2c3c5b481c36c68708b8d00f0798",
+      "dimensions": [
+        640,
+        400
+      ],
+      "privacy": "synthetic"
+    },
+    {
+      "filename": "02_chinese_screenshot.png",
+      "case_id": "chinese_screenshot",
+      "expected_route": "ocr_mode",
+      "expected_text_tokens": [
+        "合成中文界面",
+        "体温",
+        "36.8 C",
+        "正常"
+      ],
+      "expected_measurements": [
+        {
+          "name": "体温",
+          "value": "36.8",
+          "unit": "C"
+        }
+      ],
+      "expected_table_rows": [],
+      "overview": {
+        "image_type": "document",
+        "summary": "A synthetic Chinese interface screenshot",
+        "visible_text": [
+          "合成中文界面"
+        ],
+        "uncertain_content": [
+          "remaining small text is unclear"
+        ]
+      },
+      "extraction": {
+        "visible_text": [
+          "合成中文界面",
+          "体温",
+          "36.8 C",
+          "正常"
+        ],
+        "measurements": [
+          {
+            "name": "体温",
+            "value": "36.8",
+            "unit": "C"
+          }
+        ]
+      },
+      "fake_usage": {
+        "input_tokens": 80,
+        "output_tokens": 24
+      },
+      "sha256": "739d30153dca2ebccc65a1e264dbc4d3a232b9b84a93a62139f3b2a958fb3fbe",
+      "dimensions": [
+        640,
+        400
+      ],
+      "privacy": "synthetic"
+    },
+    {
+      "filename": "03_mixed_text.png",
+      "case_id": "mixed_text",
+      "expected_route": "ocr_mode",
+      "expected_text_tokens": [
+        "说明",
+        "ENGLISH DEMO",
+        "TEMP 36.8 C",
+        "STATUS NORMAL"
+      ],
+      "expected_measurements": [
+        {
+          "name": "TEMP",
+          "value": "36.8",
+          "unit": "C"
+        }
+      ],
+      "expected_table_rows": [],
+      "overview": {
+        "image_type": "document",
+        "summary": "A mixed Chinese and English synthetic card",
+        "visible_text": [
+          "ENGLISH DEMO"
+        ],
+        "uncertain_content": [
+          "Chinese heading needs exact extraction"
+        ]
+      },
+      "extraction": {
+        "visible_text": [
+          "说明",
+          "ENGLISH DEMO",
+          "TEMP 36.8 C",
+          "STATUS NORMAL"
+        ],
+        "measurements": [
+          {
+            "name": "TEMP",
+            "value": "36.8",
+            "unit": "C"
+          }
+        ]
+      },
+      "fake_usage": {
+        "input_tokens": 84,
+        "output_tokens": 28
+      },
+      "sha256": "40b25b6ebbab7d1afee3816a7e530c82c28892e6a244ae9ef1c37bf90bedc52b",
+      "dimensions": [
+        640,
+        400
+      ],
+      "privacy": "synthetic"
+    },
+    {
+      "filename": "04_table.png",
+      "case_id": "table",
+      "expected_route": "ocr_mode",
+      "expected_text_tokens": [
+        "ITEM",
+        "VALUE",
+        "UNIT",
+        "TEMP",
+        "PULSE"
+      ],
+      "expected_measurements": [
+        {
+          "name": "TEMP",
+          "value": "36.8",
+          "unit": "C"
+        },
+        {
+          "name": "PULSE",
+          "value": "72",
+          "unit": "BPM"
+        }
+      ],
+      "expected_table_rows": [
+        [
+          "ITEM",
+          "VALUE",
+          "UNIT"
+        ],
+        [
+          "TEMP",
+          "36.8",
+          "C"
+        ],
+        [
+          "PULSE",
+          "72",
+          "BPM"
+        ]
+      ],
+      "overview": {
+        "image_type": "medical_report",
+        "summary": "A synthetic table with measurements",
+        "visible_text": [
+          "ITEM VALUE UNIT"
+        ],
+        "uncertain_content": [
+          "table cells need exact extraction"
+        ]
+      },
+      "extraction": {
+        "visible_text": [
+          "ITEM",
+          "VALUE",
+          "UNIT",
+          "TEMP",
+          "PULSE"
+        ],
+        "measurements": [
+          {
+            "name": "TEMP",
+            "value": "36.8",
+            "unit": "C"
+          },
+          {
+            "name": "PULSE",
+            "value": "72",
+            "unit": "BPM"
+          }
+        ],
+        "table_rows": [
+          [
+            "ITEM",
+            "VALUE",
+            "UNIT"
+          ],
+          [
+            "TEMP",
+            "36.8",
+            "C"
+          ],
+          [
+            "PULSE",
+            "72",
+            "BPM"
+          ]
+        ]
+      },
+      "fake_usage": {
+        "input_tokens": 92,
+        "output_tokens": 42
+      },
+      "sha256": "11185ac6ed1a5223ebd40d26bf97afca65364412b531d851e2eaf902aabc1046",
+      "dimensions": [
+        640,
+        400
+      ],
+      "privacy": "synthetic"
+    },
+    {
+      "filename": "05_demo_report.png",
+      "case_id": "demo_report",
+      "expected_route": "ocr_mode",
+      "expected_text_tokens": [
+        "SYNTHETIC DEMO REPORT",
+        "NO PERSON / NO RECORD",
+        "GLUCOSE",
+        "5.2 mmol/L",
+        "FAKE DATA"
+      ],
+      "expected_measurements": [
+        {
+          "name": "GLUCOSE",
+          "value": "5.2",
+          "unit": "mmol/L"
+        }
+      ],
+      "expected_table_rows": [],
+      "overview": {
+        "image_type": "medical_report",
+        "summary": "A clearly synthetic report",
+        "visible_text": []
+      },
+      "extraction": {
+        "visible_text": [
+          "SYNTHETIC DEMO REPORT",
+          "NO PERSON / NO RECORD",
+          "GLUCOSE",
+          "5.2 mmol/L",
+          "FAKE DATA"
+        ],
+        "measurements": [
+          {
+            "name": "GLUCOSE",
+            "value": "5.2",
+            "unit": "mmol/L",
+            "reference_range": "3.9 - 6.1",
+            "flag": "normal"
+          }
+        ]
+      },
+      "fake_usage": {
+        "input_tokens": 96,
+        "output_tokens": 44
+      },
+      "sha256": "20d66ed6d9cbbe23f6ab10807b76917bcb394747cd16f0c862c11312abac023d",
+      "dimensions": [
+        640,
+        400
+      ],
+      "privacy": "synthetic"
+    },
+    {
+      "filename": "06_blurred.png",
+      "case_id": "blurred",
+      "expected_route": "reupload_required",
+      "expected_text_tokens": [],
+      "expected_measurements": [],
+      "expected_table_rows": [],
+      "overview": {
+        "image_type": "document",
+        "summary": "The synthetic text cannot be read reliably",
+        "uncertain_content": [
+          "image is blurry"
+        ]
+      },
+      "extraction": {},
+      "fake_usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      },
+      "sha256": "86fcbfbb6b0716244b36ec407cf0a74344a0ade8de7929be42f908de96d1d725",
+      "dimensions": [
+        640,
+        400
+      ],
+      "privacy": "synthetic"
+    },
+    {
+      "filename": "07_cropped.png",
+      "case_id": "cropped",
+      "expected_route": "reupload_required",
+      "expected_text_tokens": [],
+      "expected_measurements": [],
+      "expected_table_rows": [],
+      "overview": {
+        "image_type": "document",
+        "summary": "The synthetic document is incomplete",
+        "visible_text": [
+          "CONTENT"
+        ],
+        "uncertain_content": [
+          "left and right edges are cropped"
+        ]
+      },
+      "extraction": {},
+      "fake_usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      },
+      "sha256": "ccd7a766b695ad2791a0a70f708400a588350cf9d82a36219f51ac7e0d256439",
+      "dimensions": [
+        640,
+        400
+      ],
+      "privacy": "synthetic"
+    },
+    {
+      "filename": "08_blank.png",
+      "case_id": "blank",
+      "expected_route": "reupload_required",
+      "expected_text_tokens": [],
+      "expected_measurements": [],
+      "expected_table_rows": [],
+      "overview": {
+        "image_type": "blank",
+        "summary": "A blank synthetic image with no visible content"
+      },
+      "extraction": {},
+      "fake_usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      },
+      "sha256": "0f3d4ae14715c0e844acd4899077dccf2dd249db6318622d17eaa9b99a2e7799",
+      "dimensions": [
+        640,
+        400
+      ],
+      "privacy": "synthetic"
+    }
+  ]
+}

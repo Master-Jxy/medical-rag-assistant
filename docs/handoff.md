@@ -41,6 +41,23 @@ Stage 26 本地任务26.2a已完成。迁移`0031_stage26_vision_scope`为历史
 结构覆盖、报告文字和测量上下文规则。26.2a只运行Fake/本地测试，没有真实模型费用、
 GitHub推送或生产变更。
 
+Stage 26 本地任务26.2b已完成开发并通过专项验收。新增聊天专用
+`VisionTextExtractionPort`和Disabled/Fake/DashScope OCR-mode适配器，受控提示词不接收
+用户问题并把图片内指令视为不可信数据；Stage24知识入库`VisionDocumentPort`及其业务服务
+未被复用。`VisionRouterService`先复用整体观察和确定性质量闸门，再选择
+`overview_only`、`ocr_mode`或`reupload_required`；OCR提取的可见文字、表格和测量值按
+规范化键合并，冲突值保留并公开标记不确定性，空白图不补写内容。RAG、Agent初始整体
+观察和`observe_image`均进入Router，`inspect_image`继续使用原服务，所以overview、OCR和
+定向观察共同占用每图最多3次供应商调用。
+
+OCR以`report_extract`记录进入既有原子claim、媒体资产行锁、额度预留/结算和脱敏usage
+账本；终态重放及并发请求不重复调用或计费，供应商已经返回usage而后续持久化失败时仍按
+实际usage结算，供应商未消费才释放。OCR默认Disabled，自动重试保持0。固定评估集包含8张
+程序生成的无隐私PNG、SHA-256 manifest、可重建脚本和无费用Fake评估，覆盖普通图片、中文
+界面、中英混排、表格、明确标注的虚构报告、模糊、裁切和空白。未读取真实资料、`.env`或
+密钥，未调用真实模型，未产生费用，也未开始26.3。按当前检查点要求，完整后端回归未在
+提交前执行，需作为26.2b唯一剩余收口项。
+
 生产当前状态：
 
 - GitHub `main`：`b8e1719fa3be90b53822e58f07d2179737ae46b6`。
@@ -111,6 +128,18 @@ Alembic temporary roundtrip: 0030 -> 0031 -> 0030 -> 0031 PASS
 backend full suite: 637 passed, 1 skipped
 Python compile/import: PASS
 
+Stage26.2b focused
+chat OCR adapters / controlled prompt / merge / persisted replay /
+concurrent quota / shared three-call budget / failure settlement / fixed assets: 9 passed
+Stage25 vision regression: 9 passed
+combined focused: 18 passed
+no-cost fixed asset evaluation: 8 assets, hash/schema/route/text/measurement/table = 1.0,
+blank hallucinations = 0, duplicate provider calls/usage charges = 0,
+real model calls = 0
+Alembic temporary roundtrip: 0030 -> 0031 -> 0030 -> 0031 PASS
+Focused Python compile: PASS
+backend full suite: NOT RUN（按检查点要求先提交可审查commit）
+
 Protected auth SHA-256
 9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0
 ```
@@ -128,12 +157,11 @@ Protected auth SHA-256
 ## 4. 新任务阅读范围
 
 新窗口先完整阅读`AGENTS.md`、本文和`docs/stage26-enterprise-hardening-design.md`。
-26.2b只定向读取：
+26.2b完整回归收口只定向读取：
 
-- Stage26.2a视觉repository、质量闸门、观察作用域和调用预算
-- 现有聊天`VisionChatPort`、DashScope视觉适配器与Fake/Disabled装配
-- 额度、用量、RAG/Agent图片入口和固定评估资产约束
-- Stage24文档入库OCR边界只作对照，不复用其Port或业务服务
+- Stage26.2b新增OCR适配器、Router、持久化测试和固定评估资产
+- 完整后端首次失败附近的直接依赖；成功输出不重复全文加载
+- `auth/service.py`继续只核对SHA-256，不读取正文
 
 普通观察期不要全文读取历史技术设计、旧发布审计或大型评估JSON。
 
@@ -145,5 +173,5 @@ Protected auth SHA-256
 
 ## 6. 唯一下一任务
 
-**执行26.2b：增加聊天专用`VisionTextExtractionPort`、OCR-mode适配器和视觉路由，提交
-固定无隐私图片集与可执行评估；完成幂等、调用预算、额度和RAG/Agent回归后，再进入26.3。**
+**完成26.2b提交后的完整后端回归、全量Python编译和差异检查；通过后再进入26.3，当前
+不得开始Worker或任务队列开发。**

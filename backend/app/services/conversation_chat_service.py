@@ -45,6 +45,7 @@ from app.modules.rag.adapters import RAG_SYSTEM_PROMPT
 from app.schemas.conversation import UsageSummaryResponse
 from app.modules.media.service import MediaAssetService
 from app.modules.vision.contracts import VisionObservation
+from app.modules.vision.router_service import VisionRouterService
 from app.modules.vision.service import VisionChatService
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,7 @@ class ConversationChatService:
         quota_estimator: QuotaReservationEstimatorPort | None = None,
         media_service: MediaAssetService | None = None,
         vision_service: VisionChatService | None = None,
+        vision_router: VisionRouterService | None = None,
         settings: Settings | None = None,
     ) -> None:
         self.session = session
@@ -83,6 +85,9 @@ class ConversationChatService:
         self.settings = settings
         self.media_service = media_service or MediaAssetService(session, settings)
         self.vision_service = vision_service or VisionChatService(session, settings)
+        self.vision_router = vision_router or VisionRouterService(
+            self.vision_service, settings
+        )
         self.quota_gate = quota_gate or build_quota_gate(session, settings)
         self.quota_estimator = (
             quota_estimator
@@ -747,7 +752,7 @@ class ConversationChatService:
         assets = self.media_service.bind_rag(user_id, attachment_ids, user_message_id)
         observations: list[tuple[str, VisionObservation]] = []
         for asset in assets:
-            observation = self.vision_service.observe_overview(
+            observation = self.vision_router.route_overview(
                 user_id=user_id,
                 asset_id=asset.id,
                 user_question=question or "请说明图片中的可见信息",

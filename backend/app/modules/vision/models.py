@@ -41,7 +41,7 @@ class VisionObservationRecord(Base):
     __table_args__ = (
         CheckConstraint("kind IN ('overview','focused','report_extract')", name="ck_vision_observations_kind"),
         CheckConstraint("status IN ('pending','completed','failed','stopped')", name="ck_vision_observations_status"),
-        CheckConstraint("route_kind IN ('pending','legacy','general','document','report')", name="ck_vision_observations_route_kind"),
+        CheckConstraint("route_kind IN ('pending','legacy','general','document','report','overview_only','ocr_mode','reupload_required')", name="ck_vision_observations_route_kind"),
         CheckConstraint("quality_status IN ('pending','legacy','pass','review','retry','failed')", name="ck_vision_observations_quality_status"),
         CheckConstraint("provider_call_count >= 0 AND provider_call_count <= 1", name="ck_vision_observations_provider_calls"),
         UniqueConstraint("media_asset_id", "observation_scope_id", "kind", "focus_instruction_hash", name="uq_vision_observations_scope"),
