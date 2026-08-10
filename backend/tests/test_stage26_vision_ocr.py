@@ -2,7 +2,9 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+import json
 from pathlib import Path
+import shutil
 from threading import Event, Lock
 from time import sleep
 from types import SimpleNamespace
@@ -33,6 +35,7 @@ from app.modules.vision.contracts import (
     VisionObservation,
     VisionResult,
     VisionTextExtraction,
+    VisionTextExtractionConsumedError,
     VisionTextExtractionRequest,
     VisionTextExtractionResult,
 )
@@ -121,6 +124,31 @@ class FailingUsageRecorder:
     def record(self, **kwargs):
         del kwargs
         raise RuntimeError("usage persistence failed after provider consumption")
+
+
+class BlockingFocusedVisionAdapter(ReportOverviewAdapter):
+    def __init__(self) -> None:
+        super().__init__()
+        self.focus_started = Event()
+        self.focus_release = Event()
+        self.focus_lock = Lock()
+
+    def observe(self, **kwargs) -> VisionResult:
+        if kwargs.get("focus_instruction") is None:
+            return super().observe(**kwargs)
+        with self.focus_lock:
+            self.calls += 1
+        self.focus_started.set()
+        assert self.focus_release.wait(timeout=5)
+        return VisionResult(
+            observation=VisionObservation(
+                image_type="photo",
+                summary=f"Focused synthetic observation {self.calls}",
+                objects=[f"focused-{self.calls}"],
+            ),
+            usage=ModelUsage.actual(11, 4),
+            model_name="blocking-focused",
+        )
 
 
 def setup_vision(tmp_path, *, ocr_adapter=None):
@@ -240,6 +268,57 @@ def test_dashscope_ocr_normalizes_shape_and_uses_controlled_prompt(monkeypatch) 
     assert result.extraction.table_rows == [["TEMP", "36.8", "C"]]
     assert result.usage.total_tokens == 56
     assert result.provider_request_id == "synthetic-ocr-request"
+
+
+@pytest.mark.parametrize(
+    ("outcome", "expected_error"),
+    [
+        ("timeout", VisionUnavailableError),
+        ("non_200", VisionUnavailableError),
+        ("invalid_json", VisionTextExtractionConsumedError),
+    ],
+)
+def test_dashscope_ocr_failure_modes_call_sdk_once(
+    monkeypatch, outcome, expected_error
+) -> None:
+    calls = 0
+
+    def fake_call(**kwargs):
+        nonlocal calls
+        del kwargs
+        calls += 1
+        if outcome == "timeout":
+            raise TimeoutError("synthetic timeout")
+        return SimpleNamespace(
+            status_code=429 if outcome == "non_200" else 200,
+            output={
+                "choices": [
+                    {"message": {"content": [{"text": "not valid json"}]}}
+                ]
+            },
+            usage={"input_tokens": 19, "output_tokens": 3},
+            request_id="failure-request",
+        )
+
+    monkeypatch.setattr(
+        "app.infrastructure.dashscope_chat_ocr.MultiModalConversation.call",
+        fake_call,
+    )
+    adapter = DashScopeVisionTextExtractionAdapter(
+        Settings(_env_file=None, dashscope_api_key="test-key")
+    )
+    with pytest.raises(expected_error) as captured:
+        adapter.extract(
+            VisionTextExtractionRequest(
+                image_bytes=b"synthetic",
+                mime_type="image/png",
+            )
+        )
+    assert calls == 1
+    if outcome == "invalid_json":
+        assert captured.value.usage.total_tokens == 22
+        assert captured.value.model_name == "qwen3-vl-plus"
+        assert captured.value.provider_request_id == "failure-request"
 
 
 def test_controlled_prompt_has_no_dynamic_image_instruction_channel() -> None:
@@ -483,6 +562,148 @@ def test_provider_consumption_is_settled_when_usage_persistence_fails(tmp_path) 
         engine.dispose()
 
 
+def test_http_200_invalid_json_records_failed_usage_and_settles_once(
+    tmp_path, monkeypatch
+) -> None:
+    engine, factory, user_id, asset_id, settings, _ = setup_vision(tmp_path)
+    overview = ReportOverviewAdapter()
+    sdk_calls = 0
+
+    def fake_call(**kwargs):
+        nonlocal sdk_calls
+        del kwargs
+        sdk_calls += 1
+        return SimpleNamespace(
+            status_code=200,
+            output={
+                "choices": [
+                    {"message": {"content": [{"text": "invalid synthetic json"}]}}
+                ]
+            },
+            usage={"input_tokens": 37, "output_tokens": 9},
+            request_id="consumed-invalid-json",
+        )
+
+    monkeypatch.setattr(
+        "app.infrastructure.dashscope_chat_ocr.MultiModalConversation.call",
+        fake_call,
+    )
+    try:
+        with factory() as session:
+            VisionChatService(session, settings, adapter=overview).observe_overview(
+                user_id=user_id,
+                asset_id=asset_id,
+                user_question="prepare synthetic overview",
+                surface="vision_rag",
+                usage_group_id="answer-invalid-json",
+            )
+        with factory() as session:
+            service = VisionChatService(
+                session,
+                settings,
+                adapter=overview,
+                ocr_adapter=DashScopeVisionTextExtractionAdapter(
+                    Settings(_env_file=None, dashscope_api_key="test-key")
+                ),
+            )
+            with pytest.raises(VisionTextExtractionConsumedError):
+                service.extract_text(
+                    user_id=user_id,
+                    asset_id=asset_id,
+                    surface="vision_rag",
+                    usage_group_id="answer-invalid-json",
+                )
+            usage = session.scalar(
+                select(ModelUsageRecord).where(
+                    ModelUsageRecord.operation == "report_extract"
+                )
+            )
+            reservation = session.scalar(
+                select(QuotaReservation).where(
+                    QuotaReservation.idempotency_key.contains("report_extract")
+                )
+            )
+            record = session.scalar(
+                select(VisionObservationRecord).where(
+                    VisionObservationRecord.kind == "report_extract"
+                )
+            )
+            assert usage.status == "failed"
+            assert usage.model_name == "qwen3-vl-plus"
+            assert usage.total_tokens == 46
+            assert reservation.status == "settled"
+            assert reservation.charged_tokens == 46
+            assert record.status == "failed"
+            assert record.error_code == "VISION_OCR_INVALID_RESPONSE"
+            assert sdk_calls == 1
+            with pytest.raises(VisionUnavailableError):
+                service.extract_text(
+                    user_id=user_id,
+                    asset_id=asset_id,
+                    surface="vision_rag",
+                    usage_group_id="answer-invalid-json",
+                )
+            assert sdk_calls == 1
+    finally:
+        engine.dispose()
+
+
+def test_overview_ocr_and_concurrent_focused_requests_share_last_budget(tmp_path) -> None:
+    ocr = FakeVisionTextExtractionAdapter(
+        VisionTextExtraction(visible_text=["SYNTHETIC REPORT"]),
+        ModelUsage.actual(20, 5),
+    )
+    engine, factory, user_id, asset_id, settings, _ = setup_vision(tmp_path)
+    vision = BlockingFocusedVisionAdapter()
+    common = dict(
+        user_id=user_id,
+        asset_id=asset_id,
+        user_question="synthetic budget race",
+        surface="vision_agent",
+        usage_group_id="agent-budget-race",
+        run_id="agent-run-budget-race",
+    )
+
+    def inspect_once(focus: str):
+        with factory() as session:
+            service = VisionChatService(
+                session, settings, adapter=vision, ocr_adapter=ocr
+            )
+            return service.inspect(
+                **common,
+                focus_instruction=focus,
+            )
+
+    try:
+        with factory() as session:
+            service = VisionChatService(
+                session, settings, adapter=vision, ocr_adapter=ocr
+            )
+            VisionRouterService(service, settings).route_overview(**common)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first_future = pool.submit(inspect_once, "inspect lower marker")
+            assert vision.focus_started.wait(timeout=5)
+            second_future = pool.submit(inspect_once, "inspect upper marker")
+            sleep(0.1)
+            vision.focus_release.set()
+            outcomes = []
+            for future in (first_future, second_future):
+                try:
+                    outcomes.append(future.result(timeout=5))
+                except VisionPolicyError as exc:
+                    outcomes.append(exc)
+        assert sum(isinstance(item, VisionObservation) for item in outcomes) == 1
+        assert sum(isinstance(item, VisionPolicyError) for item in outcomes) == 1
+        with factory() as session:
+            records = list(session.scalars(select(VisionObservationRecord)))
+            assert sum(item.provider_call_count for item in records) == 3
+            assert len(list(session.scalars(select(ModelUsageRecord)))) == 3
+            assert len(list(session.scalars(select(QuotaReservation)))) == 3
+    finally:
+        vision.focus_release.set()
+        engine.dispose()
+
+
 def test_fixed_synthetic_dataset_meets_no_cost_quality_gates() -> None:
     manifest = (
         Path(__file__).resolve().parents[1]
@@ -492,6 +713,8 @@ def test_fixed_synthetic_dataset_meets_no_cost_quality_gates() -> None:
         / "manifest.json"
     )
     report = run_evaluation(manifest)
+    assert report["evaluation_name"] == "stage26_vision_ocr_fake_contract_v1"
+    assert report["mode"] == "fake_contract"
     assert report["real_model_calls"] == 0
     assert report["asset_count"] == 8
     assert report["hash_validity"] == 1
@@ -503,3 +726,91 @@ def test_fixed_synthetic_dataset_meets_no_cost_quality_gates() -> None:
     assert report["blank_image_hallucination_count"] == 0
     assert report["duplicate_provider_call_count"] == 0
     assert report["duplicate_usage_charge_count"] == 0
+
+
+@pytest.mark.parametrize(
+    "invalid_case",
+    [
+        "automatic_retries",
+        "privacy",
+        "duplicate_case",
+        "duplicate_filename",
+        "duplicate_hash",
+        "traversal",
+        "extension",
+    ],
+)
+def test_fake_contract_manifest_rejects_unsafe_metadata_before_asset_reads(
+    tmp_path, monkeypatch, invalid_case
+) -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "evaluation"
+        / "datasets"
+        / "vision_ocr_v1"
+    )
+    dataset = tmp_path / invalid_case / "vision_ocr_v1"
+    shutil.copytree(source, dataset)
+    manifest = dataset / "manifest.json"
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    if invalid_case == "automatic_retries":
+        payload["automatic_retries"] = 1
+    elif invalid_case == "privacy":
+        payload["assets"][0]["privacy"] = "unknown"
+    elif invalid_case == "duplicate_case":
+        payload["assets"][1]["case_id"] = payload["assets"][0]["case_id"]
+    elif invalid_case == "duplicate_filename":
+        payload["assets"][1]["filename"] = payload["assets"][0]["filename"]
+    elif invalid_case == "duplicate_hash":
+        payload["assets"][1]["sha256"] = payload["assets"][0]["sha256"]
+    elif invalid_case == "traversal":
+        payload["assets"][0]["filename"] = "../outside.png"
+    elif invalid_case == "extension":
+        payload["assets"][0]["filename"] = "fixture.jpg"
+    manifest.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    reads = []
+    original_read_bytes = Path.read_bytes
+
+    def tracked_read_bytes(path):
+        reads.append(path)
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", tracked_read_bytes)
+    with pytest.raises(ValueError):
+        run_evaluation(manifest)
+    assert reads == []
+
+
+def test_fake_contract_manifest_rejects_symlink_before_asset_reads(
+    tmp_path, monkeypatch
+) -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "evaluation"
+        / "datasets"
+        / "vision_ocr_v1"
+    )
+    dataset = tmp_path / "symlink" / "vision_ocr_v1"
+    shutil.copytree(source, dataset)
+    manifest = dataset / "manifest.json"
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    link = dataset / "assets" / payload["assets"][0]["filename"]
+    reads = []
+    original_read_bytes = Path.read_bytes
+    original_is_symlink = Path.is_symlink
+
+    def tracked_read_bytes(path):
+        reads.append(path)
+        return original_read_bytes(path)
+
+    def controlled_is_symlink(path):
+        return path == link or original_is_symlink(path)
+
+    monkeypatch.setattr(Path, "read_bytes", tracked_read_bytes)
+    monkeypatch.setattr(Path, "is_symlink", controlled_is_symlink)
+    with pytest.raises(ValueError, match="symlink"):
+        run_evaluation(manifest)
+    assert reads == []

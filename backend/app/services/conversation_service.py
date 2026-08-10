@@ -118,6 +118,7 @@ class ConversationService:
             select(VisionObservationRecord).where(
                 VisionObservationRecord.assistant_message_id.in_([m.id for m in conversation.messages]),
                 VisionObservationRecord.status == "completed",
+                VisionObservationRecord.kind.in_(("overview", "focused")),
             ).order_by(VisionObservationRecord.sequence_no)
         ))
         observations_by_message: dict[str, list[dict]] = {}

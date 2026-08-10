@@ -58,6 +58,16 @@ OCR以`report_extract`记录进入既有原子claim、媒体资产行锁、额�
 密钥，未调用真实模型，未产生费用，也未开始26.3。按当前检查点要求，完整后端回归未在
 提交前执行，需作为26.2b唯一剩余收口项。
 
+26.2b总控审查的4个P1已修复：`0031`恢复原已发布route constraint，新增
+`0032_stage26_vision_ocr_routes`扩展OCR路由并在降级时把`ocr_mode`映射为`report`、另外
+两个新值映射为`general`；因此26.3任务租约迁移顺延为`0033_stage26_job_leases`。DashScope
+在HTTP 200后若JSON或schema解析失败，会通过受控异常把usage、model和供应商request ID
+交给应用服务，写failed `ModelUsageRecord`并按实际或unknown usage结算，观察记录终态失败且
+同请求不再调用。RAG/Agent历史查询过滤内部`report_extract`，只公开最终merged overview并
+保留focused。固定资产评估明确为Fake契约评估，在读取PNG前验证schema、零重试、synthetic
+隐私、case/file/hash唯一、PNG basename、目录包含关系及symlink/穿越拒绝。CI也显式关闭
+OCR。以上只使用Fake和本地合成资产，没有真实模型调用。
+
 生产当前状态：
 
 - GitHub `main`：`b8e1719fa3be90b53822e58f07d2179737ae46b6`。
@@ -140,6 +150,15 @@ Alembic temporary roundtrip: 0030 -> 0031 -> 0030 -> 0031 PASS
 Focused Python compile: PASS
 backend full suite: NOT RUN（按检查点要求先提交可审查commit）
 
+Stage26.2b P1 review fixes focused
+DashScope consumed-invalid-response accounting / single SDK call failures /
+history filtering after SSE / Fake contract manifest rejection /
+overview+OCR+focused final-budget race / Stage25 image regressions: PASS
+combined focused and migration matrix: 37 passed
+Alembic: 0031 original constraint PASS
+Alembic: 0031 -> 0032 -> 0031 -> 0032 with downgrade mapping PASS
+backend full suite: NOT RUN（由总控从repo root执行）
+
 Protected auth SHA-256
 9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0
 ```
@@ -173,5 +192,5 @@ Protected auth SHA-256
 
 ## 6. 唯一下一任务
 
-**完成26.2b提交后的完整后端回归、全量Python编译和差异检查；通过后再进入26.3，当前
-不得开始Worker或任务队列开发。**
+**总控从repo root完成26.2b修复提交后的完整后端回归；通过后再以迁移`0033`进入26.3，
+当前不得开始Worker或任务队列开发。**

@@ -10,6 +10,7 @@ from app.core.exceptions import VisionUnavailableError
 from app.modules.usage.contracts import ModelUsage
 from app.modules.vision.contracts import (
     VisionTextExtraction,
+    VisionTextExtractionConsumedError,
     VisionTextExtractionRequest,
     VisionTextExtractionResult,
 )
@@ -49,32 +50,45 @@ class DashScopeVisionTextExtractionAdapter:
                 result_format="message",
                 timeout=self.settings.vision_timeout_seconds,
             )
-            if getattr(response, "status_code", None) != 200:
-                raise VisionUnavailableError()
+        except Exception as exc:
+            raise VisionUnavailableError() from exc
+        if getattr(response, "status_code", None) != 200:
+            raise VisionUnavailableError()
+
+        usage = self._usage(response)
+        provider_request_id = getattr(response, "request_id", None)
+        try:
             text = self._response_text(response)
+            if len(text) > request.max_output_chars:
+                raise ValueError("OCR response exceeds controlled character limit")
             extraction = VisionTextExtraction.model_validate(
                 self._normalize_payload(text)
             )
-            usage_payload = getattr(response, "usage", {}) or {}
-            if self._value(usage_payload, "input_tokens") is not None and self._value(
-                usage_payload, "output_tokens"
-            ) is not None:
-                usage = ModelUsage.actual(
-                    int(self._value(usage_payload, "input_tokens", 0)),
-                    int(self._value(usage_payload, "output_tokens", 0)),
-                )
-            else:
-                usage = ModelUsage.unknown()
             return VisionTextExtractionResult(
                 extraction=extraction,
                 usage=usage,
                 model_name=self.settings.vision_model,
+                provider_request_id=provider_request_id,
+            )
+        except Exception as exc:
+            raise VisionTextExtractionConsumedError(
+                usage=usage,
+                model_name=self.settings.vision_model,
+                provider_request_id=provider_request_id,
+            ) from exc
+
+    @classmethod
+    def _usage(cls, response) -> ModelUsage:
+        usage_payload = getattr(response, "usage", {}) or {}
+        if cls._value(usage_payload, "input_tokens") is not None and cls._value(
+            usage_payload, "output_tokens"
+        ) is not None:
+            return ModelUsage.actual(
+                int(cls._value(usage_payload, "input_tokens", 0)),
+                int(cls._value(usage_payload, "output_tokens", 0)),
                 provider_request_id=getattr(response, "request_id", None),
             )
-        except VisionUnavailableError:
-            raise
-        except Exception as exc:
-            raise VisionUnavailableError() from exc
+        return ModelUsage.unknown()
 
     @classmethod
     def _response_text(cls, response) -> str:

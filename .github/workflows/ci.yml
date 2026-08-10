@@ -17,6 +17,8 @@ env:
   VISION_CHAT_ENABLED: "false"
   VISION_PROVIDER: disabled
   VISION_AUTOMATIC_RETRIES: "0"
+  VISION_OCR_MODE_ENABLED: "false"
+  VISION_OCR_PROVIDER: disabled
 
 jobs:
   backend:

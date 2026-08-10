@@ -50,8 +50,7 @@ def upgrade() -> None:
         )
         batch_op.create_check_constraint(
             "ck_vision_observations_route_kind",
-            "route_kind IN ('pending','legacy','general','document','report',"
-            "'overview_only','ocr_mode','reupload_required')",
+            "route_kind IN ('pending','legacy','general','document','report')",
         )
         batch_op.create_check_constraint(
             "ck_vision_observations_quality_status",

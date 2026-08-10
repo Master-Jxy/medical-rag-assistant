@@ -139,11 +139,86 @@ def test_agent_image_overview_flows_into_knowledge_tool_and_history(tmp_path) ->
         ))
         names = [item["event"] for item in events]
         assert "vision_observations" in names and "sources" in names and "message_completed" in names
+        overview = session.scalar(select(VisionObservationRecord))
+        merged = dict(overview.observation_json)
+        merged["quality_summary"] = {
+            "route_kind": "ocr_mode",
+            "quality_status": "pass",
+            "quality_codes": ["OCR_MODE_APPLIED"],
+        }
+        overview.observation_json = merged
+        overview.route_kind = "ocr_mode"
+        overview.quality_status = "pass"
+        overview.quality_codes = ["OCR_MODE_APPLIED"]
+        session.add_all([
+            VisionObservationRecord(
+                media_asset_id=overview.media_asset_id,
+                user_id=overview.user_id,
+                run_id=overview.run_id,
+                observation_scope_id=overview.observation_scope_id,
+                kind="report_extract",
+                focus_instruction_hash="ocr:agent-history-filter-test",
+                model_name="fake-chat-ocr",
+                status="completed",
+                sequence_no=2,
+                route_kind="ocr_mode",
+                quality_status="pass",
+                quality_codes=[],
+                provider_call_count=1,
+                observation_json={
+                    "image_type": "document",
+                    "summary": "internal OCR extraction",
+                    "visible_text": ["INTERNAL ONLY"],
+                    "quality_summary": {
+                        "route_kind": "ocr_mode",
+                        "quality_status": "pass",
+                        "quality_codes": [],
+                    },
+                },
+            ),
+            VisionObservationRecord(
+                media_asset_id=overview.media_asset_id,
+                user_id=overview.user_id,
+                run_id=overview.run_id,
+                observation_scope_id=overview.observation_scope_id,
+                kind="focused",
+                focus_instruction_hash="focused-history-test",
+                model_name="fake-vision",
+                status="completed",
+                sequence_no=3,
+                route_kind="general",
+                quality_status="pass",
+                quality_codes=[],
+                provider_call_count=1,
+                observation_json={
+                    "image_type": "photo",
+                    "summary": "public focused observation",
+                    "objects": ["focused marker"],
+                    "quality_summary": {
+                        "route_kind": "general",
+                        "quality_status": "pass",
+                        "quality_codes": [],
+                    },
+                },
+            ),
+        ])
+        session.commit()
         messages = AgentMessageService(session).list(user.id, thread.id, offset=0, limit=20)
         assert messages[0].attachments[0]["media_asset_id"] == asset.id
         assert messages[1].vision_observations[0]["observation"]["image_type"] == "medical_report"
+        assert [item["kind"] for item in messages[1].vision_observations] == [
+            "overview",
+            "focused",
+        ]
+        assert messages[1].vision_observations[0]["observation"]["quality_summary"] == {
+            "route_kind": "ocr_mode",
+            "quality_status": "pass",
+            "quality_codes": ["OCR_MODE_APPLIED"],
+        }
         assert "不能据此作出诊断" in messages[1].content
-        observation = session.scalar(select(VisionObservationRecord))
+        observation = session.scalar(select(VisionObservationRecord).where(
+            VisionObservationRecord.kind == "overview"
+        ))
         attachment = session.scalar(select(MessageAttachment))
         assert observation.run_id == messages[1].run_id
         assert attachment.agent_message_id == messages[0].id

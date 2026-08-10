@@ -129,7 +129,7 @@ def test_pure_image_rag_persists_attachment_observation_and_combined_usage(tmp_p
 
 
 def test_image_rag_stream_emits_observation_before_tokens(tmp_path) -> None:
-    engine, _factory, user, _rag = setup(tmp_path)
+    engine, factory, user, _rag = setup(tmp_path)
     try:
         with TestClient(app) as client:
             headers = auth_headers(user.id)
@@ -144,5 +144,56 @@ def test_image_rag_stream_emits_observation_before_tokens(tmp_path) -> None:
             assert "event: vision_observations" in response.text
             assert response.text.index("event: vision_observations") < response.text.index("event: token")
             assert "event: done" in response.text
+            with factory() as session:
+                overview = session.scalar(select(VisionObservationRecord))
+                merged = dict(overview.observation_json)
+                merged["quality_summary"] = {
+                    "route_kind": "ocr_mode",
+                    "quality_status": "pass",
+                    "quality_codes": ["OCR_MODE_APPLIED"],
+                }
+                overview.observation_json = merged
+                overview.route_kind = "ocr_mode"
+                overview.quality_status = "pass"
+                overview.quality_codes = ["OCR_MODE_APPLIED"]
+                session.add(VisionObservationRecord(
+                    media_asset_id=overview.media_asset_id,
+                    user_id=overview.user_id,
+                    assistant_message_id=overview.assistant_message_id,
+                    observation_scope_id=overview.observation_scope_id,
+                    kind="report_extract",
+                    focus_instruction_hash="ocr:history-filter-test",
+                    model_name="fake-chat-ocr",
+                    status="completed",
+                    sequence_no=2,
+                    route_kind="ocr_mode",
+                    quality_status="pass",
+                    quality_codes=[],
+                    provider_call_count=1,
+                    observation_json={
+                        "image_type": "document",
+                        "summary": "internal OCR extraction",
+                        "visible_text": ["INTERNAL ONLY"],
+                        "quality_summary": {
+                            "route_kind": "ocr_mode",
+                            "quality_status": "pass",
+                            "quality_codes": [],
+                        },
+                    },
+                ))
+                session.commit()
+            detail = client.get(
+                f"/api/v1/conversations/{conversation_id}", headers=headers
+            ).json()
+            history = detail["messages"][1]["vision_observations"]
+            assert len(history) == 1
+            assert history[0]["kind"] == "overview"
+            assert history[0]["observation"]["quality_summary"] == {
+                "route_kind": "ocr_mode",
+                "quality_status": "pass",
+                "quality_codes": ["OCR_MODE_APPLIED"],
+            }
+            with factory() as session:
+                assert len(list(session.scalars(select(VisionObservationRecord)))) == 2
     finally:
         app.dependency_overrides.clear(); engine.dispose()

@@ -1,10 +1,11 @@
-"""No-cost evaluation for the fixed synthetic chat vision/OCR dataset."""
+"""No-cost Fake contract evaluation for synthetic chat vision/OCR fixtures."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from app.core.config import Settings
@@ -81,13 +82,101 @@ def _measurement_key(item: dict) -> tuple[str, str, str]:
     )
 
 
-def run_evaluation(manifest_path: Path = DEFAULT_MANIFEST) -> dict:
-    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+def _validated_manifest(manifest_path: Path) -> tuple[dict, list[tuple[dict, Path]]]:
+    manifest_path = Path(manifest_path)
+    if manifest_path.is_symlink():
+        raise ValueError("vision OCR manifest must not be a symlink")
+    try:
+        resolved_manifest = manifest_path.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("vision OCR manifest is unavailable") from exc
+    payload = json.loads(resolved_manifest.read_text(encoding="utf-8"))
     assets = payload.get("assets")
-    if payload.get("schema_version") != "vision-ocr-v1" or not isinstance(
-        assets, list
+    if (
+        payload.get("schema_version") != "vision-ocr-v1"
+        or not isinstance(payload.get("automatic_retries"), int)
+        or isinstance(payload.get("automatic_retries"), bool)
+        or payload.get("automatic_retries") != 0
+        or not isinstance(assets, list)
+        or not assets
     ):
-        raise ValueError("invalid vision OCR manifest schema")
+        raise ValueError("invalid vision OCR Fake contract manifest schema")
+
+    asset_root = resolved_manifest.parent / "assets"
+    if asset_root.is_symlink():
+        raise ValueError("vision OCR asset directory must not be a symlink")
+    try:
+        resolved_root = asset_root.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("vision OCR asset directory is unavailable") from exc
+
+    seen_case_ids: set[str] = set()
+    seen_filenames: set[str] = set()
+    seen_hashes: set[str] = set()
+    validated: list[tuple[dict, Path]] = []
+    for case in assets:
+        if not isinstance(case, dict):
+            raise ValueError("vision OCR asset entry must be an object")
+        case_id = case.get("case_id")
+        filename = case.get("filename")
+        digest = case.get("sha256")
+        if not isinstance(case_id, str) or not case_id.strip():
+            raise ValueError("vision OCR case_id is required")
+        if (
+            not isinstance(filename, str)
+            or not filename
+            or "/" in filename
+            or "\\" in filename
+            or Path(filename).is_absolute()
+            or Path(filename).name != filename
+            or Path(filename).suffix.lower() != ".png"
+        ):
+            raise ValueError("vision OCR filename must be a PNG basename")
+        if not isinstance(digest, str) or not re.fullmatch(
+            r"[0-9a-f]{64}", digest
+        ):
+            raise ValueError("vision OCR sha256 must be lowercase hexadecimal")
+        case_key = case_id.casefold()
+        filename_key = filename.casefold()
+        if case_key in seen_case_ids:
+            raise ValueError("vision OCR case_id values must be unique")
+        if filename_key in seen_filenames:
+            raise ValueError("vision OCR filenames must be unique")
+        if digest in seen_hashes:
+            raise ValueError("vision OCR hashes must be unique")
+        seen_case_ids.add(case_key)
+        seen_filenames.add(filename_key)
+        seen_hashes.add(digest)
+        if case.get("privacy") != "synthetic":
+            raise ValueError("vision OCR assets must be explicitly synthetic")
+        if case.get("dimensions") != [640, 400]:
+            raise ValueError("vision OCR asset dimensions are invalid")
+        if case.get("expected_route") not in {
+            "overview_only",
+            "ocr_mode",
+            "reupload_required",
+        }:
+            raise ValueError("vision OCR expected route is invalid")
+        VisionObservation.model_validate(case.get("overview"))
+        VisionTextExtraction.model_validate(case.get("extraction") or {})
+
+        asset_path = asset_root / filename
+        if asset_path.is_symlink():
+            raise ValueError("vision OCR assets must not be symlinks")
+        try:
+            resolved_asset = asset_path.resolve(strict=True)
+            resolved_asset.relative_to(resolved_root)
+        except (OSError, ValueError) as exc:
+            raise ValueError("vision OCR asset escapes the fixture directory") from exc
+        if not resolved_asset.is_file():
+            raise ValueError("vision OCR asset must be a regular file")
+        validated.append((case, resolved_asset))
+    return payload, validated
+
+
+def run_evaluation(manifest_path: Path = DEFAULT_MANIFEST) -> dict:
+    payload, validated_assets = _validated_manifest(manifest_path)
+    assets = payload["assets"]
 
     hash_valid = 0
     schema_valid = 0
@@ -112,20 +201,11 @@ def run_evaluation(manifest_path: Path = DEFAULT_MANIFEST) -> dict:
         vision_ocr_provider="fake",
     )
 
-    for case in assets:
-        asset_path = manifest_path.parent / "assets" / case["filename"]
+    for case, asset_path in validated_assets:
         digest = hashlib.sha256(asset_path.read_bytes()).hexdigest()
         case_hash_valid = digest == case.get("sha256")
         hash_valid += int(case_hash_valid)
-        case_schema_valid = (
-            case.get("privacy") == "synthetic"
-            and case.get("dimensions") == [640, 400]
-            and case.get("expected_route")
-            in {"overview_only", "ocr_mode", "reupload_required"}
-        )
-        VisionObservation.model_validate(case["overview"])
-        VisionTextExtraction.model_validate(case.get("extraction") or {})
-        schema_valid += int(case_schema_valid)
+        schema_valid += 1
 
         service = _ManifestVisionService(case)
         router = VisionRouterService(service, settings)
@@ -196,7 +276,8 @@ def run_evaluation(manifest_path: Path = DEFAULT_MANIFEST) -> dict:
 
     count = len(assets)
     return {
-        "mode": "no_cost_fake",
+        "evaluation_name": "stage26_vision_ocr_fake_contract_v1",
+        "mode": "fake_contract",
         "real_model_calls": 0,
         "asset_count": count,
         "hash_validity": hash_valid / count if count else 0,

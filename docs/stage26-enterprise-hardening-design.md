@@ -143,7 +143,7 @@ upload_failed/failed_before_accept
 
 当前`processing_jobs`只是状态记录，本阶段升级为单机可靠队列。
 
-迁移`0032_job_leases`增加：
+迁移`0033_stage26_job_leases`增加（`0032`已用于26.2b OCR route constraint）：
 
 - `dispatch_key`唯一调度键；
 - `available_at`、`max_attempts`；

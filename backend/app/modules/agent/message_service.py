@@ -47,6 +47,7 @@ class AgentMessageService:
             select(VisionObservationRecord).where(
                 VisionObservationRecord.run_id == message.run_id,
                 VisionObservationRecord.status == "completed",
+                VisionObservationRecord.kind.in_(("overview", "focused")),
             ).order_by(VisionObservationRecord.sequence_no)
         )) if message.run_id else []
         payload["vision_observations"] = [

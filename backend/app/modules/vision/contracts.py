@@ -4,6 +4,7 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.exceptions import VisionUnavailableError
 from app.modules.usage.contracts import ModelUsage
 
 
@@ -106,6 +107,23 @@ class VisionTextExtractionResult(BaseModel):
     provider_request_id: str | None = None
 
     model_config = {"arbitrary_types_allowed": True}
+
+
+class VisionTextExtractionConsumedError(VisionUnavailableError):
+    """Provider returned a billable response that failed controlled parsing."""
+
+    def __init__(
+        self,
+        *,
+        usage: ModelUsage,
+        model_name: str,
+        provider_request_id: str | None,
+    ) -> None:
+        super().__init__("OCR-mode 返回内容无法安全解析，请重新上传清晰图片")
+        self.code = "VISION_OCR_INVALID_RESPONSE"
+        self.usage = usage
+        self.model_name = model_name
+        self.provider_request_id = provider_request_id
 
 
 class VisionResult(BaseModel):

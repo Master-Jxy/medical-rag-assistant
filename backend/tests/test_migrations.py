@@ -1257,6 +1257,77 @@ def test_stage26_vision_scope_migrates_and_roundtrips(tmp_path) -> None:
     engine.dispose()
 
 
+def test_stage26_ocr_routes_migrate_map_and_roundtrip(tmp_path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'stage26-ocr-routes.db'}"
+    config = build_alembic_config(database_url)
+    command.upgrade(config, "0031_stage26_vision_scope")
+    engine = build_engine(database_url)
+    legacy_checks = {
+        item["name"]: item.get("sqltext", "")
+        for item in inspect(engine).get_check_constraints("vision_observations")
+    }
+    assert "ocr_mode" not in legacy_checks["ck_vision_observations_route_kind"]
+
+    command.upgrade(config, "0032_stage26_vision_ocr_routes")
+    upgraded_checks = {
+        item["name"]: item.get("sqltext", "")
+        for item in inspect(engine).get_check_constraints("vision_observations")
+    }
+    assert "ocr_mode" in upgraded_checks["ck_vision_observations_route_kind"]
+    now = datetime.now(timezone.utc)
+    route_values = ("overview_only", "ocr_mode", "reupload_required")
+    with engine.begin() as connection:
+        for index, route_kind in enumerate(route_values, start=1):
+            connection.execute(
+                text(
+                    "INSERT INTO vision_observations "
+                    "(id, media_asset_id, user_id, observation_scope_id, run_id, "
+                    "assistant_message_id, kind, focus_instruction_hash, model_name, "
+                    "status, sequence_no, route_kind, quality_status, quality_codes, "
+                    "provider_call_count, created_at) VALUES "
+                    "(:id, :asset_id, 'legacy-user', :scope_id, NULL, :scope_id, "
+                    "'overview', :focus_hash, 'fake-model', 'completed', :sequence_no, "
+                    ":route_kind, 'pass', '[]', 1, :now)"
+                ),
+                {
+                    "id": f"ocr-route-{index}",
+                    "asset_id": f"ocr-asset-{index}",
+                    "scope_id": f"ocr-scope-{index}",
+                    "focus_hash": f"overview-{index}",
+                    "sequence_no": index,
+                    "route_kind": route_kind,
+                    "now": now,
+                },
+            )
+
+    command.downgrade(config, "0031_stage26_vision_scope")
+    with engine.connect() as connection:
+        mapped = connection.execute(
+            text(
+                "SELECT id, route_kind FROM vision_observations "
+                "WHERE id LIKE 'ocr-route-%' ORDER BY id"
+            )
+        ).all()
+    assert mapped == [
+        ("ocr-route-1", "general"),
+        ("ocr-route-2", "report"),
+        ("ocr-route-3", "general"),
+    ]
+    downgraded_checks = {
+        item["name"]: item.get("sqltext", "")
+        for item in inspect(engine).get_check_constraints("vision_observations")
+    }
+    assert "ocr_mode" not in downgraded_checks["ck_vision_observations_route_kind"]
+
+    command.upgrade(config, "0032_stage26_vision_ocr_routes")
+    final_checks = {
+        item["name"]: item.get("sqltext", "")
+        for item in inspect(engine).get_check_constraints("vision_observations")
+    }
+    assert "ocr_mode" in final_checks["ck_vision_observations_route_kind"]
+    engine.dispose()
+
+
 def test_legacy_json_import_creates_idempotent_system_documents(tmp_path) -> None:
     database_url = f"sqlite+pysqlite:///{tmp_path / 'documents.db'}"
     config = build_alembic_config(database_url)

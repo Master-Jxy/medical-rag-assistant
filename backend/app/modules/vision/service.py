@@ -25,6 +25,7 @@ from app.modules.vision.contracts import (
     VisionObservation,
     VisionQualitySummary,
     VisionTextExtraction,
+    VisionTextExtractionConsumedError,
     VisionTextExtractionPort,
     VisionTextExtractionRequest,
 )
@@ -174,13 +175,30 @@ class VisionChatService:
                 usage_group_id=usage_group_id,
             )
             path, _mime, _name = self.media.preview(user_id, asset_id)
-            result = self.ocr_adapter.extract(
-                VisionTextExtractionRequest(
-                    image_bytes=path.read_bytes(),
-                    mime_type=asset.mime_type,
-                    max_output_chars=self.settings.vision_ocr_max_output_chars,
+            try:
+                result = self.ocr_adapter.extract(
+                    VisionTextExtractionRequest(
+                        image_bytes=path.read_bytes(),
+                        mime_type=asset.mime_type,
+                        max_output_chars=self.settings.vision_ocr_max_output_chars,
+                    )
                 )
-            )
+            except VisionTextExtractionConsumedError as exc:
+                provider_usage = exc.usage
+                self.usage_recorder.record(
+                    call_id=f"vision:{record.id}",
+                    request_id=None,
+                    user_id=user_id,
+                    surface=surface,
+                    operation="report_extract",
+                    model_name=exc.model_name,
+                    usage=exc.usage,
+                    input_price_per_million_tokens_cny=self.settings.vision_input_price_per_million_tokens_cny,
+                    output_price_per_million_tokens_cny=self.settings.vision_output_price_per_million_tokens_cny,
+                    usage_group_id=usage_group_id,
+                    status="failed",
+                )
+                raise
             provider_usage = result.usage
             extraction = result.extraction
             self.usage_recorder.record(
