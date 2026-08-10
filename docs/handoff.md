@@ -24,6 +24,13 @@ Stage 26 已完成本地任务26.0。Agent图片草稿现在复用共享附件�
 已上传asset，上一账号状态不会进入下一账号。
 26.0仅使用Fake/静态API浏览器路由，没有真实模型调用、费用、GitHub推送或生产变更。
 
+Stage 26 本地任务26.1也已完成。`/livez`只检查进程，`/readyz`通过应用服务和四个小型
+基础设施探针检查MySQL、Redis、Chroma目录及私有媒体目录；失败为503且只返回稳定代码。
+基础/ACME/HTTPS Nginx均代理root探针，Compose后端健康检查改用`/readyz`。新增三作业
+GitHub CI与统一发布预检；视觉在CI显式Disabled、重试为0，预检不读取`.env`正文且只在
+显式传参时访问健康URL。npm审计发现的3个高危传递依赖已固定到修复版本，复查为0。
+26.1没有真实模型调用、费用、GitHub推送或生产变更。
+
 生产当前状态：
 
 - GitHub `main`：`b8e1719fa3be90b53822e58f07d2179737ae46b6`。
@@ -55,7 +62,7 @@ Stage25 vision focused
 7 passed
 
 backend full suite（从仓库根目录执行）
-621 passed, 1 skipped, 140 warnings
+633 passed, 1 skipped, 140 warnings
 
 frontend full suite
 22 files / 90 tests passed
@@ -78,6 +85,15 @@ impeccable detector: []
 browser: 3 images + 4 lines, A/B draft isolation, no overlap/overflow,
 console 0 error / 0 warning
 
+Stage26.1 focused
+readiness / preflight / deployment: 18 passed
+Alembic temporary roundtrip: 0029 -> 0030 -> 0029 -> 0030 PASS
+Python compile/import: PASS
+Compose base + HTTPS config: PASS
+pip check: PASS
+npm audit: 0 vulnerabilities
+release preflight: PASS 2 / SKIP 5（本地受保护dirty文件边界）
+
 Protected auth SHA-256
 9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0
 ```
@@ -95,11 +111,11 @@ Protected auth SHA-256
 ## 4. 新任务阅读范围
 
 新窗口先完整阅读`AGENTS.md`、本文和`docs/stage26-enterprise-hardening-design.md`。
-26.1只定向读取：
+26.2a只定向读取：
 
-- 现有GitHub Actions、Compose healthcheck、FastAPI health路由与配置
-- `deploy/`发布脚本、部署文档中当前预检与回滚入口
-- 对应健康检查、配置装配与发布脚本测试
+- Stage25 `vision_observations`模型、repository、服务与幂等测试
+- `0030_multimodal_chat_assets`及迁移测试入口
+- 视觉质量字段、观察作用域和额度结算相关Port/Schema
 
 普通观察期不要全文读取历史技术设计、旧发布审计或大型评估JSON。
 
@@ -111,5 +127,5 @@ Protected auth SHA-256
 
 ## 6. 唯一下一任务
 
-**执行26.1：增加CI、`/livez`与依赖感知`/readyz`，并建立统一无副作用发布预检；完成
-自动化、Compose配置和本地黑盒验收后，再进入26.2a。**
+**执行26.2a：增加视觉观察幂等作用域、`0031`迁移与确定性质量规则；完成迁移往返、
+Fake回归和额度/隐私验证后，再进入26.2b。**

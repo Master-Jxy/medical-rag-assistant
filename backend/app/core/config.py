@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     redis_url: SecretStr | None = Field(default=None)
     redis_connect_timeout_seconds: float = Field(default=0.5, gt=0, le=5)
     redis_socket_timeout_seconds: float = Field(default=0.5, gt=0, le=5)
+    readiness_timeout_seconds: float = Field(default=1.0, gt=0, le=3)
     auth_register_rate_limit: int = Field(default=5, gt=0, le=100)
     auth_register_rate_window_seconds: int = Field(default=600, gt=0, le=86400)
     auth_login_rate_limit: int = Field(default=10, gt=0, le=1000)

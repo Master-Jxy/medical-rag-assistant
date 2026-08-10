@@ -83,6 +83,8 @@ docker compose --env-file deploy/.env build
 docker compose --env-file deploy/.env up -d
 docker compose --env-file deploy/.env ps
 curl -fsS http://127.0.0.1/api/v1/health
+curl -fsS http://127.0.0.1/livez
+curl -fsS http://127.0.0.1/readyz
 ```
 
 四个容器都应显示 `healthy`。公网检查：
@@ -91,6 +93,19 @@ curl -fsS http://127.0.0.1/api/v1/health
 http://服务器公网IP/
 http://服务器公网IP/api/v1/health
 ```
+
+发布候选必须先从仓库根目录运行统一无副作用预检；脚本不读取`deploy/.env`正文，默认要求
+Git差异语法和全部跟踪文件扫描通过。生产候选不得使用`--allow-dirty`或`--exclude-path`：
+
+```bash
+python3 backend/scripts/release_preflight.py --repo-root .
+python3 backend/scripts/release_preflight.py --repo-root . \
+  --live-url https://部署标识/livez \
+  --ready-url https://部署标识/readyz
+```
+
+只有当进程环境已经由受控平台注入配置时，才增加`--require-runtime-env`；该检查只报告缺失
+变量名，不输出变量值。任一`FAIL`必须停止发布，`SKIP`必须在发布审计说明原因。
 
 ## 6. 发布新版本
 

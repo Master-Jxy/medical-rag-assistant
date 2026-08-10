@@ -818,7 +818,7 @@
 [`docs/stage26-enterprise-hardening-design.md`](stage26-enterprise-hardening-design.md)。
 
 1. **26.0 `[已完成]`**：Agent草稿改为按`thread_id + submission_id`隔离的共享registry；`message_created`即接管不可变附件快照，历史消息不再与草稿重复。Composer回归三行网格正常文档流，历史图片增加异步代次保护；传入的本地URL只由timeline在替换/删除/清空时释放，Gallery只释放自己创建的预览URL。登录切换、登出和401会统一清空上一账号草稿与未绑定私有asset。多会话带图、失败恢复、旧预览竞态、90项前端回归、SSE、正式构建及1440/1280/1024/390浏览器验收通过；未调用真实模型、未推送或部署。
-2. **26.1 `[待开发]`**：增加CI、livez/readyz和统一发布预检。
+2. **26.1 `[已完成]`**：保留`/api/v1/health`兼容，新增零依赖`/livez`和通过小型Port检查MySQL、Redis、Chroma目录、私有媒体目录的`/readyz`；失败只返回503、依赖名和稳定代码。Compose/Nginx已接入readiness；GitHub CI覆盖后端633项、前端90项、SSE、build、Alembic往返、diff、敏感扫描与依赖审计。统一预检只扫描Git跟踪文件并输出PASS/FAIL/SKIP，不读取`.env`或调用模型；npm已固定3个高危传递依赖到修复版本并达到0 vulnerability。
 3. **26.2 `[待开发]`**：视觉幂等作用域、质量闸门、OCR-mode路由和固定图片评估。
 4. **26.3 `[待开发]`**：把processing_jobs升级为MySQL租约队列并增加独立Worker。
 5. **26.4 `[待开发]`**：建立可执行corpus_v2/eval_v2、覆盖缺口和候选晋级闭环。

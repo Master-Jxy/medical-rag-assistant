@@ -35,3 +35,13 @@ class HealthResponse(BaseModel):
 
     status: Literal["ok"]
     dependencies: HealthDependencies
+
+
+class LivenessResponse(BaseModel):
+    status: Literal["ok"]
+
+
+class ReadinessResponse(BaseModel):
+    status: Literal["ready", "not_ready"]
+    dependencies: dict[str, Literal["ok", "failed"]]
+    failure_codes: list[str]

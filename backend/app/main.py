@@ -15,6 +15,7 @@ from app.api.admin_operations import router as admin_operations_router
 from app.api.super_admin_users import router as super_admin_users_router
 from app.api.conversations import router as conversations_router
 from app.api.documents import router as documents_router
+from app.api.health import probe_router as health_probe_router
 from app.api.health import router as health_router
 from app.api.knowledge_submissions import router as knowledge_submissions_router
 from app.api.profile import router as profile_router
@@ -48,6 +49,7 @@ from app.services.generation_lock_service import GenerationLockService
 from app.services.idempotency_service import IdempotencyService
 from app.services.stream_cancellation_service import StreamCancellationService
 from app.services.protection_observability import ProtectionObservability
+from app.services.health_service import ReadinessService, create_readiness_service
 from app.services.concurrency_limit_service import ConcurrencyLimitService
 from app.services.rate_limit_service import RateLimitService
 from app.services.upload_protection_service import UploadProtectionService
@@ -63,6 +65,7 @@ def create_app(
     settings: Settings | None = None,
     email_sender: EmailSenderPort | None = None,
     email_verification_store: EmailVerificationStorePort | None = None,
+    readiness_service: ReadinessService | None = None,
 ) -> FastAPI:
     """创建 FastAPI 应用，便于以后测试和扩展配置。"""
     current_settings = settings or get_settings()
@@ -73,6 +76,7 @@ def create_app(
             yield
         finally:
             application.state.redis_infrastructure.close()
+            application.state.readiness_service.close()
             close_email_store = getattr(
                 application.state.email_verification_store, "close", None
             )
@@ -130,6 +134,13 @@ def create_app(
             reset_request_id(token)
     application.state.redis_infrastructure = (
         redis_infrastructure or RedisInfrastructure(current_settings)
+    )
+    application.state.readiness_service = (
+        readiness_service
+        or create_readiness_service(
+            current_settings,
+            application.state.redis_infrastructure,
+        )
     )
     application.state.email_verification_store = (
         email_verification_store
@@ -202,6 +213,7 @@ def create_app(
         allow_headers=["*"],
     )
     application.include_router(health_router, prefix="/api/v1")
+    application.include_router(health_probe_router)
     application.include_router(chat_router, prefix="/api/v1")
     application.include_router(conversations_router, prefix="/api/v1")
     application.include_router(documents_router, prefix="/api/v1")

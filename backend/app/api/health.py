@@ -1,17 +1,45 @@
 """健康检查接口。"""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response, status
 
 from app.schemas.health import (
     DependencyHealth,
     HealthDependencies,
     HealthResponse,
+    LivenessResponse,
     ProtectionHealth,
+    ReadinessResponse,
     RedisProtectionHealth,
 )
-from app.services.health_service import HealthService, get_health_service
+from app.services.health_service import (
+    HealthService,
+    ReadinessService,
+    get_health_service,
+    get_readiness_service,
+)
 
 router = APIRouter(tags=["系统状态"])
+probe_router = APIRouter(tags=["系统状态"])
+
+
+@probe_router.get("/livez", response_model=LivenessResponse)
+def liveness_check() -> LivenessResponse:
+    return LivenessResponse(status="ok")
+
+
+@probe_router.get("/readyz", response_model=ReadinessResponse)
+def readiness_check(
+    response: Response,
+    service: ReadinessService = Depends(get_readiness_service),
+) -> ReadinessResponse:
+    result = service.inspect()
+    if not result.ready:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return ReadinessResponse(
+        status="ready" if result.ready else "not_ready",
+        dependencies=result.dependencies,
+        failure_codes=result.failure_codes,
+    )
 
 
 @router.get(

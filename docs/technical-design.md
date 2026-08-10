@@ -2311,3 +2311,37 @@ Both composers use an optional image tray, a full-width one-to-four-line
 textarea and a bottom toolbar. Desktop shell widths are 220px expanded and 76px
 collapsed; the collapse control remains in normal layout flow, while mobile uses
 the existing touch-width drawer.
+
+## Stage 26.1 Delivery Readiness Boundary (2026-08-11)
+
+The compatibility endpoint `/api/v1/health` remains an application-status and
+Redis-protection snapshot; it is not used as dependency-aware readiness. Root
+`/livez` performs no dependency access and only proves that the FastAPI process
+can answer. Root `/readyz` delegates to `ReadinessService`, which composes four
+small `ReadinessProbe` ports implemented by infrastructure adapters:
+
+```text
+GET /readyz
+-> ReadinessService
+-> DatabaseReadinessProbe      (SELECT 1, bounded connect/read/write timeout)
+-> RedisReadinessProbe         (one bounded ping, no retry)
+-> WritableDirectoryProbe      (Chroma volume)
+-> WritableDirectoryProbe      (private media volume)
+```
+
+The probes never initialize Chroma clients, model factories, embeddings,
+rerankers or chat providers. A failure returns HTTP 503 with only dependency
+names, `ok/failed`, and stable codes such as `MYSQL_UNAVAILABLE`; connection
+URLs, credentials, filesystem paths and exception text are not serialized.
+Nginx exposes the two root probes in HTTP bootstrap and HTTPS modes, while the
+backend Compose healthcheck uses `/readyz` so downstream web startup requires
+actual local dependency readiness.
+
+`.github/workflows/ci.yml` is the no-cost release defense: full backend tests,
+frontend tests, SSE parser, production build, Alembic 0029/0030 roundtrip,
+`git diff --check`, tracked-file secret scanning, Python dependency consistency
+and npm audit. Vision is explicitly disabled with automatic retries fixed at
+zero. `backend/scripts/release_preflight.py` is the shared operator entry point;
+it emits PASS/FAIL/SKIP, scans only Git-tracked files, never loads `.env`, and
+only checks live endpoints or injected environment variable names when the
+operator explicitly requests those gates.
