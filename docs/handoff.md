@@ -31,6 +31,16 @@ GitHub CI与统一发布预检；视觉在CI显式Disabled、重试为0，预检
 显式传参时访问健康URL。npm审计发现的3个高危传递依赖已固定到修复版本，复查为0。
 26.1没有真实模型调用、费用、GitHub推送或生产变更。
 
+Stage 26 本地任务26.2a已完成。迁移`0031_stage26_vision_scope`为历史观察回填非空
+`observation_scope_id`和`focus_instruction_hash`，RAG以assistant message、Agent以run作为
+观察作用域；新唯一键不再依赖可空外键。视觉repository使用唯一键原子claim，并在MySQL
+通过媒体资产行锁串行化每图调用预算；重复并发请求只由一个所有者调用供应商，其余请求
+复用终态，失败或停止的相同请求不会自动重试。观察记录增加`route_kind`、
+`quality_status`、`quality_codes`和`provider_call_count`，公开`VisionQualitySummary`只包含
+确定性质量结论，不保存隐藏推理、用户问题或OCR正文。质量闸门覆盖模糊、裁切、方向、
+结构覆盖、报告文字和测量上下文规则。26.2a只运行Fake/本地测试，没有真实模型费用、
+GitHub推送或生产变更。
+
 生产当前状态：
 
 - GitHub `main`：`b8e1719fa3be90b53822e58f07d2179737ae46b6`。
@@ -62,7 +72,7 @@ Stage25 vision focused
 7 passed
 
 backend full suite（从仓库根目录执行）
-633 passed, 1 skipped, 140 warnings
+637 passed, 1 skipped
 
 frontend full suite
 22 files / 90 tests passed
@@ -94,6 +104,13 @@ pip check: PASS
 npm audit: 0 vulnerabilities
 release preflight: PASS 2 / SKIP 5（本地受保护dirty文件边界）
 
+Stage26.2a focused
+vision scope / quality / concurrency: 9 passed
+Stage25 multimodal + migration regression: 34 passed
+Alembic temporary roundtrip: 0030 -> 0031 -> 0030 -> 0031 PASS
+backend full suite: 637 passed, 1 skipped
+Python compile/import: PASS
+
 Protected auth SHA-256
 9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0
 ```
@@ -111,11 +128,12 @@ Protected auth SHA-256
 ## 4. 新任务阅读范围
 
 新窗口先完整阅读`AGENTS.md`、本文和`docs/stage26-enterprise-hardening-design.md`。
-26.2a只定向读取：
+26.2b只定向读取：
 
-- Stage25 `vision_observations`模型、repository、服务与幂等测试
-- `0030_multimodal_chat_assets`及迁移测试入口
-- 视觉质量字段、观察作用域和额度结算相关Port/Schema
+- Stage26.2a视觉repository、质量闸门、观察作用域和调用预算
+- 现有聊天`VisionChatPort`、DashScope视觉适配器与Fake/Disabled装配
+- 额度、用量、RAG/Agent图片入口和固定评估资产约束
+- Stage24文档入库OCR边界只作对照，不复用其Port或业务服务
 
 普通观察期不要全文读取历史技术设计、旧发布审计或大型评估JSON。
 
@@ -127,5 +145,5 @@ Protected auth SHA-256
 
 ## 6. 唯一下一任务
 
-**执行26.2a：增加视觉观察幂等作用域、`0031`迁移与确定性质量规则；完成迁移往返、
-Fake回归和额度/隐私验证后，再进入26.2b。**
+**执行26.2b：增加聊天专用`VisionTextExtractionPort`、OCR-mode适配器和视觉路由，提交
+固定无隐私图片集与可执行评估；完成幂等、调用预算、额度和RAG/Agent回归后，再进入26.3。**
