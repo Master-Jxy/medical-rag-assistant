@@ -82,6 +82,16 @@ def test_compose_exposes_bounded_vision_settings() -> None:
         assert expected in compose_text
 
 
+def test_empty_optional_vision_prices_are_normalized() -> None:
+    settings = Settings(
+        _env_file=None,
+        vision_input_price_per_million_tokens_cny="",
+        vision_output_price_per_million_tokens_cny="  ",
+    )
+    assert settings.vision_input_price_per_million_tokens_cny is None
+    assert settings.vision_output_price_per_million_tokens_cny is None
+
+
 def test_overview_is_idempotent_and_settles_usage(tmp_path) -> None:
     engine, factory, user_id, asset_id, settings = setup(tmp_path)
     adapter = SequenceVisionAdapter(["overview"])

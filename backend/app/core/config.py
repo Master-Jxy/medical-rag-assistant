@@ -282,10 +282,12 @@ class Settings(BaseSettings):
     @field_validator(
         "chat_input_price_per_million_tokens_cny",
         "chat_output_price_per_million_tokens_cny",
+        "vision_input_price_per_million_tokens_cny",
+        "vision_output_price_per_million_tokens_cny",
         mode="before",
     )
     @classmethod
-    def normalize_optional_chat_price(cls, value: object) -> object:
+    def normalize_optional_model_price(cls, value: object) -> object:
         if isinstance(value, str):
             cleaned = value.strip()
             return cleaned or None
