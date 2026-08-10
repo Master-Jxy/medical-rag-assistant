@@ -1,14 +1,15 @@
-# Stage 25 多模态聊天发布候选审计
+# Stage 25 多模态聊天生产发布审计
 
 > 日期：2026-08-10
-> 范围：Stage 25.1～25.8 本地开发与发布候选
-> 结论：本地候选与真实视觉最小验收 PASS；push 和生产发布待总控执行
+> 范围：Stage 25.1～25.8 开发、验证、生产发布与真实视觉烟测
+> 结论：PASS；GitHub 与生产均为 `95f856d`，生产迁移为 `0030`
 
 ## 1. 交付结论
 
 Stage 25 已在模块化单体边界内完成。RAG 与 Agent 共享私有媒体资产和聊天视觉 Port，
 但继续使用独立路由、应用用例、SSE 和页面状态；Stage 24 文档入库视觉 Port 未被复用。
-默认视觉开关关闭，自动化只使用 Fake/Disabled 适配器。本审计不构成生产发布证明。
+自动化继续使用 Fake/Disabled 适配器；生产显式启用 DashScope
+`qwen3-vl-plus`，自动重试固定为0。本审计包含生产发布证明。
 
 本地提交：
 
@@ -21,8 +22,10 @@ Stage 25 已在模块化单体边界内完成。RAG 与 Agent 共享私有媒体
 | `d6d86b9` | 共享附件输入器与侧栏修复 | PASS |
 | `265f111` | 会话附件生命周期 | PASS |
 | `364ecd2` | 清理和旧回归边界加固 | PASS |
+| `9a2f448`～`5511418` | 真实模型预检、Compose视觉配置与价格归一化 | PASS |
+| `95f856d` | 兼容DashScope对象型字段漂移并增加回归测试 | PASS |
 
-上述提交均只在本地 `main`，未 push。
+上述提交均已推送 GitHub `main` 并快进部署到生产。
 
 ## 2. 功能与安全矩阵
 
@@ -34,7 +37,7 @@ Stage 25 已在模块化单体边界内完成。RAG 与 Agent 共享私有媒体
 | 会话/线程删除和孤儿清理 | PASS | RAG、Agent和cleanup测试 |
 | 0030 三表与回滚 | PASS | 0029→0030→0029→0030临时SQLite |
 | `VisionChatPort` 与结构化观察 | PASS | Fake/Disabled及契约测试 |
-| DashScope真实适配器 | PASS | `qwen3-vl-plus` 真实调用返回结构化观察；旧别名403后已修正 |
+| DashScope真实适配器 | PASS | `qwen3-vl-plus` 生产真实调用返回结构化观察、actual Token和请求ID；对象型字段漂移已归一化 |
 | 视觉用量与额度 | PASS | actual结算、失败释放、幂等不重复计费 |
 | RAG纯图片、观察、检索、SSE、历史 | PASS | Stage25 RAG focused tests |
 | Agent overview/inspect与知识库继续调用 | PASS | Stage25 Agent focused tests |
@@ -49,7 +52,7 @@ Stage 25 已在模块化单体边界内完成。RAG 与 Agent 共享私有媒体
 
 ```text
 backend\.venv\Scripts\python.exe -m pytest -q backend\tests
-618 passed, 1 skipped, 140 warnings
+621 passed, 1 skipped, 140 warnings
 
 D:\Nodejs\npm.cmd --prefix frontend test
 20 files, 82 tests passed
@@ -79,9 +82,8 @@ protected auth SHA256
 9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0
 ```
 
-全量后端首次运行出现11个Stage25契约同步分歧：旧Agent工具白名单断言、演示账号维护
-未登记两张新增用户外键表、旧RAG幂等测试替身缺少附件参数。修复后定向35/35、第二次
-全量所有已执行用例通过：618 passed，另有1项既有skip。
+全量后端最终从仓库根目录执行通过：621 passed，另有1项既有skip。供应商格式漂移
+回归覆盖Markdown JSON围栏、单字符串列表字段、对象型`objects`和数值测量字段。
 
 ## 4. 浏览器验收
 
@@ -116,13 +118,24 @@ protected auth SHA256
 | 动作 | 状态 | 总控要求 |
 |---|---|---|
 | 真实视觉最小验收 | PASS | `qwen3-vl-plus` 返回结构化观察；请求ID存在 |
-| Git push | SKIP | 复核提交范围与受保护hash后执行 |
-| 生产备份 | SKIP | MySQL、app_data/media、Chroma、Redis按部署文档验证 |
-| 生产0030迁移 | SKIP | 先备份，核验当前0029，再upgrade |
-| backend/web重建 | SKIP | 不重建MySQL/Redis数据卷 |
-| HTTP/HTTPS/健康/SSE验收 | SKIP | 部署后执行并记录资产哈希 |
-| 回滚验证 | SKIP | 保留应用提交、0029 downgrade和文件备份恢复路径 |
+| Git push | PASS | GitHub `main` 为 `95f856d` |
+| 生产备份 | PASS | `backup-20260810T003429Z`，7项SHA-256全部通过 |
+| 生产0030迁移 | PASS | `0030_multimodal_chat_assets (head)` |
+| backend/web发布 | PASS | Stage25全量先发布；格式兼容修复仅无依赖重建backend，数据卷未改 |
+| HTTP/HTTPS/健康/SSE验收 | PASS | HTTP 308；HTTPS首页与健康接口200；生产静态资产匹配本地候选 |
+| 回滚准备 | PASS | 保留外置完整备份、前一提交`5511418`及现有恢复脚本；未执行破坏性恢复 |
 
-## 7. 唯一下一任务
+## 7. 生产发布证据
 
-**由总控推送 Stage 25，完成生产备份、0030迁移、容器重建和线上验收**
+- 生产提交：`95f856d0a470bf9ae3ba5345bdc1b803b97e1c98`，工作区干净。
+- 备份：`/home/deploy/medical-rag-backups/backup-20260810T003429Z`，SHA-256校验通过。
+- 迁移：`0030_multimodal_chat_assets (head)`。
+- 容器：backend、web、mysql、redis均为healthy。
+- 网络：HTTP 308；HTTPS首页和`/api/v1/health`均为200。
+- 静态资产：`index-CPEwi2bu.js`、`index-Xv-mGLQX.css`。
+- 视觉配置：enabled、DashScope、`qwen3-vl-plus`、automatic retries 0。
+- 生产无持久化烟测：`production_vision=PASS`，311输入Token、155输出Token、466总Token，measurement为actual，请求ID存在；近15分钟后端错误标记为0。
+
+## 8. 唯一下一任务
+
+**进入Stage25观察期：只收集真实用户图片失败率、视觉Token成本和前端可用性反馈；发现明确回归再开定向修复，否则等待Stage26产品决策。**
