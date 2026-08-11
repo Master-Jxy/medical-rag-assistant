@@ -30,7 +30,7 @@ from app.modules.knowledge.metadata_suggestions import (
 )
 from app.modules.knowledge.review_service import KnowledgeReviewService
 from tests.auth_helpers import TEST_TOKEN_SERVICE, auth_headers, create_test_user
-from tests.test_admin_reviews_api import add_submission
+from tests.test_admin_reviews_api import add_submission, run_publish_worker
 from tests.test_document_service import FakeVectorStore
 
 
@@ -197,7 +197,9 @@ def test_get_reviews_is_read_only_and_generate_is_explicit_idempotent(tmp_path):
                 f"/api/v1/admin/reviews/{submission_id}/approve",
                 headers=auth_headers(admin.id),
             )
-            assert approved.status_code == 200
+            assert approved.status_code == 202
+            assert approved.json()["job_id"]
+            assert run_publish_worker(factory, settings, vectors) == "completed"
 
         with factory() as session:
             submission = session.get(KnowledgeSubmission, submission_id)
@@ -303,7 +305,9 @@ def test_admin_can_edit_accept_and_publish_confirmed_metadata(tmp_path):
                 f"/api/v1/admin/reviews/{submission_id}/approve",
                 headers=auth_headers(admin.id),
             )
-            assert approved.status_code == 200
+            assert approved.status_code == 202
+            assert approved.json()["job_id"]
+            assert run_publish_worker(factory, settings, vectors) == "completed"
 
         with factory() as session:
             submission = session.get(KnowledgeSubmission, submission_id)
@@ -393,7 +397,9 @@ def test_suggestion_failure_and_evidence_limits_do_not_block_review(tmp_path):
                 f"/api/v1/admin/reviews/{submission_id}/approve",
                 headers=auth_headers(admin.id),
             )
-            assert approved.status_code == 200
+            assert approved.status_code == 202
+            assert approved.json()["job_id"]
+            assert run_publish_worker(factory, settings, _vectors) == "completed"
     finally:
         teardown(engine)
 

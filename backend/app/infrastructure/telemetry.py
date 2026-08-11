@@ -14,36 +14,6 @@ from app.ports.telemetry import TelemetryEvent, TelemetryMetricsSnapshot
 logger = logging.getLogger("medical_rag.telemetry")
 
 
-def render_prometheus(snapshot: TelemetryMetricsSnapshot) -> str:
-    """Render only bounded, low-cardinality process metrics."""
-
-    lines = [
-        "# TYPE medical_rag_http_requests_total counter",
-        f'medical_rag_http_requests_total{{result="success"}} {snapshot.request_success}',
-        f'medical_rag_http_requests_total{{result="failure"}} {snapshot.request_failure}',
-        "# TYPE medical_rag_http_request_duration_ms gauge",
-        f"medical_rag_http_request_duration_ms {snapshot.average_duration_ms or 0}",
-        f"medical_rag_http_request_p50_duration_ms {snapshot.request_p50_duration_ms or 0}",
-        f"medical_rag_http_request_p95_duration_ms {snapshot.request_p95_duration_ms or 0}",
-        "# TYPE medical_rag_model_input_tokens_total counter",
-        f"medical_rag_model_input_tokens_total {snapshot.input_tokens}",
-        "# TYPE medical_rag_model_output_tokens_total counter",
-        f"medical_rag_model_output_tokens_total {snapshot.output_tokens}",
-        "# TYPE medical_rag_rate_limit_total counter",
-        f"medical_rag_rate_limit_total {snapshot.rate_limit_count}",
-        "# TYPE medical_rag_redis_degradation_total counter",
-        f"medical_rag_redis_degradation_total {snapshot.redis_degradation_count}",
-        "# TYPE medical_rag_user_stop_total counter",
-        f"medical_rag_user_stop_total {snapshot.user_stop_count}",
-    ]
-    for stage, value in sorted(snapshot.stage_average_duration_ms.items()):
-        safe_stage = stage.replace("-", "_")
-        lines.append(
-            f'medical_rag_stage_duration_ms{{stage="{safe_stage}"}} {value or 0}'
-        )
-    return "\n".join(lines) + "\n"
-
-
 class JsonLoggingTelemetryAdapter:
     def emit(self, event: TelemetryEvent) -> None:
         # Alembic 等日志配置可能禁用既有 logger；显式适配器应保持可用。

@@ -23,7 +23,7 @@ FROZEN_ARTIFACTS = (
     ("baseline", "reports/current_baseline_v1.json", "598952a8772fde26eac428cdad0335f889241f61d12b9c55bfabed5329a26ed5"),
     ("human_review", "reports/human_review_capture_v1.json", "db4a9afc6ed4404a17512dcf5ac39017bf3fb64cf6b8da06dc874c416b6f0a84"),
     ("rag_v1_2_comparison", "reports/rag_v1_2_real_comparison_v1.json", "f54e86a1b39518d998e861c101b225b160188d373488bca4fa821913c09e2893"),
-    ("ranking_mock", "reports/retrieval_ranking_mock_v1.json", "2ca18667421937937247ebd40d502fda9d07e884a026e1795017d86e9d12f773"),
+    ("ranking_mock", "reports/retrieval_ranking_mock_v1.json", "198ca86b092cdc956ff216693899827eb5c4eb9485ba33e787b78b5180b2c5df"),
 )
 INVALID_ATTEMPT_PATH = "reports/retrieval_ranking_real_v1_invalid_vector_port_20260721.json"
 INVALID_ATTEMPT_SHA256 = "e2396f97ca5f5f6e89c2bfb9c6e53a5e9ec064ce2135371c928a4028836acd5c"

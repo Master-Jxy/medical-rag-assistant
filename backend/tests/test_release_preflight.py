@@ -48,8 +48,9 @@ def test_runtime_environment_reports_names_without_values(monkeypatch) -> None:
 
 def test_repository_preflight_outputs_pass_fail_skip_contract(tmp_path: Path) -> None:
     files = {
-        "compose.yaml": b"services:\n  backend:\n    healthcheck: http://127.0.0.1:8000/readyz\nvolumes:\n  mysql_data:\n  chroma_data:\n",
+        "compose.yaml": b"services:\n  backend:\n    healthcheck: http://127.0.0.1:8000/readyz\n  worker:\n    image: worker\nvolumes:\n  mysql_data:\n  chroma_data:\n",
         "deploy/compose.https.yaml": b"services:\n  web: {}\n",
+        "deploy/post_release_check.sh": b"#!/usr/bin/env bash\n",
         "backend/alembic.ini": b"[alembic]\n",
         "backend/requirements.txt": b"fastapi==0.139.0\n",
         "frontend/package-lock.json": b"{}\n",

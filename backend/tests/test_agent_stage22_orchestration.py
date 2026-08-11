@@ -69,7 +69,9 @@ def test_mode_policies_enforce_distinct_roles_tools_and_medical_boundaries() -> 
     knowledge = get_mode_policy("knowledge")
 
     assert general.primary_specialist == "general_specialist"
-    assert general.allowed_tools == frozenset({"observe_image", "inspect_image"})
+    assert general.allowed_tools == frozenset(
+        {"observe_image", "inspect_image", "extract_measurements"}
+    )
     assert "search_knowledge" in patient.allowed_tools
     assert "generate_learning_report" not in patient.allowed_tools
     assert "generate_learning_report" in clinician.allowed_tools
@@ -261,7 +263,7 @@ def test_model_call_budget_stops_before_fifth_provider_call(monkeypatch) -> None
 
     monkeypatch.setattr(
         "app.infrastructure.agent_model.create_chat_model",
-        lambda settings: FixedModel(),
+        lambda settings, **kwargs: FixedModel(),
     )
     budget = AgentModelCallBudget(max_calls=4)
     model = LangChainAgentModel(Settings(_env_file=None), call_budget=budget)

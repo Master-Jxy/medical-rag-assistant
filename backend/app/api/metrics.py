@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import PlainTextResponse
 
 from app.core.config import Settings, get_settings
-from app.infrastructure.telemetry import render_prometheus
+from app.ports.telemetry import render_prometheus
 
 router = APIRouter(tags=["运维指标"])
 
