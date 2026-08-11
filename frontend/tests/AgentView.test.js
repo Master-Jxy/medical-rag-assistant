@@ -787,6 +787,50 @@ describe('Codex式资料Agent工作台', () => {
     wrapper.unmount()
   })
 
+  it('视觉失败发生在message_created前但消息已持久化时清除草稿并保留历史附件', async () => {
+    let persisted = false
+    agentApi.listAgentMessages.mockImplementation(async () => ({
+      items: persisted ? [{
+        ...messages[0],
+        id: 'persisted-agent-user',
+        content: '分析失败图片',
+        metadata: { attachment_ids: ['asset-agent-persisted'] },
+        attachments: [{
+          id: 'agent-attachment',
+          media_asset_id: 'asset-agent-persisted',
+          original_name: 'agent.png',
+        }],
+      }, {
+        ...messages[1],
+        id: 'persisted-agent-assistant',
+        content: '',
+        status: 'failed',
+        run_id: null,
+      }] : [],
+    }))
+    mediaApi.uploadMediaAsset.mockResolvedValue({ id: 'asset-agent-persisted' })
+    mediaApi.getMediaPreview.mockResolvedValue(new Blob(['preview'], { type: 'image/png' }))
+    agentApi.streamAgentMessage.mockImplementation(async () => {
+      persisted = true
+      throw new Error('Agent会话运行失败，请重试。')
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+    const file = new File([new Uint8Array(8)], 'agent.png', { type: 'image/png' })
+    const input = wrapper.get('input[type="file"]')
+    Object.defineProperty(input.element, 'files', { configurable: true, value: [file] })
+    await input.trigger('change')
+    await wrapper.get('textarea').setValue('分析失败图片')
+    await wrapper.get('form.composer').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.findAll('.attachment-draft-tray img')).toHaveLength(0)
+    expect(wrapper.findAll('.private-attachment-gallery')).toHaveLength(1)
+    wrapper.unmount()
+    expect(mediaApi.deleteMediaAsset).not.toHaveBeenCalled()
+  })
+
   it('服务端has_unread可在刷新后恢复，模式可更新并用于新建会话', async () => {
     agentApi.listAgentThreads.mockResolvedValue({
       items: [{ ...thread }, { ...secondThread, has_unread: true }],

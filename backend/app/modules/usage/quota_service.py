@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from hashlib import sha256
 from typing import Protocol
 from uuid import uuid4
 
@@ -24,6 +25,18 @@ from app.modules.usage.models import (
     UserQuotaAssignment,
 )
 from app.modules.usage.query_service import UsageQueryService
+
+
+IDEMPOTENCY_KEY_MAX_LENGTH = 128
+
+
+def normalize_idempotency_key(value: str) -> str:
+    """Keep quota idempotency keys within the persisted MySQL contract."""
+    if len(value) <= IDEMPOTENCY_KEY_MAX_LENGTH:
+        return value
+    digest = sha256(value.encode("utf-8")).hexdigest()
+    prefix_length = IDEMPOTENCY_KEY_MAX_LENGTH - len(digest) - 1
+    return f"{value[:prefix_length]}:{digest}"
 
 
 class QuotaExceededError(AppError):
@@ -131,6 +144,7 @@ class QuotaApplicationService:
                 estimated_output_tokens: int | None = None,
                 input_price_per_million_tokens_cny: float | None = None,
                 output_price_per_million_tokens_cny: float | None = None) -> QuotaReservation:
+        idempotency_key = normalize_idempotency_key(idempotency_key)
         self.reconcile_expired(user_id=user_id, limit=20)
         existing = self.session.scalar(select(QuotaReservation).where(
             QuotaReservation.idempotency_key == idempotency_key))

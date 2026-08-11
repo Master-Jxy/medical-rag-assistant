@@ -100,10 +100,10 @@ export function useAgentDraftRegistry() {
     return true
   }
 
-  function acceptSubmission(threadKey, submissionId) {
+  function acceptSubmission(threadKey, submissionId, { preserveLocalUrls = true } = {}) {
     const state = states.get(threadKey)
     if (!state || state.submissionId !== submissionId) return false
-    controllerFor(threadKey).completeSend({ preserveLocalUrls: true })
+    controllerFor(threadKey).completeSend({ preserveLocalUrls })
     replaceWithEmpty(threadKey)
     return true
   }

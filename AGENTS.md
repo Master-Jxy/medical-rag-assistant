@@ -171,6 +171,11 @@ API 路由 -> 应用服务 -> Repository / Infrastructure -> MySQL / Chroma / Re
   数据库明文字段或Git。
 - 测试优先使用假模型和假 Embedding；只有明确需要真实验证时才调用 DashScope。
 - 禁止无限重试、循环模型调用和没有上限的 Agent 工具循环。
+- 当前 Windows 主机的 C 盘空间有限。测试临时目录、pytest `basetemp`、构建缓存、
+  浏览器验收资产和运行日志优先放到 `D:\软件大合集\软件缓存\codex-test-temp\medical-rag-assistant`；
+  运行完整测试前显式设置 `TEMP`、`TMP` 并为 pytest 指定 D 盘 `--basetemp`。除操作系统或
+  工具强制使用外，不在 C 盘生成大体积临时文件；完整测试前后检查 C 盘剩余空间并清理本次
+  任务产生的临时目录，禁止清理用户个人文件或其他应用缓存。
 
 ## 8. 分级验证要求
 

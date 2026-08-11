@@ -15,9 +15,15 @@ const api = vi.hoisted(() => ({
   streamConversation: vi.fn(),
 }))
 const modelApi = vi.hoisted(() => ({ getModelCatalog: vi.fn() }))
+const mediaApi = vi.hoisted(() => ({
+  deleteMediaAsset: vi.fn(() => Promise.resolve()),
+  getMediaPreview: vi.fn(),
+  uploadMediaAsset: vi.fn(),
+}))
 
 vi.mock('../src/api/conversations.js', () => api)
 vi.mock('../src/api/models.js', () => modelApi)
+vi.mock('../src/api/media.js', () => mediaApi)
 
 const summaries = [
   { id: 'conversation-1', title: '第一段会话', message_count: 2, run_status: 'idle', has_unread: false, last_read_sequence: 0 },
@@ -81,6 +87,7 @@ beforeEach(() => {
     conversation_id: id,
     last_read_sequence: lastReadSequence,
   }))
+  mediaApi.getMediaPreview.mockResolvedValue(new Blob(['preview'], { type: 'image/png' }))
 })
 
 describe('ChatView 会话交互', () => {
@@ -203,6 +210,51 @@ describe('ChatView 会话交互', () => {
     )
     expect(wrapper.findAll('[data-testid="message-bubble"]')).toHaveLength(bubbleCount + 1)
     expect(wrapper.text()).toContain('不要重复生成')
+  })
+
+  it('带图请求在HTTP错误前已持久化时由历史消息接管附件且不重复清理', async () => {
+    let persisted = false
+    mediaApi.uploadMediaAsset.mockResolvedValue({ id: 'asset-persisted' })
+    api.streamConversation.mockImplementation(async () => {
+      persisted = true
+      const error = new Error('请求失败（HTTP 500）')
+      error.userMessage = '请求失败（HTTP 500）'
+      throw error
+    })
+    api.getConversation.mockImplementation(async (id) => {
+      if (id !== 'conversation-1' || !persisted) return structuredClone(details[id])
+      return {
+        id,
+        messages: [{
+          id: 'persisted-user', sequence: 3, role: 'user', content: '分析图片',
+          status: 'completed', sources: [],
+          attachments: [{
+            id: 'attachment-1', media_asset_id: 'asset-persisted',
+            original_name: 'persisted.png', mime_type: 'image/png', byte_size: 8,
+          }],
+        }, {
+          id: 'persisted-assistant', sequence: 4, role: 'assistant', content: '',
+          status: 'failed', sources: [], attachments: [],
+        }],
+      }
+    })
+
+    const wrapper = mountChatView()
+    await flushPromises()
+    const file = new File([new Uint8Array(8)], 'persisted.png', { type: 'image/png' })
+    const input = wrapper.get('input[type="file"]')
+    Object.defineProperty(input.element, 'files', { configurable: true, value: [file] })
+    await input.trigger('change')
+    await wrapper.get('textarea').setValue('分析图片')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.findAll('.attachment-draft-tray img')).toHaveLength(0)
+    expect(wrapper.findAll('.private-attachment-gallery')).toHaveLength(1)
+    expect(wrapper.findAll('[data-testid="message-bubble"]')
+      .filter((item) => item.text().includes('分析图片'))).toHaveLength(1)
+    wrapper.unmount()
+    expect(mediaApi.deleteMediaAsset).not.toHaveBeenCalled()
   })
 
   it('等待后端确认停止并收到 stopped 事件后才恢复发送', async () => {

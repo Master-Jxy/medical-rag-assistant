@@ -109,8 +109,25 @@ function mapStoredMessage(message) {
     requestId: message.request_id,
     status: message.status,
     usage: message.usage || null,
+    attachments: message.attachments || [],
+    vision_observations: message.vision_observations || [],
     feedbackRating: null,
   }
+}
+
+function messageAttachmentIds(message) {
+  return new Set((message.attachments || []).map(
+    (attachment) => attachment.media_asset_id || attachment.id,
+  ).filter(Boolean))
+}
+
+function attachmentsWerePersisted(conversation, attachmentIds) {
+  if (!attachmentIds.length) return false
+  return (conversation?.messages || []).some((message) => {
+    if (message.role !== 'user') return false
+    const persisted = messageAttachmentIds(message)
+    return attachmentIds.every((assetId) => persisted.has(assetId))
+  })
 }
 
 function findConversation(conversationId) {
@@ -233,10 +250,14 @@ async function loadConversation(
   messageCache.set(conversationId, merged.length ? merged : [{ ...WELCOME_MESSAGE }])
   const liveEntry = streamRegistry.get(conversationId)
   if (liveEntry?.messages) {
-    for (const stored of rows) {
-      const live = liveEntry.messages.find((item) => item.id === stored.id)
-      if (live && (stored.content || ['completed', 'failed', 'stopped'].includes(stored.status))) {
-        Object.assign(live, stored)
+    if (!streamRegistry.isRunning(conversationId)) {
+      liveEntry.messages = merged.length ? merged : [{ ...WELCOME_MESSAGE }]
+    } else {
+      for (const stored of rows) {
+        const live = liveEntry.messages.find((item) => item.id === stored.id)
+        if (live && (stored.content || ['completed', 'failed', 'stopped'].includes(stored.status))) {
+          Object.assign(live, stored)
+        }
       }
     }
   }
@@ -454,6 +475,10 @@ async function sendQuestion() {
       const index = conversationMessages.findIndex((message) => message.id === assistantMessage.id)
       if (index >= 0) conversationMessages.splice(index, 1)
     }
+    if (!terminalReceived && attachmentIds.length) {
+      const index = conversationMessages.indexOf(userMessage)
+      if (index >= 0) conversationMessages.splice(index, 1)
+    }
   } finally {
     assistantMessage.streaming = false
     if (entry.phase === 'settling') entry.phase = assistantMessage.status
@@ -466,8 +491,9 @@ async function sendQuestion() {
         // 回答已完成时，会话列表刷新失败不影响当前消息展示。
       }
       const isCurrent = activeConversationId.value === conversationId
+      let persistedConversation = null
       try {
-        await loadConversation(conversationId, {
+        persistedConversation = await loadConversation(conversationId, {
           markAsRead: isCurrent,
           preserveCache: true,
         })
@@ -481,7 +507,9 @@ async function sendQuestion() {
       } else {
         streamRegistry.markUnread(conversationId)
       }
-      if (requestAccepted) attachmentDraft.completeSend({ preserveLocalUrls: true })
+      if (requestAccepted || attachmentsWerePersisted(persistedConversation, attachmentIds)) {
+        attachmentDraft.completeSend()
+      }
     }
   }
 }

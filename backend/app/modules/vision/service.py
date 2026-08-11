@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime, timezone
+from hashlib import sha256
 from time import monotonic, sleep
 
 from sqlalchemy.orm import Session
@@ -70,6 +71,13 @@ def build_vision_text_extraction_adapter(
 
 
 OCR_MODE_HASH = f"ocr:{OCR_PROMPT_VERSION}"
+
+
+def build_vision_quota_key(operation: str, *identity_parts: str) -> str:
+    """Build a readable, fixed-length key for one logical vision operation."""
+    identity = "\x1f".join(identity_parts)
+    digest = sha256(identity.encode("utf-8")).hexdigest()
+    return f"vision:{operation}:{digest}"
 
 
 class VisionChatService:
@@ -167,9 +175,12 @@ class VisionChatService:
         reservation = None
         quota_finalized = False
         provider_usage = None
-        quota_key = (
-            f"vision:{user_id}:{asset_id}:{observation_scope_id}:"
-            f"report_extract:{OCR_MODE_HASH}"
+        quota_key = build_vision_quota_key(
+            "report_extract",
+            user_id,
+            asset_id,
+            observation_scope_id,
+            OCR_MODE_HASH,
         )
         try:
             reservation = self.quota_gate.reserve(
@@ -384,9 +395,12 @@ class VisionChatService:
         reservation = None
         quota_finalized = False
         provider_usage = None
-        quota_key = (
-            f"vision:{user_id}:{asset_id}:{observation_scope_id}:"
-            f"{kind}:{requested_hash}"
+        quota_key = build_vision_quota_key(
+            kind,
+            user_id,
+            asset_id,
+            observation_scope_id,
+            requested_hash,
         )
         try:
             reservation = self.quota_gate.reserve(

@@ -37,6 +37,24 @@ const ASSISTANT_MODES = [
   { value: 'knowledge', label: '知识库助手' },
 ]
 
+function messageAttachmentIds(message) {
+  return new Set([
+    ...(message.attachments || []).map(
+      (attachment) => attachment.media_asset_id || attachment.id,
+    ),
+    ...(message.metadata?.attachment_ids || []),
+  ].filter(Boolean))
+}
+
+function submissionWasPersisted(threadId, attachmentIds) {
+  if (!attachmentIds.length) return false
+  return (threadState.messageCache.get(threadId) || []).some((message) => {
+    if (message.role !== 'user') return false
+    const persisted = messageAttachmentIds(message)
+    return attachmentIds.every((assetId) => persisted.has(assetId))
+  })
+}
+
 async function focusComposer() {
   await nextTick()
   composer.value?.focus()
@@ -279,7 +297,15 @@ async function send(submission) {
       submission,
     )
   } catch (error) {
-    drafts.failSubmission(submissionThreadKey, submission.submissionId)
+    if (submissionWasPersisted(submissionThreadKey, submission.attachmentIds)) {
+      drafts.acceptSubmission(
+        submissionThreadKey,
+        submission.submissionId,
+        { preserveLocalUrls: false },
+      )
+    } else {
+      drafts.failSubmission(submissionThreadKey, submission.submissionId)
+    }
     errorMessage.value = getApiErrorMessage(error)
   }
 }
