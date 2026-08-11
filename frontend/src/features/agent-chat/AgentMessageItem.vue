@@ -52,7 +52,11 @@ const usage = computed(() => props.message.usage || props.live?.usage || null)
     <div class="avatar">{{ message.role === 'user' ? '你' : 'M' }}</div>
     <div class="message-body">
       <span class="role-name">{{ message.role === 'user' ? '我的问题' : 'Agent' }}</span>
-      <PrivateAttachmentGallery v-if="message.attachments?.length" :attachments="message.attachments" />
+      <PrivateAttachmentGallery
+        v-if="message.attachments?.length"
+        :attachments="message.attachments"
+        :align="message.role === 'user' ? 'end' : 'start'"
+      />
 
       <AgentRunProgress
         v-if="isAssistant && (plan.length || steps.length || run || isActive)"

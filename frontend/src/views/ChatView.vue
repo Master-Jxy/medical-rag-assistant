@@ -672,7 +672,11 @@ onBeforeUnmount(() => {
             <div class="avatar">{{ message.role === 'user' ? '你' : 'M' }}</div>
             <div class="message-body">
               <span class="role-name">{{ message.role === 'user' ? '我的问题' : '知识库助手' }}</span>
-              <PrivateAttachmentGallery v-if="message.attachments?.length" :attachments="message.attachments" />
+              <PrivateAttachmentGallery
+                v-if="message.attachments?.length"
+                :attachments="message.attachments"
+                :align="message.role === 'user' ? 'end' : 'start'"
+              />
               <div v-if="message.content || message.streaming" class="bubble" data-testid="message-bubble" :class="{ thinking: message.streaming && !message.content }">
                 <template v-if="message.content">
                   <MarkdownContent

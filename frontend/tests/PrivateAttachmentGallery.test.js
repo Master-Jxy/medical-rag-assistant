@@ -78,4 +78,21 @@ describe('私有历史图片预览', () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledOnce()
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:a')
   })
+
+  it('用户消息附件可以明确靠右排列且文件名同步右对齐', async () => {
+    const wrapper = mount(PrivateAttachmentGallery, {
+      props: {
+        align: 'end',
+        attachments: [{
+          id: 'right-aligned',
+          localUrl: 'blob:right-aligned',
+          original_name: 'right.png',
+        }],
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.get('.private-attachment-gallery').classes()).toContain('align-end')
+    expect(wrapper.get('figcaption').text()).toBe('right.png')
+  })
 })
