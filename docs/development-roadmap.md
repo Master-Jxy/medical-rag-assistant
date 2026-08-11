@@ -821,7 +821,7 @@
 2. **26.1 `[已完成]`**：保留`/api/v1/health`兼容，新增零依赖`/livez`和通过小型Port检查MySQL、Redis、Chroma目录、私有媒体目录的`/readyz`；失败只返回503、依赖名和稳定代码。Compose/Nginx已接入readiness；GitHub CI覆盖后端633项、前端90项、SSE、build、Alembic往返、diff、敏感扫描与依赖审计。统一预检只扫描Git跟踪文件并输出PASS/FAIL/SKIP，不读取`.env`或调用模型；npm已固定3个高危传递依赖到修复版本并达到0 vulnerability。
 3. **26.2a `[已完成]`**：新增`0031_stage26_vision_scope`，将RAG观察作用域固定为assistant message、Agent固定为run，并使用`media_asset_id + observation_scope_id + kind + focus_hash`非空唯一键关闭MySQL NULL幂等漏洞。观察记录增加脱敏质量摘要和单记录供应商调用计数；媒体资产行锁、原子claim、终态复用及失败不自动重试共同保证并发重放不重复调用或计费。确定性质量闸门已覆盖普通图片、文档/报告、模糊、裁切、方向异常、结构不足和测量上下文缺失。迁移往返、Stage25多模态、并发、额度和完整后端637项回归通过；未调用真实模型、未推送或部署。
 4. **26.2b `[已完成]`**：新增聊天专用`VisionTextExtractionPort`及Disabled/Fake/DashScope OCR-mode适配器；`VisionRouterService`按`overview_only/ocr_mode/reupload_required`确定性路由并合并文字、表格和测量值，RAG和Agent整体观察已接入，`inspect`继续共用每图3次调用预算。OCR记录复用既有观察claim、额度和usage幂等，默认关闭且自动重试为0。`0031`保持原已发布约束，新`0032_stage26_vision_ocr_routes`独立扩展路由值并提供降级映射。HTTP成功但JSON/schema失败仍记录failed usage并结算，历史只公开最终merged overview与focused，内部`report_extract`不返回。8张完全合成PNG由严格路径/隐私/唯一性预检的Fake契约评估覆盖；Stage26.2b、Stage25图片链及0031/0032迁移专项通过，仓库根目录完整后端回归为660 passed、1 skipped，未执行真实模型。
-5. **26.3 `[待开发]`**：以`0033_stage26_job_leases`把processing_jobs升级为MySQL租约队列并增加独立Worker。
+5. **26.3 `[已完成]`**：以`0033_stage26_job_leases`把`processing_jobs`升级为MySQL租约队列；管理员批准发布改为事务内`202 + job_id`入队，独立Worker使用`FOR UPDATE SKIP LOCKED`领取并心跳，支持租约到期回收、有限退避重试、取消、死信式failed终态和管理员任务中心操作。Worker通过共享`KnowledgeReviewService`复用原文档发布补偿，不领取人工`knowledge_review`任务。迁移往返、队列独占、崩溃回收、尝试上限、取消、Worker执行和审核发布回归通过，专专项`37 passed`；真实模型未调用。
 6. **26.4 `[待开发]`**：建立可执行corpus_v2/eval_v2、覆盖缺口和候选晋级闭环。
 7. **26.5 `[待开发]`**：增加确定性只读Agent工具与完整工具回归集。
 8. **26.6 `[待开发]`**：增加模型网关、真实模型目录、受控fallback和全surface额度enforce闭环。

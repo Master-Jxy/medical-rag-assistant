@@ -10,7 +10,30 @@ class JobReference:
     attempt_count: int
 
 
+@dataclass(frozen=True, slots=True)
+class JobLease:
+    id: str
+    job_type: str
+    object_type: str
+    object_id: str
+    payload: dict
+    attempt_count: int
+    max_attempts: int
+    lease_owner: str
+
+
 class JobPort(Protocol):
+    def enqueue(
+        self,
+        *,
+        dispatch_key: str,
+        job_type: str,
+        object_type: str,
+        object_id: str,
+        payload: dict | None = None,
+        max_attempts: int = 3,
+    ) -> JobReference: ...
+
     def start(
         self,
         *,

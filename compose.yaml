@@ -149,6 +149,42 @@ services:
       app_net:
         ipv4_address: 172.30.0.20
 
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    command: ["python3", "-m", "app.worker"]
+    environment:
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY}
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}?charset=utf8mb4
+      EMBEDDING_MODEL_NAME: ${EMBEDDING_MODEL_NAME:-text-embedding-v4}
+      DASHSCOPE_MAX_RETRIES: ${DASHSCOPE_MAX_RETRIES:-2}
+      CHROMA_PERSIST_DIR: /app/chroma_db
+      CHROMA_COLLECTION_NAME: ${CHROMA_COLLECTION_NAME:-agent}
+      UPLOAD_DIR: /app/data/uploads
+      DOCUMENT_REGISTRY_PATH: /app/data/documents.json
+      KNOWLEDGE_BASE_VERSION: ${KNOWLEDGE_BASE_VERSION:-live_v1}
+      CHUNK_SIZE: ${CHUNK_SIZE:-800}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-100}
+      DOCLING_PDF_CANDIDATE_ENABLED: ${DOCLING_PDF_CANDIDATE_ENABLED:-false}
+      DOCLING_PDF_CANDIDATE_PROMOTED: ${DOCLING_PDF_CANDIDATE_PROMOTED:-false}
+      METADATA_SUGGESTION_MODE: ${METADATA_SUGGESTION_MODE:-disabled}
+      JOB_WORKER_POLL_SECONDS: ${JOB_WORKER_POLL_SECONDS:-1}
+      JOB_WORKER_LEASE_SECONDS: ${JOB_WORKER_LEASE_SECONDS:-60}
+      JOB_WORKER_HEARTBEAT_SECONDS: ${JOB_WORKER_HEARTBEAT_SECONDS:-15}
+      TZ: Asia/Shanghai
+    volumes:
+      - app_data:/app/data
+      - chroma_data:/app/chroma_db
+    depends_on:
+      backend:
+        condition: service_healthy
+    mem_limit: 320m
+    networks:
+      app_net:
+        ipv4_address: 172.30.0.25
+
   web:
     build:
       context: .

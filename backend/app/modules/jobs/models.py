@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, Index, Integer, String
+from sqlalchemy import CheckConstraint, DateTime, Index, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -22,10 +22,23 @@ class ProcessingJob(Base):
     job_type: Mapped[str] = mapped_column(String(50), nullable=False)
     object_type: Mapped[str] = mapped_column(String(50), nullable=False)
     object_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    dispatch_key: Mapped[str] = mapped_column(
+        String(191), nullable=False, unique=True, default=lambda: f"job:{uuid4()}"
+    )
+    payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
     progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     error_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    last_error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    lease_owner: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
@@ -34,10 +47,13 @@ class ProcessingJob(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('queued','running','completed','failed','cancelled')",
+            "status IN ('queued','running','retry_wait','completed','failed','cancelled')",
             name="ck_processing_jobs_status",
         ),
         CheckConstraint("progress >= 0 AND progress <= 100", name="ck_jobs_progress"),
-        Index("ix_processing_jobs_status_created", "status", "created_at"),
+        CheckConstraint("attempt_count >= 0", name="ck_jobs_attempt_count"),
+        CheckConstraint("max_attempts > 0", name="ck_jobs_max_attempts"),
+        Index("ix_processing_jobs_status_available", "status", "available_at"),
+        Index("ix_processing_jobs_lease", "status", "lease_expires_at"),
         Index("ix_processing_jobs_object", "object_type", "object_id"),
     )

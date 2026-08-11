@@ -1,5 +1,6 @@
 """管理员审核、发布、审计和用户越权回归。"""
 
+import asyncio
 from pathlib import Path
 from io import BytesIO
 from zipfile import ZipFile
@@ -26,6 +27,7 @@ from app.models import (
 from app.modules.audit.repository import SqlAlchemyAuditRecorder
 from app.modules.auth.tokens import get_token_service
 from app.modules.jobs.service import SqlAlchemyJobService
+from app.modules.jobs.worker import JobWorker
 from app.modules.knowledge.lifecycle import DocumentLifecycleService
 from app.modules.knowledge.deduplication import DuplicatePolicy
 from app.modules.knowledge.repository import SubmissionReviewRepository
@@ -45,6 +47,47 @@ class FailPublishedAudit:
     def record(self, event):
         if event.action == "knowledge_submission.published":
             raise RuntimeError("模拟最终审计写入失败")
+
+
+def run_publish_worker(
+    factory,
+    settings,
+    vectors,
+    *,
+    audit_builder=lambda session: SqlAlchemyAuditRecorder(session),
+    max_attempts: int | None = None,
+):
+    if max_attempts is not None:
+        with factory() as session:
+            job = session.scalar(
+                select(ProcessingJob).where(ProcessingJob.status == "queued")
+            )
+            job.max_attempts = max_attempts
+            session.commit()
+
+    async def handle(lease):
+        with factory() as session:
+            service = KnowledgeReviewService(
+                session,
+                settings,
+                DocumentLifecycleService(session, settings, vectors),
+                audit_builder(session),
+                SqlAlchemyJobService(session),
+            )
+            await service.execute_queued_publish(
+                job_id=lease.id,
+                submission_id=lease.object_id,
+                payload=lease.payload,
+            )
+
+    worker = JobWorker(
+        factory,
+        {"publish_submission": handle},
+        worker_id="test-worker",
+        lease_seconds=60,
+        heartbeat_seconds=30,
+    )
+    return asyncio.run(worker.run_once())
 
 
 def add_submission(factory, settings, submitter_id, suffix):
@@ -304,9 +347,11 @@ def test_admin_can_reject_or_publish_and_normal_user_cannot_review(tmp_path) -> 
                 f"/api/v1/admin/reviews/{approved_id}/approve",
                 headers=auth_headers(admin.id),
             )
-            assert approved.status_code == 200
-            assert approved.json()["submission"]["status"] == "published"
+            assert approved.status_code == 202
+            assert approved.json()["submission"]["status"] == "indexing"
             assert approved.json()["job_id"]
+
+        assert run_publish_worker(factory, settings, vectors) == "completed"
 
         with factory() as session:
             published = session.get(KnowledgeSubmission, approved_id)
@@ -327,6 +372,7 @@ def test_admin_can_reject_or_publish_and_normal_user_cannot_review(tmp_path) -> 
             actions = set(session.scalars(select(AuditEvent.action)).all())
             assert actions == {
                 "knowledge_submission.rejected",
+                "knowledge_submission.publish_queued",
                 "knowledge_submission.published",
             }
         assert vectors.entries
@@ -406,8 +452,10 @@ def test_admin_sees_duplicate_candidates_and_can_publish_submission_as_new_versi
                 },
                 headers=auth_headers(admin.id),
             )
-            assert published.status_code == 200
-            assert published.json()["submission"]["duplicate_decision"] == "version"
+            assert published.status_code == 202
+            assert published.json()["submission"]["status"] == "indexing"
+
+        assert run_publish_worker(factory, settings, vectors) == "completed"
 
         with factory() as session:
             old = session.get(KnowledgeDocument, old_document_id)
@@ -492,8 +540,15 @@ def test_approve_as_version_failure_restores_old_vectors_and_cleans_new_document
                 },
                 headers=auth_headers(admin.id),
             )
-            assert response.status_code == 500
-            assert response.json()["error"]["code"] == "DOCUMENT_STORE_ERROR"
+            assert response.status_code == 202
+
+        assert run_publish_worker(
+            factory,
+            settings,
+            vectors,
+            audit_builder=lambda _session: FailPublishedAudit(),
+            max_attempts=1,
+        ) == "failed"
 
         with factory() as session:
             old = session.get(KnowledgeDocument, old_document_id)
@@ -805,7 +860,11 @@ def test_image_review_cannot_publish_empty_text_before_enrichment(tmp_path) -> N
                 f"/api/v1/admin/reviews/{submission_id}/approve",
                 headers=auth_headers(admin.id),
             )
-            assert approved.status_code >= 400
+            assert approved.status_code == 202
+
+        assert run_publish_worker(
+            factory, settings, vectors, max_attempts=1
+        ) == "failed"
 
         with factory() as session:
             record = session.get(KnowledgeSubmission, submission_id)
@@ -857,8 +916,15 @@ def test_publish_finalization_failure_compensates_document_file_and_vectors(
                 f"/api/v1/admin/reviews/{submission_id}/approve",
                 headers=auth_headers(admin.id),
             )
-            assert response.status_code == 500
-            assert response.json()["error"]["code"] == "DOCUMENT_STORE_ERROR"
+            assert response.status_code == 202
+
+        assert run_publish_worker(
+            factory,
+            settings,
+            vectors,
+            audit_builder=lambda _session: FailPublishedAudit(),
+            max_attempts=1,
+        ) == "failed"
 
         with factory() as session:
             submission = session.get(KnowledgeSubmission, submission_id)
@@ -914,8 +980,9 @@ def test_admin_can_publish_markdown_submission_with_structured_chunks(tmp_path) 
                 f"/api/v1/admin/reviews/{submission_id}/approve",
                 headers=auth_headers(admin.id),
             )
-            assert approved.status_code == 200
-            assert approved.json()["submission"]["status"] == "published"
+            assert approved.status_code == 202
+
+        assert run_publish_worker(factory, settings, vectors) == "completed"
 
         with factory() as session:
             published = session.get(KnowledgeSubmission, submission_id)
@@ -972,8 +1039,9 @@ def test_admin_can_publish_web_snapshot_submission_with_html_parser(tmp_path) ->
                 f"/api/v1/admin/reviews/{submission_id}/approve",
                 headers=auth_headers(admin.id),
             )
-            assert approved.status_code == 200
-            assert approved.json()["submission"]["status"] == "published"
+            assert approved.status_code == 202
+
+        assert run_publish_worker(factory, settings, vectors) == "completed"
 
         with factory() as session:
             submission = session.get(KnowledgeSubmission, submission_id)
@@ -1032,8 +1100,11 @@ def test_damaged_docx_publish_failure_keeps_submission_file_and_no_vectors(tmp_p
                 f"/api/v1/admin/reviews/{submission_id}/approve",
                 headers=auth_headers(admin.id),
             )
-            assert response.status_code == 500
-            assert response.json()["error"]["code"] == "DOCUMENT_STORE_ERROR"
+            assert response.status_code == 202
+
+        assert run_publish_worker(
+            factory, settings, vectors, max_attempts=1
+        ) == "failed"
 
         with factory() as session:
             submission = session.get(KnowledgeSubmission, submission_id)
@@ -1128,8 +1199,9 @@ def test_isolation_cleanup_failure_keeps_published_document_and_records_warning(
                 f"/api/v1/admin/reviews/{submission_id}/approve",
                 headers=auth_headers(admin.id),
             )
-            assert response.status_code == 200
-            assert response.json()["submission"]["status"] == "published"
+            assert response.status_code == 202
+
+        assert run_publish_worker(factory, settings, vectors) == "completed"
 
         with factory() as session:
             submission = session.get(KnowledgeSubmission, submission_id)

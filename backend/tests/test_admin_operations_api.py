@@ -138,16 +138,18 @@ def test_job_retry_and_role_scoped_audit_queries(tmp_path) -> None:
                 headers=auth_headers(admin.id),
             )
             assert retried.status_code == 200
-            assert retried.json()["submission"]["status"] == "published"
+            assert retried.json()["status"] == "queued"
+            assert retried.json()["job_id"] == "failed-job"
 
         with factory() as session:
-            attempts = session.scalars(
-                select(ProcessingJob)
-                .where(ProcessingJob.object_id == "failed-submission")
-                .order_by(ProcessingJob.attempt_count)
+            jobs = session.scalars(
+                select(ProcessingJob).where(
+                    ProcessingJob.object_id == "failed-submission"
+                )
             ).all()
-            assert [job.attempt_count for job in attempts] == [1, 2]
-            assert attempts[-1].status == "completed"
+            assert len(jobs) == 1
+            assert jobs[0].status == "queued"
+            assert jobs[0].attempt_count == 1
     finally:
         app.dependency_overrides.clear()
         engine.dispose()

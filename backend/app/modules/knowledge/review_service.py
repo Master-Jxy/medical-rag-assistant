@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.exceptions import AppError, DocumentStoreError
 from app.modules.audit.ports import AuditPort, AuditRecord
-from app.modules.jobs.ports import JobPort
+from app.modules.jobs.ports import JobPort, JobReference
 from app.modules.knowledge.asset_storage import (
     ControlledDocumentAssetStore,
     StagedAssetDeletion,
@@ -174,6 +174,22 @@ class KnowledgeReviewService:
             change_reason="管理员批准发布",
         )
 
+    def enqueue_approve(
+        self,
+        submission_id: str,
+        *,
+        actor_user_id: str,
+        request_id: str | None,
+    ) -> ApprovalResponse:
+        return self._enqueue_publish(
+            submission_id,
+            expected_status="pending_review",
+            actor_user_id=actor_user_id,
+            request_id=request_id,
+            duplicate_decision="new",
+            change_reason="管理员批准发布",
+        )
+
     async def approve_as_version(
         self,
         submission_id: str,
@@ -192,6 +208,105 @@ class KnowledgeReviewService:
             change_reason=payload.change_reason.strip(),
         )
 
+    def enqueue_approve_as_version(
+        self,
+        submission_id: str,
+        payload: ApproveAsVersionRequest,
+        *,
+        actor_user_id: str,
+        request_id: str | None,
+    ) -> ApprovalResponse:
+        return self._enqueue_publish(
+            submission_id,
+            expected_status="pending_review",
+            actor_user_id=actor_user_id,
+            request_id=request_id,
+            duplicate_decision="version",
+            supersedes_document_id=payload.supersedes_document_id,
+            change_reason=payload.change_reason.strip(),
+        )
+
+    def _enqueue_publish(
+        self,
+        submission_id: str,
+        *,
+        expected_status: str,
+        actor_user_id: str,
+        request_id: str | None,
+        duplicate_decision: str,
+        supersedes_document_id: str | None = None,
+        change_reason: str,
+    ) -> ApprovalResponse:
+        record = self._get(submission_id)
+        if supersedes_document_id is not None:
+            superseded = self.lifecycle.repository.get_by_id(supersedes_document_id)
+            if superseded is None or superseded.status not in {"published", "ready"}:
+                raise ReviewStateConflictError()
+        if not self.repository.claim_for_indexing(submission_id, expected_status):
+            self.session.rollback()
+            raise ReviewStateConflictError()
+        dispatch_scope = supersedes_document_id or "new"
+        job = self.jobs.enqueue(
+            dispatch_key=f"publish_submission:{record.id}:{duplicate_decision}:{dispatch_scope}",
+            job_type="publish_submission",
+            object_type="knowledge_submission",
+            object_id=record.id,
+            payload={
+                "actor_user_id": actor_user_id,
+                "request_id": request_id,
+                "duplicate_decision": duplicate_decision,
+                "supersedes_document_id": supersedes_document_id,
+                "change_reason": change_reason,
+            },
+            max_attempts=3,
+        )
+        self.audit.record(
+            AuditRecord(
+                actor_user_id=actor_user_id,
+                action="knowledge_submission.publish_queued",
+                object_type="knowledge_submission",
+                object_id=record.id,
+                request_id=request_id,
+                details={"job_id": job.id, "duplicate_decision": duplicate_decision},
+            )
+        )
+        self.session.commit()
+        self.session.refresh(record)
+        return ApprovalResponse(submission=self._to_item(record), job_id=job.id)
+
+    async def execute_queued_publish(
+        self,
+        *,
+        job_id: str,
+        submission_id: str,
+        payload: dict,
+    ) -> ApprovalResponse:
+        existing = self._get(submission_id)
+        if existing.status == "published" and existing.document_id:
+            return ApprovalResponse(
+                submission=self._to_item(existing),
+                job_id=job_id,
+            )
+        duplicate_decision = str(payload.get("duplicate_decision") or "new")
+        if duplicate_decision not in {"new", "version"}:
+            raise ReviewStateConflictError()
+        return await self._publish(
+            submission_id,
+            expected_status="indexing",
+            actor_user_id=str(payload.get("actor_user_id") or "system-worker"),
+            request_id=(str(payload["request_id"]) if payload.get("request_id") else None),
+            duplicate_decision=duplicate_decision,
+            supersedes_document_id=(
+                str(payload["supersedes_document_id"])
+                if payload.get("supersedes_document_id")
+                else None
+            ),
+            change_reason=str(payload.get("change_reason") or "后台任务发布"),
+            existing_job_id=job_id,
+            claim_submission=False,
+            manage_job_lifecycle=False,
+        )
+
     async def _publish(
         self,
         submission_id: str,
@@ -202,6 +317,9 @@ class KnowledgeReviewService:
         duplicate_decision: str,
         supersedes_document_id: str | None = None,
         change_reason: str = "管理员批准发布",
+        existing_job_id: str | None = None,
+        claim_submission: bool = True,
+        manage_job_lifecycle: bool = True,
     ) -> ApprovalResponse:
         record = self._get(submission_id)
         superseded: KnowledgeDocument | None = None
@@ -226,14 +344,25 @@ class KnowledgeReviewService:
                     DocumentVersion.document_id == superseded.id
                 )
             )
-        if not self.repository.claim_for_indexing(submission_id, expected_status):
+        if claim_submission:
+            if not self.repository.claim_for_indexing(submission_id, expected_status):
+                self.session.rollback()
+                raise ReviewStateConflictError()
+        elif record.status not in {"indexing", "failed"}:
             self.session.rollback()
             raise ReviewStateConflictError()
-        job = self.jobs.start(
-            job_type="publish_submission",
-            object_type="knowledge_submission",
-            object_id=record.id,
-            initial_progress=10,
+        else:
+            record.status = "indexing"
+            record.failure_reason = None
+        job = (
+            self.jobs.start(
+                job_type="publish_submission",
+                object_type="knowledge_submission",
+                object_id=record.id,
+                initial_progress=10,
+            )
+            if existing_job_id is None
+            else JobReference(id=existing_job_id, attempt_count=0)
         )
         self.session.commit()
 
@@ -257,7 +386,8 @@ class KnowledgeReviewService:
             record.duplicate_target_document_id = supersedes_document_id
             record.duplicate_decision_reason = change_reason
             record.failure_reason = None
-            self.jobs.complete(job.id)
+            if manage_job_lifecycle:
+                self.jobs.complete(job.id)
             if record.normalized_text_hash is None:
                 DuplicatePolicy.assign_to_submission(record)
             if superseded is not None:
@@ -333,7 +463,8 @@ class KnowledgeReviewService:
             record.failure_reason = (
                 "PUBLISH_CLEANUP_UNCERTAIN" if cleanup_failed else type(exc).__name__
             )
-            self.jobs.fail(job.id, record.failure_reason)
+            if manage_job_lifecycle:
+                self.jobs.fail(job.id, record.failure_reason)
             self.session.commit()
             raise DocumentStoreError() from exc
 

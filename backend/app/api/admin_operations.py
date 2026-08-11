@@ -1,18 +1,15 @@
 """管理员任务中心与审计中心接口。"""
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.api.admin_reviews import get_review_service
 from app.db.session import get_db_session
 from app.modules.audit.schemas import AuditEventListResponse
 from app.modules.audit.service import AuditQueryService
 from app.modules.auth.dependencies import require_admin
 from app.modules.auth.schemas import UserResponse
-from app.modules.jobs.schemas import JobListResponse
-from app.modules.jobs.service import JobQueryService
-from app.modules.knowledge.review_schemas import ApprovalResponse
-from app.modules.knowledge.review_service import KnowledgeReviewService
+from app.modules.jobs.schemas import JobItem, JobListResponse
+from app.modules.jobs.service import JobQueryService, JobQueueService
 
 router = APIRouter(prefix="/admin", tags=["管理员任务与审计"])
 
@@ -30,20 +27,24 @@ def list_jobs(
     )
 
 
-@router.post("/jobs/{job_id}/retry", response_model=ApprovalResponse)
-async def retry_job(
+@router.post("/jobs/{job_id}/retry", response_model=JobItem)
+def retry_job(
     job_id: str,
-    request: Request,
-    admin: UserResponse = Depends(require_admin),
+    _admin: UserResponse = Depends(require_admin),
     session: Session = Depends(get_db_session),
-    review_service: KnowledgeReviewService = Depends(get_review_service),
-) -> ApprovalResponse:
-    failed_job = JobQueryService(session).require_retryable_publish_job(job_id)
-    return await review_service.retry_failed(
-        failed_job.object_id,
-        actor_user_id=admin.id,
-        request_id=getattr(request.state, "request_id", None),
-    )
+) -> JobItem:
+    job = JobQueueService(session).retry(job_id)
+    return JobQueryService.to_item(job)
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=JobItem)
+def cancel_job(
+    job_id: str,
+    _admin: UserResponse = Depends(require_admin),
+    session: Session = Depends(get_db_session),
+) -> JobItem:
+    job = JobQueueService(session).request_cancel(job_id)
+    return JobQueryService.to_item(job)
 
 
 @router.get("/audit", response_model=AuditEventListResponse)

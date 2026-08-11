@@ -1,9 +1,9 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { AlertCircle, CheckCircle2, RefreshCw, RotateCcw, Workflow } from '@lucide/vue'
+import { AlertCircle, CheckCircle2, RefreshCw, RotateCcw, Square, Workflow } from '@lucide/vue'
 
 import ConfirmDialog from '../components/ConfirmDialog.vue'
-import { getJobs, retryJob } from '../api/adminPlatform'
+import { cancelJob, getJobs, retryJob } from '../api/adminPlatform'
 import { getApiErrorMessage } from '../api/http'
 
 const items = ref([])
@@ -11,6 +11,7 @@ const loading = ref(true)
 const errorMessage = ref('')
 const actingId = ref('')
 const retryTarget = ref(null)
+const cancelTarget = ref(null)
 const failedCount = computed(() => items.value.filter((item) => item.status === 'failed').length)
 const runningCount = computed(() => items.value.filter((item) => item.status === 'running').length)
 
@@ -40,6 +41,20 @@ async function retry() {
   }
 }
 
+async function cancel() {
+  if (!cancelTarget.value || actingId.value) return
+  actingId.value = cancelTarget.value.job_id
+  try {
+    await cancelJob(cancelTarget.value.job_id)
+    cancelTarget.value = null
+    await load()
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error)
+  } finally {
+    actingId.value = ''
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -50,8 +65,9 @@ onMounted(load)
     <div v-if="errorMessage" class="state-panel error">{{ errorMessage }}</div>
     <div v-if="loading" class="state-panel">正在加载任务…</div>
     <div v-else-if="!items.length" class="empty-panel"><CheckCircle2 :size="24" /><strong>暂无处理任务</strong><p>有文档进入处理队列后会显示在这里。</p></div>
-    <section v-else class="table-panel responsive-table jobs-table"><div class="job-head"><span>任务类型</span><span>状态</span><span>进度</span><span>尝试次数</span><span>错误类型</span><span>操作</span></div><div v-for="item in items" :key="item.job_id" class="job-row"><div class="job-name"><span><Workflow :size="15" /></span><strong>{{ item.job_type }}</strong></div><span class="status-badge" :data-status="item.status">{{ item.status }}</span><div class="job-progress"><span><i :style="{ width: `${item.progress}%` }"></i></span><b>{{ item.progress }}%</b></div><span>第 {{ item.attempt_count }} 次</span><span :title="item.error_type">{{ item.error_type || '—' }}</span><button v-if="item.status === 'failed'" class="icon-action" type="button" title="重试任务" @click="retryTarget = item"><RotateCcw :size="15" /></button><span v-else>—</span></div></section>
+    <section v-else class="table-panel responsive-table jobs-table"><div class="job-head"><span>任务类型</span><span>状态</span><span>进度</span><span>尝试次数</span><span>错误类型</span><span>操作</span></div><div v-for="item in items" :key="item.job_id" class="job-row"><div class="job-name"><span><Workflow :size="15" /></span><strong>{{ item.job_type }}</strong></div><span class="status-badge" :data-status="item.status">{{ item.status }}</span><div class="job-progress"><span><i :style="{ width: `${item.progress}%` }"></i></span><b>{{ item.progress }}%</b></div><span>第 {{ item.attempt_count }} / {{ item.max_attempts }} 次</span><span :title="item.last_error_code || item.error_type">{{ item.last_error_code || item.error_type || '—' }}</span><div class="job-actions"><button v-if="['failed', 'cancelled'].includes(item.status)" class="icon-action" type="button" title="重试任务" @click="retryTarget = item"><RotateCcw :size="15" /></button><button v-if="['queued', 'retry_wait', 'running'].includes(item.status)" class="icon-action" type="button" title="取消任务" @click="cancelTarget = item"><Square :size="14" /></button><span v-if="item.status === 'completed'">—</span></div></div></section>
     <ConfirmDialog :open="Boolean(retryTarget)" tone="warning" title="重试这个失败任务？" :description="retryTarget ? `任务类型：${retryTarget.job_type}。系统将创建新的执行尝试。` : ''" confirm-text="确认重试" :loading="Boolean(actingId)" @cancel="retryTarget = null" @confirm="retry" />
+    <ConfirmDialog :open="Boolean(cancelTarget)" tone="warning" title="取消这个后台任务？" :description="cancelTarget ? `任务类型：${cancelTarget.job_type}。运行中的任务会在安全检查点停止。` : ''" confirm-text="确认取消" :loading="Boolean(actingId)" @cancel="cancelTarget = null" @confirm="cancel" />
   </section>
 </template>
 
@@ -71,6 +87,7 @@ onMounted(load)
 .job-progress i { display: block; height: 100%; background: var(--brand); }
 .job-progress b { color: var(--text-default); font-size: 10px; }
 .icon-action { width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 1px solid var(--border-default); border-radius: 6px; color: var(--action); background: #fff; cursor: pointer; }
+.job-actions { display: flex; align-items: center; gap: 5px; }
 .empty-panel { min-height: 240px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 7px; border: 1px solid var(--border-default); border-radius: 8px; color: var(--text-muted); background: #fff; }
 .empty-panel strong { color: var(--text-strong); }
 .empty-panel p { margin: 0; font-size: 11px; }

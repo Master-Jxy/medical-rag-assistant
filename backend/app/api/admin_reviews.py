@@ -1,17 +1,13 @@
 """管理员资料审核接口。"""
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_db_session
-from app.infrastructure.knowledge_parser_factory import create_knowledge_document_parser
 from app.infrastructure.vector_store import VectorStoreService
-from app.modules.audit.repository import SqlAlchemyAuditRecorder
 from app.modules.auth.dependencies import require_admin
 from app.modules.auth.schemas import UserResponse
-from app.modules.jobs.service import SqlAlchemyJobService
-from app.modules.knowledge.lifecycle import DocumentLifecycleService
 from app.modules.knowledge.review_schemas import (
     ApprovalResponse,
     ApproveAsVersionRequest,
@@ -23,9 +19,8 @@ from app.modules.knowledge.metadata_suggestions import (
     MetadataSuggestionDecisionRequest,
     MetadataSuggestionItem,
     MetadataSuggestionRejectRequest,
-    MetadataSuggestionService,
-    create_metadata_suggestion_port,
 )
+from app.modules.knowledge.review_factory import build_knowledge_review_service
 from app.modules.knowledge.review_service import KnowledgeReviewService
 from app.services.document_service import get_vector_store_service
 
@@ -37,23 +32,7 @@ def get_review_service(
     settings: Settings = Depends(get_settings),
     vector_store: VectorStoreService = Depends(get_vector_store_service),
 ) -> KnowledgeReviewService:
-    return KnowledgeReviewService(
-        session,
-        settings,
-        DocumentLifecycleService(
-            session,
-            settings,
-            vector_store,
-            parser=create_knowledge_document_parser(settings),
-        ),
-        SqlAlchemyAuditRecorder(session),
-        SqlAlchemyJobService(session),
-        metadata_suggestions=MetadataSuggestionService(
-            session,
-            SqlAlchemyAuditRecorder(session),
-            create_metadata_suggestion_port(settings.metadata_suggestion_mode),
-        ),
-    )
+    return build_knowledge_review_service(session, settings, vector_store)
 
 
 @router.get("", response_model=ReviewListResponse)
@@ -138,21 +117,29 @@ def reject_review(
     )
 
 
-@router.post("/{submission_id}/approve", response_model=ApprovalResponse)
+@router.post(
+    "/{submission_id}/approve",
+    response_model=ApprovalResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def approve_review(
     submission_id: str,
     request: Request,
     admin: UserResponse = Depends(require_admin),
     service: KnowledgeReviewService = Depends(get_review_service),
 ) -> ApprovalResponse:
-    return await service.approve(
+    return service.enqueue_approve(
         submission_id,
         actor_user_id=admin.id,
         request_id=getattr(request.state, "request_id", None),
     )
 
 
-@router.post("/{submission_id}/approve-as-version", response_model=ApprovalResponse)
+@router.post(
+    "/{submission_id}/approve-as-version",
+    response_model=ApprovalResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def approve_review_as_version(
     submission_id: str,
     payload: ApproveAsVersionRequest,
@@ -160,7 +147,7 @@ async def approve_review_as_version(
     admin: UserResponse = Depends(require_admin),
     service: KnowledgeReviewService = Depends(get_review_service),
 ) -> ApprovalResponse:
-    return await service.approve_as_version(
+    return service.enqueue_approve_as_version(
         submission_id,
         payload,
         actor_user_id=admin.id,

@@ -72,6 +72,10 @@ export async function retryJob(id) {
   return (await http.post(`/admin/jobs/${id}/retry`)).data
 }
 
+export async function cancelJob(id) {
+  return (await http.post(`/admin/jobs/${id}/cancel`)).data
+}
+
 export async function getAudit(params = {}) {
   return (await http.get('/admin/audit', { params })).data
 }
