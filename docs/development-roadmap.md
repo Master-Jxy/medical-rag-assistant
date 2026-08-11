@@ -812,7 +812,7 @@
 8. **25.7 `[已完成]`**：视觉调用复用 `ModelUsage`、额度预留/结算/失败释放和脱敏账本；会话/线程删除与演示账号清理均回收私有附件，医疗可见事实边界、重复调用和孤儿兜底均有Fake测试。
 9. **25.8 `[已完成并发布]`**：后端621 passed/1 skipped、前端82 passed、SSE、build、编译/导入、`0029→0030→0029→0030`临时库往返、安全扫描和浏览器布局均通过。GitHub与生产已到`95f856d`，生产迁移为`0030`，四容器、HTTP/HTTPS、静态资源和健康接口验收通过；`qwen3-vl-plus`生产容器内无持久化真实烟测返回actual Token和请求ID，供应商对象型字段漂移已由适配器归一化及回归测试覆盖。完整证据见 `docs/release-audit-stage25-multimodal-chat.md`。
 
-## 26. Stage 26：企业交付强化 `[开发中]`
+## 26. Stage 26：企业交付强化 `[待26.8发布]`
 
 完整设计、依赖顺序和完成定义见
 [`docs/stage26-enterprise-hardening-design.md`](stage26-enterprise-hardening-design.md)。
@@ -822,11 +822,11 @@
 3. **26.2a `[已完成]`**：新增`0031_stage26_vision_scope`，将RAG观察作用域固定为assistant message、Agent固定为run，并使用`media_asset_id + observation_scope_id + kind + focus_hash`非空唯一键关闭MySQL NULL幂等漏洞。观察记录增加脱敏质量摘要和单记录供应商调用计数；媒体资产行锁、原子claim、终态复用及失败不自动重试共同保证并发重放不重复调用或计费。确定性质量闸门已覆盖普通图片、文档/报告、模糊、裁切、方向异常、结构不足和测量上下文缺失。迁移往返、Stage25多模态、并发、额度和完整后端637项回归通过；未调用真实模型、未推送或部署。
 4. **26.2b `[已完成]`**：新增聊天专用`VisionTextExtractionPort`及Disabled/Fake/DashScope OCR-mode适配器；`VisionRouterService`按`overview_only/ocr_mode/reupload_required`确定性路由并合并文字、表格和测量值，RAG和Agent整体观察已接入，`inspect`继续共用每图3次调用预算。OCR记录复用既有观察claim、额度和usage幂等，默认关闭且自动重试为0。`0031`保持原已发布约束，新`0032_stage26_vision_ocr_routes`独立扩展路由值并提供降级映射。HTTP成功但JSON/schema失败仍记录failed usage并结算，历史只公开最终merged overview与focused，内部`report_extract`不返回。8张完全合成PNG由严格路径/隐私/唯一性预检的Fake契约评估覆盖；Stage26.2b、Stage25图片链及0031/0032迁移专项通过，仓库根目录完整后端回归为660 passed、1 skipped，未执行真实模型。
 5. **26.3 `[已完成]`**：以`0033_stage26_job_leases`把`processing_jobs`升级为MySQL租约队列；管理员批准发布改为事务内`202 + job_id`入队，独立Worker使用`FOR UPDATE SKIP LOCKED`领取并心跳，支持租约到期回收、有限退避重试、取消、死信式failed终态和管理员任务中心操作。Worker通过共享`KnowledgeReviewService`复用原文档发布补偿，不领取人工`knowledge_review`任务。迁移往返、队列独占、崩溃回收、尝试上限、取消、Worker执行和审核发布回归通过，专专项`37 passed`；真实模型未调用。
-6. **26.4 `[待开发]`**：建立可执行corpus_v2/eval_v2、覆盖缺口和候选晋级闭环。
-7. **26.5 `[待开发]`**：增加确定性只读Agent工具与完整工具回归集。
-8. **26.6 `[待开发]`**：增加模型网关、真实模型目录、受控fallback和全surface额度enforce闭环。
-9. **26.7 `[待开发]`**：增加跨模块指标、SLO、清理和生产稳定检查。
-10. **26.8 `[待开发]`**：完整验收、备份、推送、生产部署和回滚审计。
+6. **26.4 `[已完成]`**：建立可执行`corpus_v2/eval_v2`、覆盖缺口和候选晋级闭环；当前真实语料仍为`not_eligible`，没有伪造医学资料。
+7. **26.5 `[已完成]`**：增加六个确定性只读Agent工具、白名单/预算/来源传递和工具回归集。
+8. **26.6 `[已完成]`**：增加`ModelGatewayPort`、真实可用模型目录、一次受控fallback、全surface用量账本和并发额度原子预留。
+9. **26.7 `[已完成]`**：增加低基数指标、SLO摘要、模型路由健康、发布后稳定检查和五服务Compose契约。
+10. **26.8 `[开发中]`**：执行最终全量验收、备份、推送、迁移0033、生产部署和回滚审计。
 
 ## 21. 每个任务的完成模板
 

@@ -176,10 +176,10 @@ Protected auth SHA-256
 ## 4. 新任务阅读范围
 
 新窗口先完整阅读`AGENTS.md`、本文和`docs/stage26-enterprise-hardening-design.md`。
-26.3开发只定向读取：
+26.8发布只定向读取：
 
-- `processing_jobs`模型、repository、service、API和既有资料发布补偿服务
-- Compose服务、迁移链和后台任务页面的直接依赖
+- `docs/deployment.md`、`docs/release-audit-stage25-multimodal-chat.md`和本次发布涉及的迁移/Compose脚本
+- `deploy/post_release_check.sh`、`backend/scripts/release_preflight.py`及健康检查实现
 - `auth/service.py`继续只核对SHA-256，不读取正文
 
 普通观察期不要全文读取历史技术设计、旧发布审计或大型评估JSON。
@@ -197,7 +197,23 @@ Protected auth SHA-256
 - 管理员批准发布返回`202 + job_id`；Worker复用共享资料生命周期并完成成功/失败补偿。
 - Compose新增独立`worker`服务；Worker不参与人工`knowledge_review`任务，也不阻断API/Web健康链路。
 
-## 7. 唯一下一任务
+## 7. Stage 26.4至26.7收口证据
 
-**开始26.4：建立可执行`corpus_v2/eval_v2`质量闭环；不得伪造医学语料，缺少人工合法资料时输出
-`not_eligible`，并把候选池16、同文档最多2片段、最终4片段及排序晋级门槛做成可运行配置。**
+- 26.4无费用`corpus_v2/eval_v2`预检保持严格真实状态：`provider_calls=0`、`ready_document_count=0`、`human_golden_case_count=0`、`status=not_eligible`，10项覆盖缺口未被伪造资料掩盖。
+- 26.5六个确定性工具及工具目录、权限/预算/来源传递回归通过；不增加多Agent，也不从正文猜章节或表格。
+- 26.6模型网关、模型目录、一次受控fallback、失败尝试计量和MySQL原子额度预留已提交；模型网关/额度定向回归`48 passed`。
+- 26.7指标端口边界、SLO/发布预检契约和五服务Compose契约已提交；遥测边界与发布预检定向回归通过。
+- 仓库根目录完整后端回归：`688 passed, 1 skipped`；前端：`22 files / 90 tests passed`；SSE、Vite build、`pip check`、Python compile、迁移专项`22 passed`均通过。
+- 无费用检索预检重新生成候选池16计划，明确`PLAN_ONLY`，未调用Embedding、Reranker或Qwen。
+- 本地MySQL已从`0025_quota_policy_v2`升级到`0033_stage26_job_leases (head)`；未删除数据、未重建卷。
+- 本地浏览器验收使用临时账号并已清理：Agent/RAG在1440、1280、1024、390视口无横向溢出；新建会话后textarea自动获得焦点；`/livez`和`/readyz`均通过。
+
+## 8. 当前候选与发布边界
+
+- 当前分支：`main`，HEAD为本地Stage 26候选，较远端多出14个提交；尚未推送GitHub或生产部署。
+- 受保护认证文件SHA-256仍为：`9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。
+- 本地测试临时账号、Agent会话和媒体目录中的临时数据已清理；真实生产资料、`.env`、Chroma正文和备份未读取。
+
+## 9. 唯一下一任务
+
+**执行26.8发布收口：先对当前提交做最终敏感信息与迁移/Compose检查，推送GitHub；再在服务器创建外置备份并校验SHA-256，升级到0033，启动MySQL/Redis/backend/worker/web，运行`deploy/post_release_check.sh`和HTTPS浏览器黑盒验收；任何一步失败都停在当前提交并记录回滚点。**

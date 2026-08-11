@@ -2345,3 +2345,47 @@ zero. `backend/scripts/release_preflight.py` is the shared operator entry point;
 it emits PASS/FAIL/SKIP, scans only Git-tracked files, never loads `.env`, and
 only checks live endpoints or injected environment variable names when the
 operator explicitly requests those gates.
+
+## Stage 26.6 Model Gateway and Quota Boundary (2026-08-11)
+
+Model selection is now behind `ModelGatewayPort` and a static
+`ModelRoutePolicy`. API routes expose only routes that are enabled, match the
+requested surface/capabilities, and satisfy the user's role; disabled
+placeholder providers are not rendered as selectable models. The provider
+adapter receives a resolved `ModelRoute`, so business services do not construct
+vendor clients or embed provider-specific model names.
+
+The gateway permits at most one fallback attempt and only for connection
+timeouts, rate limits, or explicitly temporary provider failures. Invalid
+requests, safety refusals, quota rejection, and permanent provider errors are
+re-raised without fallback. Primary and fallback attempts share one usage group;
+each attempt emits a separate vendor-neutral usage event, including a consumed
+failure when the provider supplied usage before failing. Route health stores only
+bounded, low-cardinality status summaries for the administrator view.
+
+Quota reservation is authoritative in MySQL. Enforced reservations use a
+conditional atomic `UPDATE` on the period row, so concurrent requests cannot
+overspend the token, request, or configured cost limit. Idempotency remains
+database-backed; duplicate reservation attempts return the existing reservation
+for the same user/key. Settlement, release, unknown measurement and all model
+surfaces use the existing ledger contract. Redis may accelerate protections but
+does not become the source of quota truth. The default production policy remains
+configurable and can be observed before enforcement; no model call is made by
+the catalog or routing preflight.
+
+## Stage 26.7 Observability and Release Stability Boundary (2026-08-11)
+
+The telemetry port owns Prometheus rendering, while API modules depend only on
+that port and the application-owned snapshot contract. Concrete logging and
+in-memory aggregation remain infrastructure adapters. Metrics are opt-in,
+Bearer-protected, process-lifetime and low-cardinality; prompts, answers, OCR
+text, user IDs and request IDs are excluded. The model catalog provides an
+administrator-only route-health summary and surface accounting contract.
+
+Release preflight requires base Compose, HTTPS overlay, migration metadata,
+frontend lockfile and `deploy/post_release_check.sh`; Compose must contain the
+independent `worker` service, readiness wiring and persistent MySQL/Chroma
+volumes. The release sequence is: run no-cost checks, upgrade migrations,
+backup production data, start MySQL/Redis/backend/worker/web, verify `/livez` and
+`/readyz`, then run the post-release stability script. Stage 26.7 does not claim
+production completion until that sequence and its audit are recorded by 26.8.
