@@ -1,0 +1,171 @@
+{
+  "$defs": {
+    "CorpusV2PreflightIssue": {
+      "additionalProperties": false,
+      "description": "可审计但不泄露正文的语料门禁问题。",
+      "properties": {
+        "code": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "error",
+            "warning"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Id"
+        },
+        "case_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Case Id"
+        },
+        "detail": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "detail"
+      ],
+      "title": "CorpusV2PreflightIssue",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "实际文件、法律元数据和评估资格的确定性预检结果。",
+  "properties": {
+    "schema_version": {
+      "const": "corpus_v2_preflight_v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "corpus_version": {
+      "const": "corpus_v2",
+      "title": "Corpus Version",
+      "type": "string"
+    },
+    "corpus_checksum": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Corpus Checksum",
+      "type": "string"
+    },
+    "dataset_version": {
+      "const": "eval_v2",
+      "title": "Dataset Version",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "eligible",
+        "not_eligible"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "eligible": {
+      "title": "Eligible",
+      "type": "boolean"
+    },
+    "document_count": {
+      "minimum": 0,
+      "title": "Document Count",
+      "type": "integer"
+    },
+    "ready_document_count": {
+      "minimum": 0,
+      "title": "Ready Document Count",
+      "type": "integer"
+    },
+    "human_golden_case_count": {
+      "minimum": 0,
+      "title": "Human Golden Case Count",
+      "type": "integer"
+    },
+    "coverage_gaps": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Coverage Gaps",
+      "type": "array"
+    },
+    "duplicate_groups": {
+      "items": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Duplicate Groups",
+      "type": "array"
+    },
+    "version_conflicts": {
+      "items": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Version Conflicts",
+      "type": "array"
+    },
+    "checks": {
+      "additionalProperties": {
+        "type": "boolean"
+      },
+      "title": "Checks",
+      "type": "object"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/CorpusV2PreflightIssue"
+      },
+      "title": "Issues",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "corpus_version",
+    "corpus_checksum",
+    "dataset_version",
+    "status",
+    "eligible",
+    "document_count",
+    "ready_document_count",
+    "human_golden_case_count",
+    "coverage_gaps",
+    "duplicate_groups",
+    "version_conflicts",
+    "checks",
+    "issues"
+  ],
+  "title": "CorpusV2PreflightReport",
+  "type": "object"
+}

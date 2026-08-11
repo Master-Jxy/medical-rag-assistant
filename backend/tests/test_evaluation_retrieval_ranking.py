@@ -79,7 +79,7 @@ def test_four_profiles_have_fixed_bounds_and_unique_fingerprints() -> None:
         "hybrid_wide_diverse_rerank_v1",
     ]
     assert len({item.configuration_fingerprint for item in profiles}) == 4
-    assert all(item.configuration.candidate_pool_size == 12 for item in profiles)
+    assert all(item.configuration.candidate_pool_size == 16 for item in profiles)
     assert all(item.configuration.max_chunks_per_document == 2 for item in profiles)
     assert all(item.configuration.final_top_k == 4 for item in profiles)
 

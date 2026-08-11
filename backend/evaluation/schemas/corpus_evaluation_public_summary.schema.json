@@ -1,0 +1,144 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "default": "corpus_evaluation_public_summary_v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "corpus_version": {
+      "title": "Corpus Version",
+      "type": "string"
+    },
+    "corpus_checksum": {
+      "title": "Corpus Checksum",
+      "type": "string"
+    },
+    "document_count": {
+      "minimum": 0,
+      "title": "Document Count",
+      "type": "integer"
+    },
+    "ready_document_count": {
+      "minimum": 0,
+      "title": "Ready Document Count",
+      "type": "integer"
+    },
+    "pending_document_count": {
+      "minimum": 0,
+      "title": "Pending Document Count",
+      "type": "integer"
+    },
+    "human_golden_case_count": {
+      "minimum": 0,
+      "title": "Human Golden Case Count",
+      "type": "integer"
+    },
+    "coverage_gap_count": {
+      "minimum": 0,
+      "title": "Coverage Gap Count",
+      "type": "integer"
+    },
+    "coverage_gaps": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Coverage Gaps",
+      "type": "array"
+    },
+    "preflight_status": {
+      "title": "Preflight Status",
+      "type": "string"
+    },
+    "issue_count": {
+      "minimum": 0,
+      "title": "Issue Count",
+      "type": "integer"
+    },
+    "latest_dataset_version": {
+      "title": "Latest Dataset Version",
+      "type": "string"
+    },
+    "latest_report_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Latest Report Version"
+    },
+    "latest_run_kind": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Latest Run Kind"
+    },
+    "no_cost_gate_passed": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "No Cost Gate Passed"
+    },
+    "candidate_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Candidate Id"
+    },
+    "promotion_decision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Promotion Decision"
+    }
+  },
+  "required": [
+    "generated_at",
+    "corpus_version",
+    "corpus_checksum",
+    "document_count",
+    "ready_document_count",
+    "pending_document_count",
+    "human_golden_case_count",
+    "coverage_gap_count",
+    "coverage_gaps",
+    "preflight_status",
+    "issue_count",
+    "latest_dataset_version",
+    "latest_report_version",
+    "latest_run_kind",
+    "no_cost_gate_passed",
+    "candidate_id",
+    "promotion_decision"
+  ],
+  "title": "CorpusEvaluationPublicSummary",
+  "type": "object"
+}

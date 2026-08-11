@@ -1,0 +1,991 @@
+{
+  "schema_version": "eval_v2_report_v1",
+  "report_version": "eval_v2_fake_no_cost_v1",
+  "run_kind": "fake_no_cost",
+  "generated_at": "2026-08-11T00:00:00Z",
+  "corpus_version": "corpus_v2",
+  "corpus_checksum": "1df9837e69267fbb778beb4f6a6dcbd1cd563a1566ec61bc60d13371b38ffdda",
+  "dataset_version": "eval_v2",
+  "candidate_id": "vector_baseline_v2",
+  "candidate_policy": {
+    "candidate_pool_size": 16,
+    "max_chunks_per_document": 2,
+    "final_top_k": 4,
+    "retrieval_mode": "vector",
+    "reranker_enabled": false
+  },
+  "preflight": {
+    "schema_version": "corpus_v2_preflight_v1",
+    "corpus_version": "corpus_v2",
+    "corpus_checksum": "1df9837e69267fbb778beb4f6a6dcbd1cd563a1566ec61bc60d13371b38ffdda",
+    "dataset_version": "eval_v2",
+    "status": "not_eligible",
+    "eligible": false,
+    "document_count": 10,
+    "ready_document_count": 0,
+    "human_golden_case_count": 0,
+    "coverage_gaps": [
+      "basic_fact",
+      "multi_source",
+      "table",
+      "scan_ocr",
+      "image_vision",
+      "refusal",
+      "version_conflict",
+      "duplicate",
+      "multi_format",
+      "web_snapshot"
+    ],
+    "duplicate_groups": [],
+    "version_conflicts": [],
+    "checks": {
+      "source_url": false,
+      "license": false,
+      "path": false,
+      "hash": false,
+      "duplicate": true,
+      "version": false,
+      "coverage": false,
+      "human_golden": false
+    },
+    "issues": [
+      {
+        "code": "case_golden_pending",
+        "severity": "error",
+        "document_id": null,
+        "case_id": "eval2_006",
+        "detail": "可执行评估题必须由人工确认黄金行为和证据"
+      },
+      {
+        "code": "coverage_gap",
+        "severity": "error",
+        "document_id": null,
+        "case_id": null,
+        "detail": "覆盖矩阵缺口: basic_fact"
+      },
+      {
+        "code": "coverage_gap",
+        "severity": "error",
+        "document_id": null,
+        "case_id": null,
+        "detail": "覆盖矩阵缺口: multi_source"
+      },
+      {
+        "code": "coverage_gap",
+        "severity": "error",
+        "document_id": null,
+        "case_id": null,
+        "detail": "覆盖矩阵缺口: table"
+      },
+      {
+        "code": "coverage_gap",
+        "severity": "error",
+        "document_id": null,
+        "case_id": null,
+        "detail": "覆盖矩阵缺口: scan_ocr"
+      },
+      {
+        "code": "coverage_gap",
+        "severity": "error",
+        "document_id": null,
+        "case_id": null,
+        "detail": "覆盖矩阵缺口: image_vision"
+      },
+      {
+        "code": "coverage_gap",
+        "severity": "error",
+        "document_id": null,
+        "case_id": null,
+        "detail": "覆盖矩阵缺口: refusal"
+      },
+      {
+        "code": "coverage_gap",
+        "severity": "error",
+        "document_id": null,
+        "case_id": null,
+        "detail": "覆盖矩阵缺口: version_conflict"
+      },
+      {
+        "code": "coverage_gap",
+        "severity": "error",
+        "document_id": null,
+        "case_id": null,
+        "detail": "覆盖矩阵缺口: duplicate"
+      },
+      {
+        "code": "coverage_gap",
+        "severity": "error",
+        "document_id": null,
+        "case_id": null,
+        "detail": "覆盖矩阵缺口: multi_format"
+      },
+      {
+        "code": "coverage_gap",
+        "severity": "error",
+        "document_id": null,
+        "case_id": null,
+        "detail": "覆盖矩阵缺口: web_snapshot"
+      },
+      {
+        "code": "fetched_at_missing",
+        "severity": "error",
+        "document_id": "cv2_cardiology_guideline_pdf",
+        "case_id": null,
+        "detail": "fetched_at 仍为待审核值"
+      },
+      {
+        "code": "fetched_at_missing",
+        "severity": "error",
+        "document_id": "cv2_diabetes_docx",
+        "case_id": null,
+        "detail": "fetched_at 仍为待审核值"
+      },
+      {
+        "code": "fetched_at_missing",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_docx",
+        "case_id": null,
+        "detail": "fetched_at 仍为待审核值"
+      },
+      {
+        "code": "fetched_at_missing",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_md",
+        "case_id": null,
+        "detail": "fetched_at 仍为待审核值"
+      },
+      {
+        "code": "fetched_at_missing",
+        "severity": "error",
+        "document_id": "cv2_expired_version_pdf",
+        "case_id": null,
+        "detail": "fetched_at 仍为待审核值"
+      },
+      {
+        "code": "fetched_at_missing",
+        "severity": "error",
+        "document_id": "cv2_lab_table_markdown",
+        "case_id": null,
+        "detail": "fetched_at 仍为待审核值"
+      },
+      {
+        "code": "fetched_at_missing",
+        "severity": "error",
+        "document_id": "cv2_medication_table_html",
+        "case_id": null,
+        "detail": "fetched_at 仍为待审核值"
+      },
+      {
+        "code": "fetched_at_missing",
+        "severity": "error",
+        "document_id": "cv2_public_web_snapshot",
+        "case_id": null,
+        "detail": "fetched_at 仍为待审核值"
+      },
+      {
+        "code": "fetched_at_missing",
+        "severity": "error",
+        "document_id": "cv2_report_image_png",
+        "case_id": null,
+        "detail": "fetched_at 仍为待审核值"
+      },
+      {
+        "code": "fetched_at_missing",
+        "severity": "error",
+        "document_id": "cv2_scan_pdf_ocr",
+        "case_id": null,
+        "detail": "fetched_at 仍为待审核值"
+      },
+      {
+        "code": "human_golden_missing",
+        "severity": "error",
+        "document_id": null,
+        "case_id": null,
+        "detail": "没有人工确认的黄金资料，评估只能返回 not_eligible"
+      },
+      {
+        "code": "license_not_approved",
+        "severity": "error",
+        "document_id": "cv2_cardiology_guideline_pdf",
+        "case_id": null,
+        "detail": "license 缺失、未知或不在可用于当前评估的许可白名单中"
+      },
+      {
+        "code": "license_not_approved",
+        "severity": "error",
+        "document_id": "cv2_diabetes_docx",
+        "case_id": null,
+        "detail": "license 缺失、未知或不在可用于当前评估的许可白名单中"
+      },
+      {
+        "code": "license_not_approved",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_docx",
+        "case_id": null,
+        "detail": "license 缺失、未知或不在可用于当前评估的许可白名单中"
+      },
+      {
+        "code": "license_not_approved",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_md",
+        "case_id": null,
+        "detail": "license 缺失、未知或不在可用于当前评估的许可白名单中"
+      },
+      {
+        "code": "license_not_approved",
+        "severity": "error",
+        "document_id": "cv2_expired_version_pdf",
+        "case_id": null,
+        "detail": "license 缺失、未知或不在可用于当前评估的许可白名单中"
+      },
+      {
+        "code": "license_not_approved",
+        "severity": "error",
+        "document_id": "cv2_lab_table_markdown",
+        "case_id": null,
+        "detail": "license 缺失、未知或不在可用于当前评估的许可白名单中"
+      },
+      {
+        "code": "license_not_approved",
+        "severity": "error",
+        "document_id": "cv2_medication_table_html",
+        "case_id": null,
+        "detail": "license 缺失、未知或不在可用于当前评估的许可白名单中"
+      },
+      {
+        "code": "license_not_approved",
+        "severity": "error",
+        "document_id": "cv2_public_web_snapshot",
+        "case_id": null,
+        "detail": "license 缺失、未知或不在可用于当前评估的许可白名单中"
+      },
+      {
+        "code": "license_not_approved",
+        "severity": "error",
+        "document_id": "cv2_report_image_png",
+        "case_id": null,
+        "detail": "license 缺失、未知或不在可用于当前评估的许可白名单中"
+      },
+      {
+        "code": "license_not_approved",
+        "severity": "error",
+        "document_id": "cv2_scan_pdf_ocr",
+        "case_id": null,
+        "detail": "license 缺失、未知或不在可用于当前评估的许可白名单中"
+      },
+      {
+        "code": "missing_content_hash",
+        "severity": "error",
+        "document_id": "cv2_cardiology_guideline_pdf",
+        "case_id": null,
+        "detail": "ready 资产必须登记 SHA-256 内容哈希"
+      },
+      {
+        "code": "missing_content_hash",
+        "severity": "error",
+        "document_id": "cv2_diabetes_docx",
+        "case_id": null,
+        "detail": "ready 资产必须登记 SHA-256 内容哈希"
+      },
+      {
+        "code": "missing_content_hash",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_docx",
+        "case_id": null,
+        "detail": "ready 资产必须登记 SHA-256 内容哈希"
+      },
+      {
+        "code": "missing_content_hash",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_md",
+        "case_id": null,
+        "detail": "ready 资产必须登记 SHA-256 内容哈希"
+      },
+      {
+        "code": "missing_content_hash",
+        "severity": "error",
+        "document_id": "cv2_expired_version_pdf",
+        "case_id": null,
+        "detail": "ready 资产必须登记 SHA-256 内容哈希"
+      },
+      {
+        "code": "missing_content_hash",
+        "severity": "error",
+        "document_id": "cv2_lab_table_markdown",
+        "case_id": null,
+        "detail": "ready 资产必须登记 SHA-256 内容哈希"
+      },
+      {
+        "code": "missing_content_hash",
+        "severity": "error",
+        "document_id": "cv2_medication_table_html",
+        "case_id": null,
+        "detail": "ready 资产必须登记 SHA-256 内容哈希"
+      },
+      {
+        "code": "missing_content_hash",
+        "severity": "error",
+        "document_id": "cv2_public_web_snapshot",
+        "case_id": null,
+        "detail": "ready 资产必须登记 SHA-256 内容哈希"
+      },
+      {
+        "code": "missing_content_hash",
+        "severity": "error",
+        "document_id": "cv2_report_image_png",
+        "case_id": null,
+        "detail": "ready 资产必须登记 SHA-256 内容哈希"
+      },
+      {
+        "code": "missing_content_hash",
+        "severity": "error",
+        "document_id": "cv2_scan_pdf_ocr",
+        "case_id": null,
+        "detail": "ready 资产必须登记 SHA-256 内容哈希"
+      },
+      {
+        "code": "missing_file",
+        "severity": "error",
+        "document_id": "cv2_cardiology_guideline_pdf",
+        "case_id": null,
+        "detail": "manifest 指向的文件不存在"
+      },
+      {
+        "code": "missing_file",
+        "severity": "error",
+        "document_id": "cv2_diabetes_docx",
+        "case_id": null,
+        "detail": "manifest 指向的文件不存在"
+      },
+      {
+        "code": "missing_file",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_docx",
+        "case_id": null,
+        "detail": "manifest 指向的文件不存在"
+      },
+      {
+        "code": "missing_file",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_md",
+        "case_id": null,
+        "detail": "manifest 指向的文件不存在"
+      },
+      {
+        "code": "missing_file",
+        "severity": "error",
+        "document_id": "cv2_expired_version_pdf",
+        "case_id": null,
+        "detail": "manifest 指向的文件不存在"
+      },
+      {
+        "code": "missing_file",
+        "severity": "error",
+        "document_id": "cv2_lab_table_markdown",
+        "case_id": null,
+        "detail": "manifest 指向的文件不存在"
+      },
+      {
+        "code": "missing_file",
+        "severity": "error",
+        "document_id": "cv2_medication_table_html",
+        "case_id": null,
+        "detail": "manifest 指向的文件不存在"
+      },
+      {
+        "code": "missing_file",
+        "severity": "error",
+        "document_id": "cv2_public_web_snapshot",
+        "case_id": null,
+        "detail": "manifest 指向的文件不存在"
+      },
+      {
+        "code": "missing_file",
+        "severity": "error",
+        "document_id": "cv2_report_image_png",
+        "case_id": null,
+        "detail": "manifest 指向的文件不存在"
+      },
+      {
+        "code": "missing_file",
+        "severity": "error",
+        "document_id": "cv2_scan_pdf_ocr",
+        "case_id": null,
+        "detail": "manifest 指向的文件不存在"
+      },
+      {
+        "code": "publication_date_missing",
+        "severity": "error",
+        "document_id": "cv2_cardiology_guideline_pdf",
+        "case_id": null,
+        "detail": "publication_date 仍为待审核值"
+      },
+      {
+        "code": "publication_date_missing",
+        "severity": "error",
+        "document_id": "cv2_diabetes_docx",
+        "case_id": null,
+        "detail": "publication_date 仍为待审核值"
+      },
+      {
+        "code": "publication_date_missing",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_docx",
+        "case_id": null,
+        "detail": "publication_date 仍为待审核值"
+      },
+      {
+        "code": "publication_date_missing",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_md",
+        "case_id": null,
+        "detail": "publication_date 仍为待审核值"
+      },
+      {
+        "code": "publication_date_missing",
+        "severity": "error",
+        "document_id": "cv2_expired_version_pdf",
+        "case_id": null,
+        "detail": "publication_date 仍为待审核值"
+      },
+      {
+        "code": "publication_date_missing",
+        "severity": "error",
+        "document_id": "cv2_lab_table_markdown",
+        "case_id": null,
+        "detail": "publication_date 仍为待审核值"
+      },
+      {
+        "code": "publication_date_missing",
+        "severity": "error",
+        "document_id": "cv2_medication_table_html",
+        "case_id": null,
+        "detail": "publication_date 仍为待审核值"
+      },
+      {
+        "code": "publication_date_missing",
+        "severity": "error",
+        "document_id": "cv2_public_web_snapshot",
+        "case_id": null,
+        "detail": "publication_date 仍为待审核值"
+      },
+      {
+        "code": "publication_date_missing",
+        "severity": "error",
+        "document_id": "cv2_report_image_png",
+        "case_id": null,
+        "detail": "publication_date 仍为待审核值"
+      },
+      {
+        "code": "publication_date_missing",
+        "severity": "error",
+        "document_id": "cv2_scan_pdf_ocr",
+        "case_id": null,
+        "detail": "publication_date 仍为待审核值"
+      },
+      {
+        "code": "source_not_approved",
+        "severity": "error",
+        "document_id": "cv2_cardiology_guideline_pdf",
+        "case_id": null,
+        "detail": "source_url 必须是可审计的 HTTP(S) 来源"
+      },
+      {
+        "code": "source_not_approved",
+        "severity": "error",
+        "document_id": "cv2_diabetes_docx",
+        "case_id": null,
+        "detail": "source_url 必须是可审计的 HTTP(S) 来源"
+      },
+      {
+        "code": "source_not_approved",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_docx",
+        "case_id": null,
+        "detail": "source_url 必须是可审计的 HTTP(S) 来源"
+      },
+      {
+        "code": "source_not_approved",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_md",
+        "case_id": null,
+        "detail": "source_url 必须是可审计的 HTTP(S) 来源"
+      },
+      {
+        "code": "source_not_approved",
+        "severity": "error",
+        "document_id": "cv2_expired_version_pdf",
+        "case_id": null,
+        "detail": "source_url 必须是可审计的 HTTP(S) 来源"
+      },
+      {
+        "code": "source_not_approved",
+        "severity": "error",
+        "document_id": "cv2_lab_table_markdown",
+        "case_id": null,
+        "detail": "source_url 必须是可审计的 HTTP(S) 来源"
+      },
+      {
+        "code": "source_not_approved",
+        "severity": "error",
+        "document_id": "cv2_medication_table_html",
+        "case_id": null,
+        "detail": "source_url 必须是可审计的 HTTP(S) 来源"
+      },
+      {
+        "code": "source_not_approved",
+        "severity": "error",
+        "document_id": "cv2_public_web_snapshot",
+        "case_id": null,
+        "detail": "source_url 必须是可审计的 HTTP(S) 来源"
+      },
+      {
+        "code": "source_not_approved",
+        "severity": "error",
+        "document_id": "cv2_report_image_png",
+        "case_id": null,
+        "detail": "source_url 必须是可审计的 HTTP(S) 来源"
+      },
+      {
+        "code": "source_not_approved",
+        "severity": "error",
+        "document_id": "cv2_scan_pdf_ocr",
+        "case_id": null,
+        "detail": "source_url 必须是可审计的 HTTP(S) 来源"
+      },
+      {
+        "code": "source_organization_missing",
+        "severity": "error",
+        "document_id": "cv2_cardiology_guideline_pdf",
+        "case_id": null,
+        "detail": "source_organization 仍为待审核值"
+      },
+      {
+        "code": "source_organization_missing",
+        "severity": "error",
+        "document_id": "cv2_diabetes_docx",
+        "case_id": null,
+        "detail": "source_organization 仍为待审核值"
+      },
+      {
+        "code": "source_organization_missing",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_docx",
+        "case_id": null,
+        "detail": "source_organization 仍为待审核值"
+      },
+      {
+        "code": "source_organization_missing",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_md",
+        "case_id": null,
+        "detail": "source_organization 仍为待审核值"
+      },
+      {
+        "code": "source_organization_missing",
+        "severity": "error",
+        "document_id": "cv2_expired_version_pdf",
+        "case_id": null,
+        "detail": "source_organization 仍为待审核值"
+      },
+      {
+        "code": "source_organization_missing",
+        "severity": "error",
+        "document_id": "cv2_lab_table_markdown",
+        "case_id": null,
+        "detail": "source_organization 仍为待审核值"
+      },
+      {
+        "code": "source_organization_missing",
+        "severity": "error",
+        "document_id": "cv2_medication_table_html",
+        "case_id": null,
+        "detail": "source_organization 仍为待审核值"
+      },
+      {
+        "code": "source_organization_missing",
+        "severity": "error",
+        "document_id": "cv2_public_web_snapshot",
+        "case_id": null,
+        "detail": "source_organization 仍为待审核值"
+      },
+      {
+        "code": "source_organization_missing",
+        "severity": "error",
+        "document_id": "cv2_report_image_png",
+        "case_id": null,
+        "detail": "source_organization 仍为待审核值"
+      },
+      {
+        "code": "source_organization_missing",
+        "severity": "error",
+        "document_id": "cv2_scan_pdf_ocr",
+        "case_id": null,
+        "detail": "source_organization 仍为待审核值"
+      },
+      {
+        "code": "version_missing",
+        "severity": "error",
+        "document_id": "cv2_cardiology_guideline_pdf",
+        "case_id": null,
+        "detail": "版本必须在进入评估前确认"
+      },
+      {
+        "code": "version_missing",
+        "severity": "error",
+        "document_id": "cv2_diabetes_docx",
+        "case_id": null,
+        "detail": "版本必须在进入评估前确认"
+      },
+      {
+        "code": "version_missing",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_docx",
+        "case_id": null,
+        "detail": "版本必须在进入评估前确认"
+      },
+      {
+        "code": "version_missing",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_md",
+        "case_id": null,
+        "detail": "版本必须在进入评估前确认"
+      },
+      {
+        "code": "version_missing",
+        "severity": "error",
+        "document_id": "cv2_expired_version_pdf",
+        "case_id": null,
+        "detail": "版本必须在进入评估前确认"
+      },
+      {
+        "code": "version_missing",
+        "severity": "error",
+        "document_id": "cv2_lab_table_markdown",
+        "case_id": null,
+        "detail": "版本必须在进入评估前确认"
+      },
+      {
+        "code": "version_missing",
+        "severity": "error",
+        "document_id": "cv2_medication_table_html",
+        "case_id": null,
+        "detail": "版本必须在进入评估前确认"
+      },
+      {
+        "code": "version_missing",
+        "severity": "error",
+        "document_id": "cv2_public_web_snapshot",
+        "case_id": null,
+        "detail": "版本必须在进入评估前确认"
+      },
+      {
+        "code": "version_missing",
+        "severity": "error",
+        "document_id": "cv2_report_image_png",
+        "case_id": null,
+        "detail": "版本必须在进入评估前确认"
+      },
+      {
+        "code": "version_missing",
+        "severity": "error",
+        "document_id": "cv2_scan_pdf_ocr",
+        "case_id": null,
+        "detail": "版本必须在进入评估前确认"
+      },
+      {
+        "code": "version_not_current",
+        "severity": "error",
+        "document_id": "cv2_cardiology_guideline_pdf",
+        "case_id": null,
+        "detail": "仅 current 版本可以进入候选评估"
+      },
+      {
+        "code": "version_not_current",
+        "severity": "error",
+        "document_id": "cv2_diabetes_docx",
+        "case_id": null,
+        "detail": "仅 current 版本可以进入候选评估"
+      },
+      {
+        "code": "version_not_current",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_docx",
+        "case_id": null,
+        "detail": "仅 current 版本可以进入候选评估"
+      },
+      {
+        "code": "version_not_current",
+        "severity": "error",
+        "document_id": "cv2_duplicate_candidate_md",
+        "case_id": null,
+        "detail": "仅 current 版本可以进入候选评估"
+      },
+      {
+        "code": "version_not_current",
+        "severity": "error",
+        "document_id": "cv2_expired_version_pdf",
+        "case_id": null,
+        "detail": "仅 current 版本可以进入候选评估"
+      },
+      {
+        "code": "version_not_current",
+        "severity": "error",
+        "document_id": "cv2_lab_table_markdown",
+        "case_id": null,
+        "detail": "仅 current 版本可以进入候选评估"
+      },
+      {
+        "code": "version_not_current",
+        "severity": "error",
+        "document_id": "cv2_medication_table_html",
+        "case_id": null,
+        "detail": "仅 current 版本可以进入候选评估"
+      },
+      {
+        "code": "version_not_current",
+        "severity": "error",
+        "document_id": "cv2_public_web_snapshot",
+        "case_id": null,
+        "detail": "仅 current 版本可以进入候选评估"
+      },
+      {
+        "code": "version_not_current",
+        "severity": "error",
+        "document_id": "cv2_report_image_png",
+        "case_id": null,
+        "detail": "仅 current 版本可以进入候选评估"
+      },
+      {
+        "code": "version_not_current",
+        "severity": "error",
+        "document_id": "cv2_scan_pdf_ocr",
+        "case_id": null,
+        "detail": "仅 current 版本可以进入候选评估"
+      }
+    ]
+  },
+  "no_cost_gate_passed": true,
+  "provider_calls": {
+    "embedding_calls": 0,
+    "rerank_calls": 0,
+    "qwen_calls": 0,
+    "ocr_calls": 0,
+    "vision_calls": 0
+  },
+  "metrics": {
+    "case_count": 9,
+    "completed_case_count": 0,
+    "blocked_case_count": 8,
+    "failed_case_count": 0,
+    "not_eligible_case_count": 1,
+    "source_scored_case_count": 0,
+    "mean_source_recall_at_4": null,
+    "full_source_hit_rate_at_4": null,
+    "mean_mrr_at_4": null,
+    "mean_ndcg_at_4": null,
+    "citation_scored_case_count": 0,
+    "citation_accuracy": null,
+    "refusal_scored_case_count": 0,
+    "refusal_accuracy": null,
+    "fact_scored_case_count": 0,
+    "mean_fact_coverage": null,
+    "structured_scored_case_count": 0,
+    "structured_accuracy": null,
+    "version_scored_case_count": 0,
+    "version_safety_accuracy": null,
+    "mean_latency_ms": null
+  },
+  "cases": [
+    {
+      "case_id": "eval2_001",
+      "category": "basic_fact",
+      "status": "blocked",
+      "expected_behavior": "blocked",
+      "actual_behavior": null,
+      "retrieved_source_document_ids": [],
+      "cited_source_document_ids": [],
+      "source_recall_at_4": null,
+      "full_source_hit_at_4": null,
+      "mrr_at_4": null,
+      "ndcg_at_4": null,
+      "citation_valid": null,
+      "refusal_correct": null,
+      "fact_coverage": null,
+      "structured_requirement_passed": null,
+      "version_safe": null,
+      "latency_ms": null,
+      "failure_code": null
+    },
+    {
+      "case_id": "eval2_002",
+      "category": "multi_source",
+      "status": "blocked",
+      "expected_behavior": "blocked",
+      "actual_behavior": null,
+      "retrieved_source_document_ids": [],
+      "cited_source_document_ids": [],
+      "source_recall_at_4": null,
+      "full_source_hit_at_4": null,
+      "mrr_at_4": null,
+      "ndcg_at_4": null,
+      "citation_valid": null,
+      "refusal_correct": null,
+      "fact_coverage": null,
+      "structured_requirement_passed": null,
+      "version_safe": null,
+      "latency_ms": null,
+      "failure_code": null
+    },
+    {
+      "case_id": "eval2_003",
+      "category": "table",
+      "status": "blocked",
+      "expected_behavior": "blocked",
+      "actual_behavior": null,
+      "retrieved_source_document_ids": [],
+      "cited_source_document_ids": [],
+      "source_recall_at_4": null,
+      "full_source_hit_at_4": null,
+      "mrr_at_4": null,
+      "ndcg_at_4": null,
+      "citation_valid": null,
+      "refusal_correct": null,
+      "fact_coverage": null,
+      "structured_requirement_passed": null,
+      "version_safe": null,
+      "latency_ms": null,
+      "failure_code": null
+    },
+    {
+      "case_id": "eval2_004",
+      "category": "scan_ocr",
+      "status": "blocked",
+      "expected_behavior": "blocked",
+      "actual_behavior": null,
+      "retrieved_source_document_ids": [],
+      "cited_source_document_ids": [],
+      "source_recall_at_4": null,
+      "full_source_hit_at_4": null,
+      "mrr_at_4": null,
+      "ndcg_at_4": null,
+      "citation_valid": null,
+      "refusal_correct": null,
+      "fact_coverage": null,
+      "structured_requirement_passed": null,
+      "version_safe": null,
+      "latency_ms": null,
+      "failure_code": null
+    },
+    {
+      "case_id": "eval2_005",
+      "category": "image_vision",
+      "status": "blocked",
+      "expected_behavior": "blocked",
+      "actual_behavior": null,
+      "retrieved_source_document_ids": [],
+      "cited_source_document_ids": [],
+      "source_recall_at_4": null,
+      "full_source_hit_at_4": null,
+      "mrr_at_4": null,
+      "ndcg_at_4": null,
+      "citation_valid": null,
+      "refusal_correct": null,
+      "fact_coverage": null,
+      "structured_requirement_passed": null,
+      "version_safe": null,
+      "latency_ms": null,
+      "failure_code": null
+    },
+    {
+      "case_id": "eval2_006",
+      "category": "refusal",
+      "status": "not_eligible",
+      "expected_behavior": "refuse",
+      "actual_behavior": null,
+      "retrieved_source_document_ids": [],
+      "cited_source_document_ids": [],
+      "source_recall_at_4": null,
+      "full_source_hit_at_4": null,
+      "mrr_at_4": null,
+      "ndcg_at_4": null,
+      "citation_valid": null,
+      "refusal_correct": null,
+      "fact_coverage": null,
+      "structured_requirement_passed": null,
+      "version_safe": null,
+      "latency_ms": null,
+      "failure_code": null
+    },
+    {
+      "case_id": "eval2_007",
+      "category": "version_conflict",
+      "status": "blocked",
+      "expected_behavior": "blocked",
+      "actual_behavior": null,
+      "retrieved_source_document_ids": [],
+      "cited_source_document_ids": [],
+      "source_recall_at_4": null,
+      "full_source_hit_at_4": null,
+      "mrr_at_4": null,
+      "ndcg_at_4": null,
+      "citation_valid": null,
+      "refusal_correct": null,
+      "fact_coverage": null,
+      "structured_requirement_passed": null,
+      "version_safe": null,
+      "latency_ms": null,
+      "failure_code": null
+    },
+    {
+      "case_id": "eval2_008",
+      "category": "basic_fact",
+      "status": "blocked",
+      "expected_behavior": "blocked",
+      "actual_behavior": null,
+      "retrieved_source_document_ids": [],
+      "cited_source_document_ids": [],
+      "source_recall_at_4": null,
+      "full_source_hit_at_4": null,
+      "mrr_at_4": null,
+      "ndcg_at_4": null,
+      "citation_valid": null,
+      "refusal_correct": null,
+      "fact_coverage": null,
+      "structured_requirement_passed": null,
+      "version_safe": null,
+      "latency_ms": null,
+      "failure_code": null
+    },
+    {
+      "case_id": "eval2_009",
+      "category": "multi_source",
+      "status": "blocked",
+      "expected_behavior": "blocked",
+      "actual_behavior": null,
+      "retrieved_source_document_ids": [],
+      "cited_source_document_ids": [],
+      "source_recall_at_4": null,
+      "full_source_hit_at_4": null,
+      "mrr_at_4": null,
+      "ndcg_at_4": null,
+      "citation_valid": null,
+      "refusal_correct": null,
+      "fact_coverage": null,
+      "structured_requirement_passed": null,
+      "version_safe": null,
+      "latency_ms": null,
+      "failure_code": null
+    }
+  ],
+  "promotion": {
+    "decision": "not_eligible",
+    "baseline_candidate_id": null,
+    "candidate_id": "vector_baseline_v2",
+    "thresholds": {},
+    "diffs": [],
+    "reasons": [
+      "未提供冻结基线，候选不能直接晋级"
+    ]
+  }
+}

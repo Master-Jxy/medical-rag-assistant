@@ -3,7 +3,7 @@
   "corpus_version": "corpus_v2",
   "generated_on": "2026-08-06",
   "checksum_algorithm": "sha256",
-  "corpus_checksum": "57e41c70e0e5eb656877db516b22cce194037c0f637b1d61bdf8f79f5d4602b0",
+  "corpus_checksum": "1df9837e69267fbb778beb4f6a6dcbd1cd563a1566ec61bc60d13371b38ffdda",
   "prior_corpus_version": "corpus_v1",
   "overwrite_policy": "never_overwrite_corpus_v1",
   "document_count": 10,
@@ -23,6 +23,7 @@
         "hypertension",
         "heart failure"
       ],
+      "version": "pending_review",
       "document_type": "pdf",
       "language": "zh-CN",
       "content_sha256": "unknown",
@@ -63,6 +64,7 @@
       "disease_topics": [
         "diabetes"
       ],
+      "version": "pending_review",
       "document_type": "docx",
       "language": "zh-CN",
       "content_sha256": "unknown",
@@ -103,6 +105,7 @@
       "disease_topics": [
         "lab reference ranges"
       ],
+      "version": "pending_review",
       "document_type": "markdown",
       "language": "zh-CN",
       "content_sha256": "unknown",
@@ -143,6 +146,7 @@
       "disease_topics": [
         "medication safety"
       ],
+      "version": "pending_review",
       "document_type": "html",
       "language": "zh-CN",
       "content_sha256": "unknown",
@@ -183,6 +187,7 @@
       "disease_topics": [
         "scanned report"
       ],
+      "version": "pending_review",
       "document_type": "pdf",
       "language": "zh-CN",
       "content_sha256": "unknown",
@@ -223,6 +228,7 @@
       "disease_topics": [
         "report screenshot"
       ],
+      "version": "pending_review",
       "document_type": "image",
       "language": "zh-CN",
       "content_sha256": "unknown",
@@ -264,6 +270,7 @@
         "web snapshot",
         "patient education"
       ],
+      "version": "pending_review",
       "document_type": "web_snapshot",
       "language": "zh-CN",
       "content_sha256": "unknown",
@@ -304,6 +311,7 @@
       "disease_topics": [
         "outdated guideline"
       ],
+      "version": "pending_review",
       "document_type": "pdf",
       "language": "zh-CN",
       "content_sha256": "unknown",
@@ -344,6 +352,7 @@
       "disease_topics": [
         "medication safety"
       ],
+      "version": "pending_review",
       "document_type": "docx",
       "language": "zh-CN",
       "content_sha256": "unknown",
@@ -384,6 +393,7 @@
       "disease_topics": [
         "medication safety"
       ],
+      "version": "pending_review",
       "document_type": "markdown",
       "language": "zh-CN",
       "content_sha256": "unknown",

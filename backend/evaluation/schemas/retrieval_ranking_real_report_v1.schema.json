@@ -600,7 +600,7 @@
           "type": "string"
         },
         "candidate_pool_size": {
-          "const": 12,
+          "const": 16,
           "title": "Candidate Pool Size",
           "type": "integer"
         },

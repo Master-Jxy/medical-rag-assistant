@@ -17,7 +17,7 @@ class CandidateSelectionResult:
 class CandidateSelectionPolicy:
     """限制候选池、单文档片段数和最终上下文数量。"""
 
-    candidate_pool_size: int = 12
+    candidate_pool_size: int = 16
     max_chunks_per_document: int = 2
     final_top_k: int = 4
 

@@ -34,7 +34,7 @@ def _profile(
     defaults = Settings.model_fields
     configuration = RetrievalRankingConfiguration(
         profile_version="retrieval_ranking_profile_v1",
-        candidate_pool_size=12,
+        candidate_pool_size=16,
         max_chunks_per_document=2,
         final_top_k=4,
         vector_adapter="current_chroma_read_only_v1",
@@ -200,16 +200,16 @@ def _mock_chunks(
     sequence = [primary, primary]
     if hybrid:
         sequence.extend(expected[1:])
-        sequence.extend(distractors[: 12 - len(sequence)])
+        sequence.extend(distractors[: 16 - len(sequence)])
     else:
         sequence.extend(distractors[:1])
         sequence.extend(expected[1:])
         sequence.extend([primary])
-        sequence.extend(distractors[1 : 12 - len(sequence) + 1])
-    sequence = sequence[:12]
+        sequence.extend(distractors[1 : 16 - len(sequence) + 1])
+    sequence = sequence[:16]
     if reranked:
         sequence = expected + [item for item in sequence if item not in expected]
-        sequence = sequence[:12]
+        sequence = sequence[:16]
     return [
         RetrievedChunk(
             content=f"固定Mock片段{index}",

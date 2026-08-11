@@ -12,7 +12,7 @@ from app.evaluation.schemas import EvaluationCategory, StrictModel
 
 class RetrievalRankingConfiguration(StrictModel):
     profile_version: Literal["retrieval_ranking_profile_v1"]
-    candidate_pool_size: Literal[12]
+    candidate_pool_size: Literal[16]
     max_chunks_per_document: Literal[2]
     final_top_k: Literal[4]
     vector_adapter: str

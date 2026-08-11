@@ -14,7 +14,7 @@
         "display_name": "同一次向量前12直接截取前4",
         "configuration": {
           "profile_version": "retrieval_ranking_profile_v1",
-          "candidate_pool_size": 12,
+          "candidate_pool_size": 16,
           "max_chunks_per_document": 2,
           "final_top_k": 4,
           "vector_adapter": "current_chroma_read_only_v1",
@@ -29,7 +29,7 @@
           "rerank_model": "gte-rerank-v2",
           "shared_vector_and_keyword_inputs": true
         },
-        "configuration_fingerprint": "1d4051f139bd51d4a2a3eed63cbd84039ea426d49cbacca0732d45f983a872b3"
+        "configuration_fingerprint": "603c0966d0f1c0c309158bd270eaee2bb9253ce5146c6debecdb2156131b240d"
       },
       "metrics": {
         "case_count": 40,
@@ -1421,7 +1421,7 @@
         "display_name": "向量宽召回与文档配额",
         "configuration": {
           "profile_version": "retrieval_ranking_profile_v1",
-          "candidate_pool_size": 12,
+          "candidate_pool_size": 16,
           "max_chunks_per_document": 2,
           "final_top_k": 4,
           "vector_adapter": "current_chroma_read_only_v1",
@@ -1436,7 +1436,7 @@
           "rerank_model": "gte-rerank-v2",
           "shared_vector_and_keyword_inputs": true
         },
-        "configuration_fingerprint": "e7ed625ee79914883923844ac8a6e7b2cf74b0744e3a4394d70c88b7fe399e61"
+        "configuration_fingerprint": "a151e1fe24e6dce2a4ec0227bbb840878bbe131d5cc1302a5005e152b5c0ea1a"
       },
       "metrics": {
         "case_count": 40,
@@ -2880,7 +2880,7 @@
         "display_name": "宽候选混合RRF与文档配额",
         "configuration": {
           "profile_version": "retrieval_ranking_profile_v1",
-          "candidate_pool_size": 12,
+          "candidate_pool_size": 16,
           "max_chunks_per_document": 2,
           "final_top_k": 4,
           "vector_adapter": "current_chroma_read_only_v1",
@@ -2895,7 +2895,7 @@
           "rerank_model": "gte-rerank-v2",
           "shared_vector_and_keyword_inputs": true
         },
-        "configuration_fingerprint": "d7822fda39b0a6e423b7bec1fd32767c646852ea4fb81fae0be60ea018941fdb"
+        "configuration_fingerprint": "c9623dfcb446b71fb73270bc6a4f45cdd203749319415a666320df62614d2891"
       },
       "metrics": {
         "case_count": 40,
@@ -4339,7 +4339,7 @@
         "display_name": "宽候选混合RRF、文档配额与重排",
         "configuration": {
           "profile_version": "retrieval_ranking_profile_v1",
-          "candidate_pool_size": 12,
+          "candidate_pool_size": 16,
           "max_chunks_per_document": 2,
           "final_top_k": 4,
           "vector_adapter": "current_chroma_read_only_v1",
@@ -4354,7 +4354,7 @@
           "rerank_model": "gte-rerank-v2",
           "shared_vector_and_keyword_inputs": true
         },
-        "configuration_fingerprint": "328207f88a9603e9ab2e6b1f1ca769fe97c74567a529b30dbb657c4cf8cb15d2"
+        "configuration_fingerprint": "476b5709e63529c42a0dbf7221102f066684fcdddcaab591b18bec7efd864d5c"
       },
       "metrics": {
         "case_count": 40,

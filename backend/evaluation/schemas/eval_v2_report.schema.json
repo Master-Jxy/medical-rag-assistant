@@ -1,0 +1,864 @@
+{
+  "$defs": {
+    "CorpusV2PreflightIssue": {
+      "additionalProperties": false,
+      "description": "可审计但不泄露正文的语料门禁问题。",
+      "properties": {
+        "code": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "error",
+            "warning"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Id"
+        },
+        "case_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Case Id"
+        },
+        "detail": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "detail"
+      ],
+      "title": "CorpusV2PreflightIssue",
+      "type": "object"
+    },
+    "CorpusV2PreflightReport": {
+      "additionalProperties": false,
+      "description": "实际文件、法律元数据和评估资格的确定性预检结果。",
+      "properties": {
+        "schema_version": {
+          "const": "corpus_v2_preflight_v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "corpus_version": {
+          "const": "corpus_v2",
+          "title": "Corpus Version",
+          "type": "string"
+        },
+        "corpus_checksum": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Corpus Checksum",
+          "type": "string"
+        },
+        "dataset_version": {
+          "const": "eval_v2",
+          "title": "Dataset Version",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "eligible",
+            "not_eligible"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "eligible": {
+          "title": "Eligible",
+          "type": "boolean"
+        },
+        "document_count": {
+          "minimum": 0,
+          "title": "Document Count",
+          "type": "integer"
+        },
+        "ready_document_count": {
+          "minimum": 0,
+          "title": "Ready Document Count",
+          "type": "integer"
+        },
+        "human_golden_case_count": {
+          "minimum": 0,
+          "title": "Human Golden Case Count",
+          "type": "integer"
+        },
+        "coverage_gaps": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Coverage Gaps",
+          "type": "array"
+        },
+        "duplicate_groups": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Duplicate Groups",
+          "type": "array"
+        },
+        "version_conflicts": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Version Conflicts",
+          "type": "array"
+        },
+        "checks": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "title": "Checks",
+          "type": "object"
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/CorpusV2PreflightIssue"
+          },
+          "title": "Issues",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "corpus_version",
+        "corpus_checksum",
+        "dataset_version",
+        "status",
+        "eligible",
+        "document_count",
+        "ready_document_count",
+        "human_golden_case_count",
+        "coverage_gaps",
+        "duplicate_groups",
+        "version_conflicts",
+        "checks",
+        "issues"
+      ],
+      "title": "CorpusV2PreflightReport",
+      "type": "object"
+    },
+    "EvalV2CandidatePolicy": {
+      "additionalProperties": false,
+      "description": "候选池、文档配额和最终上下文是三个独立概念。",
+      "properties": {
+        "candidate_pool_size": {
+          "const": 16,
+          "default": 16,
+          "title": "Candidate Pool Size",
+          "type": "integer"
+        },
+        "max_chunks_per_document": {
+          "const": 2,
+          "default": 2,
+          "title": "Max Chunks Per Document",
+          "type": "integer"
+        },
+        "final_top_k": {
+          "const": 4,
+          "default": 4,
+          "title": "Final Top K",
+          "type": "integer"
+        },
+        "retrieval_mode": {
+          "default": "vector",
+          "enum": [
+            "vector",
+            "hybrid_rrf"
+          ],
+          "title": "Retrieval Mode",
+          "type": "string"
+        },
+        "reranker_enabled": {
+          "default": false,
+          "title": "Reranker Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "EvalV2CandidatePolicy",
+      "type": "object"
+    },
+    "EvalV2CaseResult": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "blocked",
+            "failed",
+            "not_eligible"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "expected_behavior": {
+          "title": "Expected Behavior",
+          "type": "string"
+        },
+        "actual_behavior": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actual Behavior"
+        },
+        "retrieved_source_document_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Retrieved Source Document Ids",
+          "type": "array"
+        },
+        "cited_source_document_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Cited Source Document Ids",
+          "type": "array"
+        },
+        "source_recall_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Recall At 4"
+        },
+        "full_source_hit_at_4": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Full Source Hit At 4"
+        },
+        "mrr_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mrr At 4"
+        },
+        "ndcg_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ndcg At 4"
+        },
+        "citation_valid": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Citation Valid"
+        },
+        "refusal_correct": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Refusal Correct"
+        },
+        "fact_coverage": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fact Coverage"
+        },
+        "structured_requirement_passed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Structured Requirement Passed"
+        },
+        "version_safe": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version Safe"
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latency Ms"
+        },
+        "failure_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Failure Code"
+        }
+      },
+      "required": [
+        "case_id",
+        "category",
+        "status",
+        "expected_behavior"
+      ],
+      "title": "EvalV2CaseResult",
+      "type": "object"
+    },
+    "EvalV2MetricDiff": {
+      "additionalProperties": false,
+      "properties": {
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "baseline": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Baseline"
+        },
+        "candidate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Candidate"
+        },
+        "delta": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Delta"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "metric",
+        "baseline",
+        "candidate",
+        "delta",
+        "passed"
+      ],
+      "title": "EvalV2MetricDiff",
+      "type": "object"
+    },
+    "EvalV2Metrics": {
+      "additionalProperties": false,
+      "properties": {
+        "case_count": {
+          "minimum": 0,
+          "title": "Case Count",
+          "type": "integer"
+        },
+        "completed_case_count": {
+          "minimum": 0,
+          "title": "Completed Case Count",
+          "type": "integer"
+        },
+        "blocked_case_count": {
+          "minimum": 0,
+          "title": "Blocked Case Count",
+          "type": "integer"
+        },
+        "failed_case_count": {
+          "minimum": 0,
+          "title": "Failed Case Count",
+          "type": "integer"
+        },
+        "not_eligible_case_count": {
+          "minimum": 0,
+          "title": "Not Eligible Case Count",
+          "type": "integer"
+        },
+        "source_scored_case_count": {
+          "minimum": 0,
+          "title": "Source Scored Case Count",
+          "type": "integer"
+        },
+        "mean_source_recall_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Source Recall At 4"
+        },
+        "full_source_hit_rate_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Full Source Hit Rate At 4"
+        },
+        "mean_mrr_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Mrr At 4"
+        },
+        "mean_ndcg_at_4": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Ndcg At 4"
+        },
+        "citation_scored_case_count": {
+          "minimum": 0,
+          "title": "Citation Scored Case Count",
+          "type": "integer"
+        },
+        "citation_accuracy": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Citation Accuracy"
+        },
+        "refusal_scored_case_count": {
+          "minimum": 0,
+          "title": "Refusal Scored Case Count",
+          "type": "integer"
+        },
+        "refusal_accuracy": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Refusal Accuracy"
+        },
+        "fact_scored_case_count": {
+          "minimum": 0,
+          "title": "Fact Scored Case Count",
+          "type": "integer"
+        },
+        "mean_fact_coverage": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Fact Coverage"
+        },
+        "structured_scored_case_count": {
+          "minimum": 0,
+          "title": "Structured Scored Case Count",
+          "type": "integer"
+        },
+        "structured_accuracy": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Structured Accuracy"
+        },
+        "version_scored_case_count": {
+          "minimum": 0,
+          "title": "Version Scored Case Count",
+          "type": "integer"
+        },
+        "version_safety_accuracy": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version Safety Accuracy"
+        },
+        "mean_latency_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Latency Ms"
+        }
+      },
+      "required": [
+        "case_count",
+        "completed_case_count",
+        "blocked_case_count",
+        "failed_case_count",
+        "not_eligible_case_count",
+        "source_scored_case_count",
+        "citation_scored_case_count",
+        "refusal_scored_case_count",
+        "fact_scored_case_count",
+        "structured_scored_case_count",
+        "version_scored_case_count"
+      ],
+      "title": "EvalV2Metrics",
+      "type": "object"
+    },
+    "EvalV2PromotionReport": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "enum": [
+            "promote",
+            "hold",
+            "not_eligible"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "baseline_candidate_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Baseline Candidate Id"
+        },
+        "candidate_id": {
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "thresholds": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Thresholds",
+          "type": "object"
+        },
+        "diffs": {
+          "items": {
+            "$ref": "#/$defs/EvalV2MetricDiff"
+          },
+          "title": "Diffs",
+          "type": "array"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        }
+      },
+      "required": [
+        "decision",
+        "candidate_id",
+        "thresholds",
+        "diffs",
+        "reasons"
+      ],
+      "title": "EvalV2PromotionReport",
+      "type": "object"
+    },
+    "EvalV2ProviderCalls": {
+      "additionalProperties": false,
+      "properties": {
+        "embedding_calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Embedding Calls",
+          "type": "integer"
+        },
+        "rerank_calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Rerank Calls",
+          "type": "integer"
+        },
+        "qwen_calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Qwen Calls",
+          "type": "integer"
+        },
+        "ocr_calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Ocr Calls",
+          "type": "integer"
+        },
+        "vision_calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Vision Calls",
+          "type": "integer"
+        }
+      },
+      "title": "EvalV2ProviderCalls",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "eval_v2_report_v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "report_version": {
+      "title": "Report Version",
+      "type": "string"
+    },
+    "run_kind": {
+      "const": "fake_no_cost",
+      "title": "Run Kind",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "corpus_version": {
+      "title": "Corpus Version",
+      "type": "string"
+    },
+    "corpus_checksum": {
+      "title": "Corpus Checksum",
+      "type": "string"
+    },
+    "dataset_version": {
+      "title": "Dataset Version",
+      "type": "string"
+    },
+    "candidate_id": {
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "candidate_policy": {
+      "$ref": "#/$defs/EvalV2CandidatePolicy"
+    },
+    "preflight": {
+      "$ref": "#/$defs/CorpusV2PreflightReport"
+    },
+    "no_cost_gate_passed": {
+      "title": "No Cost Gate Passed",
+      "type": "boolean"
+    },
+    "provider_calls": {
+      "$ref": "#/$defs/EvalV2ProviderCalls"
+    },
+    "metrics": {
+      "$ref": "#/$defs/EvalV2Metrics"
+    },
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/EvalV2CaseResult"
+      },
+      "title": "Cases",
+      "type": "array"
+    },
+    "promotion": {
+      "$ref": "#/$defs/EvalV2PromotionReport"
+    }
+  },
+  "required": [
+    "schema_version",
+    "report_version",
+    "run_kind",
+    "generated_at",
+    "corpus_version",
+    "corpus_checksum",
+    "dataset_version",
+    "candidate_id",
+    "candidate_policy",
+    "preflight",
+    "no_cost_gate_passed",
+    "provider_calls",
+    "metrics",
+    "cases",
+    "promotion"
+  ],
+  "title": "EvalV2Report",
+  "type": "object"
+}

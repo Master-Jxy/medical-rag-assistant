@@ -13,6 +13,7 @@ from app.evaluation.corpus_v2 import (
     load_evaluation_set,
     load_manifest,
     render_preflight_markdown,
+    preflight_corpus_v2,
     validate_corpus_v2_assets,
 )
 
@@ -21,6 +22,7 @@ DEFAULT_MANIFEST = EVALUATION_ROOT / "corpora" / "corpus_v2_manifest.json"
 DEFAULT_DATASET = EVALUATION_ROOT / "datasets" / "eval_v2.json"
 DEFAULT_JSON_SUMMARY = EVALUATION_ROOT / "plans" / "corpus_v2_no_cost_preflight_v1.json"
 DEFAULT_MARKDOWN_SUMMARY = EVALUATION_ROOT / "reviews" / "corpus_v2_preflight_summary.md"
+DEFAULT_STRICT_REPORT = EVALUATION_ROOT / "plans" / "corpus_v2_strict_preflight_v1.json"
 
 
 def parse_args() -> argparse.Namespace:
@@ -29,6 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--json-output", type=Path, default=DEFAULT_JSON_SUMMARY)
     parser.add_argument("--markdown-output", type=Path, default=DEFAULT_MARKDOWN_SUMMARY)
+    parser.add_argument("--strict-output", type=Path, default=DEFAULT_STRICT_REPORT)
     parser.add_argument(
         "--check",
         action="store_true",
@@ -45,27 +48,40 @@ def main() -> None:
     coverage = build_coverage_matrix(manifest, evaluation_set)
     dedup = build_cleaning_dedup_report(manifest)
     summary = build_preflight_summary(manifest, evaluation_set, coverage)
+    strict = preflight_corpus_v2(
+        manifest,
+        evaluation_set,
+        asset_root=EVALUATION_ROOT,
+    )
     if not summary.no_cost_gate_passed or any(summary.provider_calls.model_dump().values()):
         raise SystemExit("corpus_v2 preflight attempted to reserve real provider calls")
 
     payload = json.dumps(summary.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n"
+    strict_payload = json.dumps(
+        strict.model_dump(mode="json"), ensure_ascii=False, indent=2
+    ) + "\n"
     markdown = render_preflight_markdown(summary)
     if args.check:
         if args.json_output.is_file() and args.json_output.read_text(encoding="utf-8") != payload:
             raise SystemExit("corpus_v2 JSON preflight summary is stale")
         if args.markdown_output.is_file() and args.markdown_output.read_text(encoding="utf-8") != markdown:
             raise SystemExit("corpus_v2 Markdown preflight summary is stale")
+        if args.strict_output.is_file() and args.strict_output.read_text(encoding="utf-8") != strict_payload:
+            raise SystemExit("corpus_v2 strict preflight report is stale")
     else:
         args.json_output.parent.mkdir(parents=True, exist_ok=True)
         args.markdown_output.parent.mkdir(parents=True, exist_ok=True)
         args.json_output.write_text(payload, encoding="utf-8")
         args.markdown_output.write_text(markdown, encoding="utf-8")
+        args.strict_output.parent.mkdir(parents=True, exist_ok=True)
+        args.strict_output.write_text(strict_payload, encoding="utf-8")
     print(
         "corpus_v2 OK: "
         f"documents={manifest.document_count}; "
         f"cases={len(evaluation_set.cases)}; "
         f"coverage_gaps={len(coverage.gaps)}; "
         f"dedup_unknown={len(dedup.skipped_unknown_content_ids)}; "
+        f"strict_status={strict.status}; "
         "provider_calls=0"
     )
 

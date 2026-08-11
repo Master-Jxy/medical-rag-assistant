@@ -1,9 +1,15 @@
 """用户回答反馈与管理员质量复核接口。"""
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
+from app.evaluation.admin_summary import (
+    CorpusEvaluationPublicSummary,
+    build_public_summary,
+)
 from app.modules.auth.dependencies import get_current_user, require_admin
 from app.modules.auth.schemas import UserResponse
 from app.modules.quality.repository import QualityRepository
@@ -19,6 +25,7 @@ from app.modules.quality.service import QualityService
 from app.services.conversation_quality_query import ConversationQualityQueryService
 
 router = APIRouter(tags=["回答质量"])
+EVALUATION_ROOT = Path(__file__).resolve().parents[2] / "evaluation"
 
 
 def get_quality_service(session: Session = Depends(get_db_session)) -> QualityService:
@@ -57,6 +64,16 @@ def quality_overview(
     service: QualityService = Depends(get_quality_service),
 ):
     return service.overview()
+
+
+@router.get(
+    "/admin/quality/evaluation-summary",
+    response_model=CorpusEvaluationPublicSummary,
+)
+def evaluation_summary(
+    _: UserResponse = Depends(require_admin),
+) -> CorpusEvaluationPublicSummary:
+    return build_public_summary(EVALUATION_ROOT)
 
 
 @router.get("/admin/quality/reviews", response_model=ReviewQueueResponse)

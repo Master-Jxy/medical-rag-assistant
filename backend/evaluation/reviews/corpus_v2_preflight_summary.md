@@ -1,7 +1,7 @@
 # corpus_v2 no-cost preflight
 
 - corpus: `corpus_v2`
-- checksum: `57e41c70e0e5eb656877db516b22cce194037c0f637b1d61bdf8f79f5d4602b0`
+- checksum: `1df9837e69267fbb778beb4f6a6dcbd1cd563a1566ec61bc60d13371b38ffdda`
 - documents: 10
 - blocked cases: 8
 - coverage gaps: 10

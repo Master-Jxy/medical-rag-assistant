@@ -82,6 +82,25 @@
           },
           "title": "Tags",
           "type": "array"
+        },
+        "golden_status": {
+          "default": "pending",
+          "enum": [
+            "pending",
+            "human_verified"
+          ],
+          "title": "Golden Status",
+          "type": "string"
+        },
+        "accepted_fact_aliases": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Accepted Fact Aliases",
+          "type": "object"
         }
       },
       "required": [

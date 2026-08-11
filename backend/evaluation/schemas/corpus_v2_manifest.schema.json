@@ -68,6 +68,13 @@
           "title": "Disease Topics",
           "type": "array"
         },
+        "version": {
+          "default": "pending_review",
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        },
         "document_type": {
           "enum": [
             "pdf",

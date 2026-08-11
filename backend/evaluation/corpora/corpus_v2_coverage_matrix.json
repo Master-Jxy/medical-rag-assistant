@@ -1,7 +1,7 @@
 {
   "schema_version": "corpus_v2_coverage_matrix_v1",
   "corpus_version": "corpus_v2",
-  "corpus_checksum": "57e41c70e0e5eb656877db516b22cce194037c0f637b1d61bdf8f79f5d4602b0",
+  "corpus_checksum": "1df9837e69267fbb778beb4f6a6dcbd1cd563a1566ec61bc60d13371b38ffdda",
   "items": [
     {
       "id": "basic_fact",
