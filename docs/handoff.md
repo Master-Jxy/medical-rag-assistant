@@ -211,9 +211,29 @@ Protected auth SHA-256
 ## 8. 当前发布状态
 
 - Stage 26已完成GitHub推送、生产迁移、五服务部署和HTTPS黑盒验收；完整证据见`docs/release-audit-stage26-enterprise-hardening.md`。
+- 2026-08-11 多模态热修复应用提交`3441ccd`已推送并部署。视觉额度幂等键已固定长度，
+  RAG/Agent附件交接与历史恢复已加固；生产真实带图验收均PASS。完整证据见
+  `docs/release-audit-stage26-vision-hotfix.md`。
 - 受保护认证文件SHA-256仍为：`9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。
 - 本地测试临时账号、Agent会话和媒体目录中的临时数据已清理；真实生产资料、`.env`、Chroma正文和备份未读取。
 
-## 9. 唯一下一任务
+## 9. 多模态热修复收口证据
 
-**进入Stage 26发布观察期：先观察24小时容器重启、错误标记、队列积压和证书自动续期；没有真实生产故障时不继续改架构。下一项产品开发应从人工确认合法资料和黄金题开始，使`corpus_v2/eval_v2`从`not_eligible`逐步具备真实评估资格。**
+- 根因：视觉额度幂等键超过MySQL `VARCHAR(128)`，触发持久化失败。
+- 修复：视觉调用方使用操作名加SHA-256定长键，额度入口增加统一长度防御；RAG与Agent
+  前端补齐历史附件接管、失败乐观消息清理和草稿所有权交接。
+- 本地：后端`692 passed, 1 skipped`；前端`22 files / 92 tests passed`；视觉定向`34 passed`；
+  SSE、Vite build和`git diff --check`通过。
+- 生产：备份`/home/deploy/medical-rag-backups/backup-20260811T033701Z`；迁移仍为
+  `0033_stage26_job_leases (head)`；五容器运行且重启计数0；HTTP 308、HTTPS 200、
+  `/livez`、`/readyz`和发布检查通过。
+- 真实验收：RAG包含视觉、Token、来源和完成事件；Agent包含真实工具开始/完成、视觉和消息
+  完成事件；两侧历史均只有1个附件且授权预览正常。清理后会话0、线程0、附件0、媒体文件0，
+  最近错误标记0。
+- Windows完整测试临时目录已固定到D盘，C盘恢复约12 GB可用；长期规则已写入`AGENTS.md`。
+
+## 10. 唯一下一任务
+
+**进入多模态热修复观察期：先观察24小时带图失败率、容器重启、错误标记和队列积压；
+没有真实生产故障时不继续扩大热修复。下一项产品开发仍从人工确认合法资料和黄金题开始，
+使`corpus_v2/eval_v2`从`not_eligible`逐步具备真实评估资格。**
