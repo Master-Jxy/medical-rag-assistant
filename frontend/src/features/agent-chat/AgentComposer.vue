@@ -23,6 +23,7 @@ const value = computed({
 const draftItems = computed(() => currentDraft.value.attachments.items.value)
 const attachmentError = computed(() => currentDraft.value.attachments.error.value)
 const uploadingAttachments = computed(() => currentDraft.value.attachments.uploading.value)
+const modelId = ref('qwen')
 const awaitingAcceptance = computed(() => (
   currentDraft.value.state.phase === 'awaiting_acceptance'
   || currentDraft.value.state.phase === 'uploading'
@@ -43,7 +44,8 @@ async function submit() {
   const content = value.value.trim()
   if ((!content && !currentDraft.value.attachments.hasAttachments.value) || !canSend.value) return
   try {
-    emit('send', await draftRegistry.prepareSubmission(props.draftKey))
+    const submission = await draftRegistry.prepareSubmission(props.draftKey)
+    emit('send', { ...submission, modelId: modelId.value })
   } catch {
     // 失败状态和可重试提示由共享草稿状态机维护。
   }
@@ -109,7 +111,7 @@ function handleKeydown(event) {
         <button type="button" class="add-image-button" aria-label="添加图片" :disabled="awaitingAcceptance || draftItems.length >= 3" @click="chooseImages"><ImagePlus :size="17" /><span>添加图片</span></button>
       </div>
       <div class="composer-actions">
-        <ModelSelector surface="agent" />
+        <ModelSelector v-model="modelId" surface="agent" />
         <small v-if="value.length">{{ value.length }} / 4000</small>
         <el-button v-if="running" type="danger" plain round @click="$emit('stop')">停止生成</el-button>
         <el-button v-else type="primary" round native-type="submit" :loading="uploadingAttachments" :disabled="!canSend">

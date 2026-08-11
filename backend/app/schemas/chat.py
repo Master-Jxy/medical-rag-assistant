@@ -9,6 +9,7 @@ class ChatRequest(BaseModel):
     question: str = Field(default="", max_length=2000, description="用户问题；有图片时可为空")
     top_k: int = Field(default=4, ge=1, le=10, description="检索片段数量")
     attachment_ids: list[str] = Field(default_factory=list, max_length=3)
+    model_id: str | None = Field(default=None, min_length=1, max_length=64)
 
     @field_validator("question")
     @classmethod

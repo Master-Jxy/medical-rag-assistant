@@ -90,6 +90,7 @@ export function useAgentStream(onSettled, onEvent, onAccepted) {
         source_ids: references.sourceIds || [],
         artifact_ids: references.artifactIds || [],
         attachment_ids: attachmentIds,
+        model_id: submission.modelId || 'qwen',
       },
       requestId(),
       { onEvent: handleEvent, signal: entry.controller.signal },

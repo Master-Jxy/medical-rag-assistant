@@ -84,6 +84,7 @@ class AgentMessageStreamRequest(BaseModel):
     referenced_message_ids: list[str] = Field(default_factory=list, max_length=20)
     source_ids: list[str] = Field(default_factory=list, max_length=20)
     artifact_ids: list[str] = Field(default_factory=list, max_length=20)
+    model_id: str | None = Field(default=None, min_length=1, max_length=64)
 
     @model_validator(mode="after")
     def require_content_or_attachments(self):

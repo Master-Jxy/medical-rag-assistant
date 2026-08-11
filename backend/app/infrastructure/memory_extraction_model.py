@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.core.config import Settings
 from app.core.model_factory import create_chat_model
+from app.modules.model_gateway.contracts import ModelSurface
 from app.modules.usage.contracts import ModelUsage
 
 JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
@@ -17,7 +18,9 @@ SYSTEM_PROMPT = """你只从用户明确表达的已完成对话中整理长期�
 
 class DashScopeMemoryExtractionModel:
     def __init__(self, settings: Settings):
-        self.model = create_chat_model(settings).bind(max_tokens=800)
+        self.model = create_chat_model(
+            settings, surface=ModelSurface.MEMORY
+        ).bind(max_tokens=800)
         self.model_name = settings.chat_model_name
         self._usage = ModelUsage.unknown()
 

@@ -46,6 +46,8 @@ from app.modules.memory.agent_context import SqlAlchemyAgentMemoryContext
 from app.modules.auth.dependencies import get_current_user
 from app.services.memory_extraction_runtime import run_memory_extraction_recovery
 from app.modules.auth.schemas import UserResponse
+from app.modules.model_gateway.contracts import ModelSurface
+from app.modules.model_gateway.service import UserModelSelectionService
 from app.core.config import Settings, get_settings
 from app.services.chat_rate_limit_service import (
     ChatRateLimitService,
@@ -324,8 +326,16 @@ def stream_thread_message(
     service: AgentConversationApplication = Depends(
         get_agent_conversation_application_service
     ),
+    session: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
     rate_limiter.check(current_user.id)
+    UserModelSelectionService(session, settings).validate_text_selection(
+        user_id=current_user.id,
+        user_role=current_user.role,
+        surface=ModelSurface.AGENT,
+        model_id=payload.model_id,
+    )
     request_id = get_request_id()
     return _conversation_stream_response(
         service.stream_message(

@@ -196,14 +196,14 @@ class ConversationChatService:
                 sources=sources,
             )
             answer_persisted = True
-            self._record_rag_usage(
+            settlement_usage = self._record_rag_usage(
                 assistant_message.id,
                 request_id,
                 user_id,
                 model_usage,
             )
             if reservation is not None:
-                self.quota_gate.settle(reservation.id, model_usage)
+                self.quota_gate.settle(reservation.id, settlement_usage)
             usage_summary = self._usage_summary(assistant_message.id)
             response = ConversationChatResponse(
                 answer=answer,
@@ -357,7 +357,7 @@ class ConversationChatService:
                         status="stopped",
                         sources=[],
                     )
-                    self._record_rag_usage(
+                    settlement_usage = self._record_rag_usage(
                         assistant_message.id,
                         request_id,
                         user_id,
@@ -365,7 +365,7 @@ class ConversationChatService:
                         status="cancelled",
                     )
                     if reservation is not None:
-                        self.quota_gate.settle(reservation.id, model_usage)
+                        self.quota_gate.settle(reservation.id, settlement_usage)
                         quota_finalized = True
                     yield {
                         "event": "stopped",
@@ -389,7 +389,7 @@ class ConversationChatService:
                     status="stopped",
                     sources=[],
                 )
-                self._record_rag_usage(
+                settlement_usage = self._record_rag_usage(
                     assistant_message.id,
                     request_id,
                     user_id,
@@ -397,7 +397,7 @@ class ConversationChatService:
                     status="cancelled",
                 )
                 if reservation is not None:
-                    self.quota_gate.settle(reservation.id, model_usage)
+                    self.quota_gate.settle(reservation.id, settlement_usage)
                     quota_finalized = True
                 raise
             except AppError:
@@ -410,7 +410,7 @@ class ConversationChatService:
                     status="failed",
                     sources=[],
                 )
-                self._record_rag_usage(
+                settlement_usage = self._record_rag_usage(
                     assistant_message.id,
                     request_id,
                     user_id,
@@ -418,7 +418,7 @@ class ConversationChatService:
                     status="failed",
                 )
                 if reservation is not None:
-                    self.quota_gate.settle(reservation.id, model_usage)
+                    self.quota_gate.settle(reservation.id, settlement_usage)
                     quota_finalized = True
                 raise
             except Exception as exc:
@@ -431,7 +431,7 @@ class ConversationChatService:
                     status="failed",
                     sources=[],
                 )
-                self._record_rag_usage(
+                settlement_usage = self._record_rag_usage(
                     assistant_message.id,
                     request_id,
                     user_id,
@@ -439,7 +439,7 @@ class ConversationChatService:
                     status="failed",
                 )
                 if reservation is not None:
-                    self.quota_gate.settle(reservation.id, model_usage)
+                    self.quota_gate.settle(reservation.id, settlement_usage)
                     quota_finalized = True
                 raise RagServiceError() from exc
             else:
@@ -453,14 +453,14 @@ class ConversationChatService:
                     sources=sources,
                 )
                 answer_persisted = True
-                self._record_rag_usage(
+                settlement_usage = self._record_rag_usage(
                     assistant_message.id,
                     request_id,
                     user_id,
                     model_usage,
                 )
                 if reservation is not None:
-                    self.quota_gate.settle(reservation.id, model_usage)
+                    self.quota_gate.settle(reservation.id, settlement_usage)
                     quota_finalized = True
                 self.idempotency.complete(
                     claim,
@@ -501,7 +501,39 @@ class ConversationChatService:
         user_id: str,
         usage: ModelUsage,
         status: str = "completed",
-    ) -> None:
+    ) -> ModelUsage:
+        usages = [usage]
+        drain = getattr(self.rag_service, "drain_auxiliary_model_usages", None)
+        auxiliary = drain() if callable(drain) else []
+        for index, item in enumerate(auxiliary, start=1):
+            auxiliary_usage = item.get("usage")
+            if not isinstance(auxiliary_usage, ModelUsage):
+                auxiliary_usage = ModelUsage.unknown()
+            usages.append(auxiliary_usage)
+            try:
+                self.usage_recorder.record(
+                    call_id=f"rag:{assistant_message_id}:aux:{index}",
+                    request_id=request_id,
+                    user_id=user_id,
+                    surface=str(item.get("surface") or "rag_aux"),
+                    operation=str(item.get("operation") or "auxiliary"),
+                    model_name=str(item.get("model_name") or "unknown"),
+                    usage=auxiliary_usage,
+                    input_price_per_million_tokens_cny=item.get(
+                        "input_price_per_million_tokens_cny"
+                    ),
+                    output_price_per_million_tokens_cny=item.get(
+                        "output_price_per_million_tokens_cny"
+                    ),
+                    usage_group_id=assistant_message_id,
+                    status=str(item.get("status") or status),
+                )
+            except Exception as exc:
+                self.session.rollback()
+                logger.warning(
+                    "model_usage_record_failed surface=rag_aux error_type=%s",
+                    type(exc).__name__,
+                )
         try:
             self.usage_recorder.record(
                 call_id=f"rag:{assistant_message_id}:answer",
@@ -520,6 +552,18 @@ class ConversationChatService:
                 "model_usage_record_failed surface=rag error_type=%s",
                 type(exc).__name__,
             )
+        if any(item.measurement is TokenMeasurement.UNKNOWN for item in usages):
+            return ModelUsage.unknown()
+        actual = [
+            item for item in usages
+            if item.measurement is TokenMeasurement.ACTUAL
+        ]
+        if actual:
+            return ModelUsage.actual(
+                sum(int(item.input_tokens or 0) for item in actual),
+                sum(int(item.output_tokens or 0) for item in actual),
+            )
+        return ModelUsage.not_applicable()
 
     def _usage_summary(self, usage_group_id: str) -> UsageSummaryResponse | None:
         summary = UsageQueryService(self.session).group_summary(usage_group_id)

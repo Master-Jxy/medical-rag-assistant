@@ -11,11 +11,12 @@ from app.modules.auth.tokens import get_token_service
 from tests.auth_helpers import TEST_TOKEN_SERVICE, auth_headers, create_test_user
 
 
-def test_model_catalog_lists_active_and_testing_models(tmp_path) -> None:
+def test_model_catalog_lists_only_real_available_models(tmp_path) -> None:
     engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'models.db'}")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     user = create_test_user(factory, "model-catalog")
+    admin = create_test_user(factory, "model-catalog-admin", role="admin")
     settings = Settings(
         _env_file=None,
         chat_model_name="qwen3-max",
@@ -48,11 +49,24 @@ def test_model_catalog_lists_active_and_testing_models(tmp_path) -> None:
                 "input_price_per_million_tokens_cny": 2.5,
                 "output_price_per_million_tokens_cny": 10.0,
             }
-            assert [item["enabled"] for item in rag.json()["options"]] == [True, False, False]
+            assert [item["id"] for item in rag.json()["options"]] == ["qwen"]
+            assert "deepseek" not in str(rag.json()).lower()
+            assert "kimi" not in str(rag.json()).lower()
 
             agent = client.get("/api/v1/models?surface=agent", headers=auth_headers(user.id))
             assert agent.json()["options"][0]["input_price_per_million_tokens_cny"] == 3
             assert agent.json()["options"][0]["output_price_per_million_tokens_cny"] == 12
+            assert client.get(
+                "/api/v1/models/routes/health", headers=auth_headers(user.id)
+            ).status_code == 403
+            health = client.get(
+                "/api/v1/models/routes/health", headers=auth_headers(admin.id)
+            )
+            assert health.status_code == 200
+            assert health.json()["routes"][0]["provider"] == "dashscope"
+            assert {item["surface"] for item in health.json()["surface_accounting"]} >= {
+                "rag", "agent", "vision_rag", "rerank", "memory",
+            }
     finally:
         app.dependency_overrides.clear()
         engine.dispose()

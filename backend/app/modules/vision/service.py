@@ -7,6 +7,8 @@ from time import monotonic, sleep
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.core.model_factory import resolve_model_route
+from app.modules.model_gateway.contracts import ModelCapability, ModelSurface
 from app.core.exceptions import VisionPolicyError, VisionUnavailableError
 from app.infrastructure.dashscope_chat_ocr import (
     DashScopeVisionTextExtractionAdapter,
@@ -41,7 +43,12 @@ def build_vision_adapter(settings: Settings) -> VisionChatPort:
         return DisabledVisionChatAdapter()
     if settings.vision_provider == "fake":
         return FakeVisionChatAdapter()
-    return DashScopeVisionChatAdapter(settings)
+    route = resolve_model_route(
+        settings,
+        surface=ModelSurface.VISION_RAG,
+        capabilities=frozenset({ModelCapability.VISION}),
+    )
+    return DashScopeVisionChatAdapter(settings, model_name=route.model_name)
 
 
 def build_vision_text_extraction_adapter(
@@ -54,7 +61,12 @@ def build_vision_text_extraction_adapter(
         return DisabledVisionTextExtractionAdapter()
     if settings.vision_ocr_provider == "fake":
         return FakeVisionTextExtractionAdapter()
-    return DashScopeVisionTextExtractionAdapter(settings)
+    route = resolve_model_route(
+        settings,
+        surface=ModelSurface.VISION_OCR,
+        capabilities=frozenset({ModelCapability.VISION, ModelCapability.STRUCTURED_OUTPUT}),
+    )
+    return DashScopeVisionTextExtractionAdapter(settings, model_name=route.model_name)
 
 
 OCR_MODE_HASH = f"ocr:{OCR_PROMPT_VERSION}"

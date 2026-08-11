@@ -13,15 +13,16 @@ from app.modules.vision.prompts import build_vision_prompt
 
 
 class DashScopeVisionChatAdapter:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, *, model_name: str | None = None) -> None:
         self.settings = settings
+        self.model_name = model_name or settings.vision_model
 
     def observe(self, *, image_bytes: bytes, mime_type: str, user_question: str, focus_instruction: str | None) -> VisionResult:
         data_url = f"data:{mime_type};base64,{base64.b64encode(image_bytes).decode('ascii')}"
         try:
             response = MultiModalConversation.call(
                 api_key=self.settings.require_dashscope_api_key(),
-                model=self.settings.vision_model,
+                model=self.model_name,
                 messages=[{"role": "user", "content": [{"image": data_url}, {"text": build_vision_prompt(user_question, focus_instruction)}]}],
                 result_format="message",
                 timeout=self.settings.vision_timeout_seconds,
@@ -40,7 +41,7 @@ class DashScopeVisionChatAdapter:
             return VisionResult(
                 observation=observation,
                 usage=usage,
-                model_name=self.settings.vision_model,
+                model_name=self.model_name,
                 provider_request_id=getattr(response, "request_id", None),
             )
         except VisionUnavailableError:

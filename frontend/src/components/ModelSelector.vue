@@ -1,17 +1,17 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Check, ChevronDown, Cpu, FlaskConical } from '@lucide/vue'
 
 import { getModelCatalog } from '../api/models.js'
 
 const props = defineProps({
   surface: { type: String, default: 'rag' },
+  modelValue: { type: String, default: 'qwen' },
 })
+const emit = defineEmits(['update:modelValue'])
 
 const fallbackOptions = [
   { id: 'qwen', label: '通义千问', provider: 'DashScope', model_name: 'qwen3-max', enabled: true, status: 'available' },
-  { id: 'deepseek', label: 'DeepSeek', provider: 'DeepSeek', model_name: null, enabled: false, status: 'testing' },
-  { id: 'kimi', label: 'Kimi', provider: 'Moonshot AI', model_name: null, enabled: false, status: 'testing' },
 ]
 
 const options = ref(fallbackOptions)
@@ -35,7 +35,10 @@ async function load() {
   try {
     const result = await getModelCatalog(props.surface)
     options.value = result.options?.length ? result.options : fallbackOptions
-    activeModelId.value = result.active_model_id || 'qwen'
+    activeModelId.value = options.value.some((item) => item.id === props.modelValue)
+      ? props.modelValue
+      : (result.active_model_id || options.value[0]?.id || 'qwen')
+    emit('update:modelValue', activeModelId.value)
   } catch {
     options.value = fallbackOptions
   } finally {
@@ -46,10 +49,14 @@ async function load() {
 function selectModel(option) {
   if (!option.enabled) return
   activeModelId.value = option.id
+  emit('update:modelValue', option.id)
   if (menu.value) menu.value.open = false
 }
 
 onMounted(load)
+watch(() => props.modelValue, (value) => {
+  if (options.value.some((item) => item.id === value)) activeModelId.value = value
+})
 </script>
 
 <template>

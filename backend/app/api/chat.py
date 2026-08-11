@@ -2,12 +2,17 @@
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.core.exceptions import AppError, MediaConflictError, RagServiceError
 from app.core.sse import format_sse
 from app.core.request_context import get_request_id
 from app.modules.auth.dependencies import get_current_user
 from app.modules.auth.schemas import UserResponse
+from app.db.session import get_db_session
+from app.modules.model_gateway.contracts import ModelSurface
+from app.modules.model_gateway.service import UserModelSelectionService
 from app.schemas.chat import ChatRequest, ChatResponse, ErrorResponse
 from app.services.chat_rate_limit_service import (
     ChatRateLimitService,
@@ -29,12 +34,20 @@ def chat(
     current_user: UserResponse = Depends(get_current_user),
     rate_limiter: ChatRateLimitService = Depends(get_chat_rate_limit_service),
     rag_service: RagService = Depends(get_rag_service),
+    session: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
 ) -> ChatResponse:
     """把已校验的问题交给 RAG 服务，不在路由中编写检索和模型逻辑。"""
     request_id = get_request_id()
     rate_limiter.check(current_user.id)
     if request.attachment_ids:
         raise MediaConflictError("图片消息请在会话问答中发送")
+    UserModelSelectionService(session, settings).validate_text_selection(
+        user_id=current_user.id,
+        user_role=current_user.role,
+        surface=ModelSurface.RAG,
+        model_id=request.model_id,
+    )
     answer, sources = rag_service.ask(request.question, request.top_k)
     return ChatResponse(answer=answer, sources=sources, request_id=request_id)
 
@@ -49,12 +62,20 @@ def stream_chat(
     current_user: UserResponse = Depends(get_current_user),
     rate_limiter: ChatRateLimitService = Depends(get_chat_rate_limit_service),
     rag_service: RagService = Depends(get_rag_service),
+    session: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
     """路由只负责把服务层事件转换为 SSE，不编写检索和模型逻辑。"""
     request_id = get_request_id()
     rate_limiter.check(current_user.id)
     if request.attachment_ids:
         raise MediaConflictError("图片消息请在会话问答中发送")
+    UserModelSelectionService(session, settings).validate_text_selection(
+        user_id=current_user.id,
+        user_role=current_user.role,
+        surface=ModelSurface.RAG,
+        model_id=request.model_id,
+    )
 
     def event_generator():
         try:

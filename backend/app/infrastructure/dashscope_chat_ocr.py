@@ -18,8 +18,9 @@ from app.modules.vision.ocr_prompts import build_ocr_prompt
 
 
 class DashScopeVisionTextExtractionAdapter:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, *, model_name: str | None = None) -> None:
         self.settings = settings
+        self.model_name = model_name or settings.vision_model
 
     def extract(
         self, request: VisionTextExtractionRequest
@@ -31,7 +32,7 @@ class DashScopeVisionTextExtractionAdapter:
         try:
             response = MultiModalConversation.call(
                 api_key=self.settings.require_dashscope_api_key(),
-                model=self.settings.vision_model,
+                model=self.model_name,
                 messages=[
                     {
                         "role": "user",
@@ -67,13 +68,13 @@ class DashScopeVisionTextExtractionAdapter:
             return VisionTextExtractionResult(
                 extraction=extraction,
                 usage=usage,
-                model_name=self.settings.vision_model,
+                model_name=self.model_name,
                 provider_request_id=provider_request_id,
             )
         except Exception as exc:
             raise VisionTextExtractionConsumedError(
                 usage=usage,
-                model_name=self.settings.vision_model,
+                model_name=self.model_name,
                 provider_request_id=provider_request_id,
             ) from exc
 

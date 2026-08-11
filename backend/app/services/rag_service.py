@@ -73,6 +73,7 @@ class RagService:
             self.rerank_stage = rerank_stage or create_current_rerank_stage(settings)
             self.telemetry = telemetry or NullTelemetry()
             self.model_name = settings.chat_model_name
+            self._auxiliary_model_usages: list[dict[str, object]] = []
         except ValueError as exc:
             raise ConfigurationError(str(exc)) from exc
 
@@ -279,6 +280,7 @@ class RagService:
         top_k: int,
         history: ChatHistory | None,
     ) -> list[RetrievedChunk]:
+        self._auxiliary_model_usages = []
         started = monotonic()
         try:
             query = self.query_builder.build(question, history)
@@ -314,7 +316,9 @@ class RagService:
         )
         started = monotonic()
         try:
-            reranked = self.rerank_stage.apply(query, chunks, top_k)
+            reranked, rerank_attempt = self.rerank_stage.apply_with_usage(
+                query, chunks, top_k
+            )
         except Exception as exc:
             self._emit_stage(
                 "rerank",
@@ -329,7 +333,25 @@ class RagService:
             "success" if self.rerank_stage.policy.enabled else "skipped",
             retrieved_chunk_count=len(reranked),
         )
+        if rerank_attempt is not None:
+            usage, status = rerank_attempt
+            self._auxiliary_model_usages.append({
+                "surface": "rerank",
+                "operation": "rerank",
+                "model_name": self.rerank_stage.policy.model_name,
+                "usage": usage,
+                "status": status,
+                "input_price_per_million_tokens_cny": (
+                    self.rerank_stage.policy.input_price_per_million_tokens_cny
+                ),
+                "output_price_per_million_tokens_cny": 0.0,
+            })
         return reranked
+
+    def drain_auxiliary_model_usages(self) -> list[dict[str, object]]:
+        rows = list(self._auxiliary_model_usages)
+        self._auxiliary_model_usages = []
+        return rows
 
     def _emit_stage(
         self,

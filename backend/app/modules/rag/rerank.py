@@ -3,9 +3,12 @@
 import logging
 
 from app.core.config import Settings
+from app.core.model_factory import resolve_model_route
+from app.modules.model_gateway.contracts import ModelCapability, ModelSurface
 from app.infrastructure.reranker import DashScopeRerankAdapter
 from app.modules.rag.policies import RerankPolicy
 from app.modules.rag.ports import RerankPort, RetrievedChunk
+from app.modules.usage.contracts import ModelUsage
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +28,22 @@ class RerankStage:
         chunks: list[RetrievedChunk],
         top_k: int,
     ) -> list[RetrievedChunk]:
+        chunks, _attempt = self.apply_with_usage(query, chunks, top_k)
+        return chunks
+
+    def apply_with_usage(
+        self,
+        query: str,
+        chunks: list[RetrievedChunk],
+        top_k: int,
+    ) -> tuple[list[RetrievedChunk], tuple[ModelUsage, str] | None]:
         if not self.policy.enabled or not chunks:
-            return chunks
+            return chunks, None
 
         candidates = chunks[: self.policy.max_candidates]
         top_n = min(max(top_k, 0), len(candidates))
         if top_n == 0:
-            return chunks
+            return chunks, None
         reserved_tokens = self.policy.estimate_input_tokens(query, candidates)
         reserved_cost = self.policy.estimate_cost_cny(reserved_tokens)
         if (
@@ -42,10 +54,16 @@ class RerankStage:
                 "重排输入超过预算，已保留原候选顺序",
                 extra={"reason": "budget_exceeded"},
             )
-            return chunks
+            return chunks, None
 
+        attempt: tuple[ModelUsage, str] | None = None
         try:
+            attempt = (ModelUsage.unknown(), "failed")
             result = self.reranker.rerank(query, candidates, top_n)  # type: ignore[union-attr]
+            attempt = (
+                ModelUsage.actual(result.usage.input_tokens, 0),
+                "failed",
+            )
             if result.usage.request_count != 1:
                 raise ValueError("重排调用计量不符合单次调用约束")
             if result.usage.input_tokens > self.policy.max_input_tokens:
@@ -57,13 +75,14 @@ class RerankStage:
                 id(chunk) not in candidate_ids for chunk in result.chunks
             ):
                 raise ValueError("重排结果未保持候选边界")
-            return result.chunks
+            attempt = (attempt[0], "completed")
+            return result.chunks, attempt
         except Exception as exc:
             logger.warning(
                 "重排失败，已保留原候选顺序",
                 extra={"error_type": type(exc).__name__},
             )
-            return chunks
+            return chunks, attempt
 
 
 def create_current_rerank_stage(settings: Settings) -> RerankStage:
@@ -71,9 +90,14 @@ def create_current_rerank_stage(settings: Settings) -> RerankStage:
     policy = RerankPolicy.from_settings(settings)
     if not policy.enabled:
         return RerankStage(None, policy)
+    route = resolve_model_route(
+        settings,
+        surface=ModelSurface.RERANK,
+        capabilities=frozenset({ModelCapability.RERANK}),
+    )
     adapter = DashScopeRerankAdapter(
         api_key=settings.require_dashscope_api_key(),
-        model_name=policy.model_name,
+        model_name=route.model_name,
         timeout_seconds=policy.timeout_seconds,
         input_price_per_million_tokens_cny=(
             policy.input_price_per_million_tokens_cny

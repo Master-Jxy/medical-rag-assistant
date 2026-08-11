@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from app.core.config import Settings
 from app.core.model_factory import create_chat_model
+from app.modules.model_gateway.contracts import ModelSurface
 from app.modules.agent.generation import (
     AgentContentGeneratorPort,
     GeneratedAgentText,
@@ -74,7 +75,15 @@ class LangChainAgentModel:
         self.call_budget = call_budget or AgentModelCallBudget(
             settings.agent_max_model_calls
         )
-        self.model = create_chat_model(settings).bind(
+        try:
+            chat_model = create_chat_model(settings, surface=ModelSurface.AGENT)
+        except TypeError as exc:
+            # Keep injected legacy/test factories with the original one-argument
+            # contract usable while the production factory accepts a surface.
+            if "unexpected keyword argument 'surface'" not in str(exc):
+                raise
+            chat_model = create_chat_model(settings)
+        self.model = chat_model.bind(
             max_tokens=settings.agent_model_max_output_tokens
         )
 

@@ -55,6 +55,7 @@ export async function streamConversation(conversationId, question, options = {})
         question,
         top_k: options.topK || 4,
         attachment_ids: options.attachmentIds || [],
+        model_id: options.modelId || 'qwen',
       }),
       signal: options.signal,
     },

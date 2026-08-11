@@ -46,6 +46,7 @@ const WELCOME_MESSAGE = {
 }
 
 const question = ref('')
+const selectedModelId = ref('qwen')
 const questionInput = ref(null)
 const imageInput = ref(null)
 const attachmentDraft = useAttachmentDraft()
@@ -404,6 +405,7 @@ async function sendQuestion() {
       idempotencyKey,
       signal: entry.controller.signal,
       attachmentIds,
+      modelId: selectedModelId.value,
       onOpen() {
         requestAccepted = true
       },
@@ -727,7 +729,7 @@ onBeforeUnmount(() => {
               <button type="button" class="add-image-button" aria-label="添加图片" :disabled="sending || draftItems.length >= 3" @click="chooseImages"><ImagePlus :size="17" /><span>添加图片</span></button>
             </div>
             <div class="composer-actions">
-              <ModelSelector surface="rag" />
+              <ModelSelector v-model="selectedModelId" surface="rag" />
               <span v-if="question.length">{{ question.length }} / 2000</span>
               <el-button v-if="sending" data-testid="stop-generation" type="danger" plain round :loading="stopping" :disabled="stopping" @click="stopGeneration">
                 <Square v-if="!stopping" :size="14" />{{ stopping ? '正在停止' : '停止生成' }}

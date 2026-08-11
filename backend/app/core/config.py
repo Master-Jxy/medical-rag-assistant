@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     email_code_resend_seconds: int = Field(default=60, ge=1, le=600)
     email_code_max_attempts: int = Field(default=5, ge=1, le=10)
     chat_model_name: str = "qwen3-max"
+    model_gateway_fallback_enabled: bool = False
+    chat_fallback_model_name: str | None = None
     chat_input_price_per_million_tokens_cny: float | None = Field(
         default=None, ge=0, le=1000
     )
@@ -100,6 +102,7 @@ class Settings(BaseSettings):
     vision_chat_enabled: bool = False
     vision_provider: Literal["disabled", "fake", "dashscope"] = "dashscope"
     vision_model: str = "qwen3-vl-plus"
+    vision_fallback_model_name: str | None = None
     vision_max_images: int = Field(default=3, ge=1, le=3)
     vision_max_image_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=10 * 1024 * 1024)
     vision_max_image_pixels: int = Field(default=40_000_000, ge=1, le=40_000_000)
@@ -232,6 +235,8 @@ class Settings(BaseSettings):
         return [str(ip_address(value.strip())) for value in values]
 
     @field_validator(
+        "chat_fallback_model_name",
+        "vision_fallback_model_name",
         "rag_filter_department",
         "rag_filter_topic",
         "rag_filter_document_type",

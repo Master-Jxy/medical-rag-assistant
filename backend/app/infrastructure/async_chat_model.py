@@ -6,6 +6,8 @@ from http import HTTPStatus
 from dashscope.aigc.generation import AioGeneration
 
 from app.core.config import Settings, get_settings
+from app.core.model_factory import resolve_model_route
+from app.modules.model_gateway.contracts import ModelCapability, ModelSurface
 from app.modules.rag.ports import (
     GeneratedAnswerChunk,
     ModelUsage,
@@ -16,9 +18,18 @@ from app.modules.rag.ports import (
 class DashScopeAsyncChatModel:
     """直接调用一次SDK异步流；失败不重试，取消时关闭正在读取的连接。"""
 
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        *,
+        surface: ModelSurface = ModelSurface.RAG,
+    ) -> None:
         current_settings = settings or get_settings()
-        self.model = current_settings.chat_model_name
+        self.model = resolve_model_route(
+            current_settings,
+            surface=surface,
+            capabilities=frozenset({ModelCapability.TEXT}),
+        ).model_name
         self.api_key = current_settings.require_dashscope_api_key()
 
     async def stream(

@@ -13,6 +13,8 @@ from app.core.request_context import get_request_id
 from app.core.config import Settings, get_settings
 from app.modules.auth.dependencies import get_current_user
 from app.modules.auth.schemas import UserResponse
+from app.modules.model_gateway.contracts import ModelSurface
+from app.modules.model_gateway.service import UserModelSelectionService
 from app.schemas.chat import ChatRequest
 from app.modules.media.service import MediaAssetService
 from app.schemas.conversation import (
@@ -165,6 +167,12 @@ def chat_in_conversation(
     """保存用户问题和助手回答，具体事务由服务层负责。"""
     rate_limiter.check(current_user.id)
     ensure_conversation_recovery(http_request, session)
+    UserModelSelectionService(session, settings).validate_text_selection(
+        user_id=current_user.id,
+        user_role=current_user.role,
+        surface=ModelSurface.RAG,
+        model_id=request.model_id,
+    )
     return ConversationChatService(
         session, rag_service, generation_lock, idempotency, settings=settings
     ).ask(
@@ -223,6 +231,12 @@ async def stream_chat_in_conversation(
     request_id = get_request_id()
     rate_limiter.check(current_user.id)
     ensure_conversation_recovery(http_request, session)
+    UserModelSelectionService(session, settings).validate_text_selection(
+        user_id=current_user.id,
+        user_role=current_user.role,
+        surface=ModelSurface.RAG,
+        model_id=request.model_id,
+    )
     service_iterator = ConversationChatService(
         session, rag_service, generation_lock, idempotency, cancellation, settings=settings
     ).stream(

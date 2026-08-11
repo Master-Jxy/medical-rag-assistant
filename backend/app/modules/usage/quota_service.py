@@ -3,7 +3,8 @@ from decimal import Decimal
 from typing import Protocol
 from uuid import uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
@@ -99,8 +100,30 @@ class QuotaApplicationService:
         period = QuotaPeriod(user_id=user_id, period_start=start, period_end=end,
                              token_limit=token_limit, request_limit=request_limit,
                              estimated_cost_limit_cny=cost_limit)
-        self.session.add(period); self.session.flush()
-        return period
+        self.session.add(period)
+        try:
+            self.session.flush()
+            return period
+        except IntegrityError:
+            # Two first requests may race to create the same monthly period.
+            # Keep the database unique key as the arbiter, then reacquire the
+            # winning row under the same lock discipline used by reservations.
+            self.session.rollback()
+            if lock:
+                self.session.scalar(
+                    select(User.id).where(User.id == user_id).with_for_update()
+                )
+            retry = select(QuotaPeriod).where(
+                QuotaPeriod.user_id == user_id,
+                QuotaPeriod.period_start == start,
+                QuotaPeriod.period_end == end,
+            )
+            if lock:
+                retry = retry.with_for_update()
+            existing_period = self.session.scalar(retry)
+            if existing_period is None:
+                raise
+            return existing_period
 
     def reserve(self, user_id: str, surface: str, idempotency_key: str, requested_tokens: int,
                 usage_group_id: str | None = None, *,
@@ -194,6 +217,93 @@ class QuotaApplicationService:
             if reason is QuotaDecisionReason.QUOTA_POLICY_UNAVAILABLE:
                 raise QuotaPolicyUnavailableError()
             raise QuotaExceededError()
+        atomically_reserved = False
+        if self.policy_mode is QuotaPolicyMode.ENFORCE:
+            conditions = [
+                QuotaPeriod.id == period.id,
+                (
+                    QuotaPeriod.used_tokens
+                    + QuotaPeriod.reserved_tokens
+                    + requested_tokens
+                    <= QuotaPeriod.token_limit
+                ),
+                (
+                    QuotaPeriod.used_requests
+                    + QuotaPeriod.reserved_requests
+                    + 1
+                    <= QuotaPeriod.request_limit
+                ),
+            ]
+            values = {
+                "reserved_tokens": QuotaPeriod.reserved_tokens + requested_tokens,
+                "reserved_requests": QuotaPeriod.reserved_requests + 1,
+            }
+            if period.estimated_cost_limit_cny is not None:
+                if requested_cost is None:
+                    raise QuotaPolicyUnavailableError()
+                conditions.append(
+                    func.coalesce(QuotaPeriod.used_estimated_cost_cny, 0)
+                    + func.coalesce(QuotaPeriod.reserved_estimated_cost_cny, 0)
+                    + requested_cost
+                    <= QuotaPeriod.estimated_cost_limit_cny
+                )
+                values["reserved_estimated_cost_cny"] = (
+                    QuotaPeriod.reserved_estimated_cost_cny + requested_cost
+                )
+            result = self.session.execute(
+                update(QuotaPeriod)
+                .where(*conditions)
+                .values(**values)
+                .execution_options(synchronize_session=False)
+            )
+            if result.rowcount != 1:
+                self.session.rollback()
+                current_period = self._period(user_id, lock=True)
+                current_remaining_tokens = max(
+                    0,
+                    current_period.token_limit
+                    - current_period.used_tokens
+                    - current_period.reserved_tokens,
+                )
+                current_remaining_requests = max(
+                    0,
+                    current_period.request_limit
+                    - current_period.used_requests
+                    - current_period.reserved_requests,
+                )
+                current_remaining_cost = (
+                    max(
+                        Decimal("0"),
+                        Decimal(current_period.estimated_cost_limit_cny)
+                        - Decimal(current_period.used_estimated_cost_cny)
+                        - Decimal(current_period.reserved_estimated_cost_cny),
+                    )
+                    if current_period.estimated_cost_limit_cny is not None
+                    else None
+                )
+                concurrent_reason = (
+                    QuotaDecisionReason.TOKEN_LIMIT_EXCEEDED
+                    if requested_tokens > current_remaining_tokens
+                    else QuotaDecisionReason.REQUEST_LIMIT_EXCEEDED
+                    if current_remaining_requests < 1
+                    else QuotaDecisionReason.COST_LIMIT_EXCEEDED
+                )
+                self.session.add(QuotaPolicyEvent(
+                    user_id=user_id,
+                    surface=surface,
+                    policy_mode=self.policy_mode.value,
+                    idempotency_key=idempotency_key,
+                    requested_tokens=requested_tokens,
+                    remaining_tokens=current_remaining_tokens,
+                    remaining_requests=current_remaining_requests,
+                    requested_estimated_cost_cny=requested_cost,
+                    remaining_estimated_cost_cny=current_remaining_cost,
+                    would_block=True,
+                    reason_code=concurrent_reason.value,
+                ))
+                self.session.commit()
+                raise QuotaExceededError()
+            atomically_reserved = True
         reservation = QuotaReservation(
             idempotency_key=idempotency_key, user_id=user_id, quota_period_id=period.id,
             surface=surface, usage_group_id=usage_group_id or str(uuid4()),
@@ -204,10 +314,22 @@ class QuotaApplicationService:
             output_price_snapshot=output_price,
             reserved_estimated_cost_cny=requested_cost,
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=15))
-        period.reserved_tokens += requested_tokens; period.reserved_requests += 1
-        if requested_cost is not None:
-            period.reserved_estimated_cost_cny += requested_cost
-        self.session.add(reservation); self.session.commit()
+        if not atomically_reserved:
+            period.reserved_tokens += requested_tokens
+            period.reserved_requests += 1
+            if requested_cost is not None:
+                period.reserved_estimated_cost_cny += requested_cost
+        self.session.add(reservation)
+        try:
+            self.session.commit()
+        except IntegrityError:
+            self.session.rollback()
+            concurrent = self.session.scalar(select(QuotaReservation).where(
+                QuotaReservation.idempotency_key == idempotency_key
+            ))
+            if concurrent is None or concurrent.user_id != user_id:
+                raise
+            return concurrent
         return reservation
 
     def ensure_period(self, user_id: str) -> QuotaPeriod:
