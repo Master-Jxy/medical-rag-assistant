@@ -23,10 +23,12 @@ from app.modules.agent.message_service import AgentMessageService
 from app.modules.agent.repository import AgentRepository
 from app.modules.agent.recovery import AgentRecoveryService
 from app.modules.agent.schemas import (
+    AgentToolCatalogResponse,
     AgentRunListResponse,
     AgentRunResponse,
     AgentStopResponse,
 )
+from app.modules.agent.deterministic_tools import stage26_tool_definitions
 from app.modules.agent.thread_repository import AgentThreadRepository
 from app.modules.agent.thread_schemas import (
     AgentMessageListResponse,
@@ -134,6 +136,19 @@ def get_agent_conversation_application_service(
         model_name=settings.chat_model_name,
         telemetry=request.app.state.telemetry,
         settings=settings,
+    )
+
+
+@router.get("/tools", response_model=AgentToolCatalogResponse)
+def list_agent_tools(
+    current_user: UserResponse = Depends(get_current_user),
+) -> AgentToolCatalogResponse:
+    """Return the Stage 26.5 public catalogue without initializing models."""
+
+    del current_user
+    return AgentToolCatalogResponse(
+        catalog_version="26.5",
+        tools=stage26_tool_definitions(),
     )
 
 

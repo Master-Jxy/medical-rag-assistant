@@ -53,6 +53,7 @@ class AgentGraphState(TypedDict):
     allowed_tools: list[str]
     step_count: int
     tool_call_count: int
+    tool_call_counts: dict[str, int]
     max_tool_calls: int
     model_call_count: int
     max_model_calls: int
@@ -68,6 +69,7 @@ class AgentGraphState(TypedDict):
     tool_arguments: NotRequired[dict[str, object]]
     tool_result_summaries: list[str]
     tool_result_digests: list[dict[str, object]]
+    visual_observations: list[dict[str, object]]
     last_tool_result: NotRequired[dict[str, object] | None]
     next_action: NotRequired[str | None]
     final_output: NotRequired[str | None]
@@ -116,6 +118,7 @@ def create_initial_state(
         allowed_tools=sorted(tools_for_specialist(primary)),
         step_count=0,
         tool_call_count=0,
+        tool_call_counts={},
         max_tool_calls=policy.max_tool_calls,
         model_call_count=0,
         max_model_calls=policy.max_model_calls,
@@ -131,6 +134,7 @@ def create_initial_state(
         tool_arguments={},
         tool_result_summaries=[],
         tool_result_digests=[],
+        visual_observations=[],
         last_tool_result=None,
         next_action=None,
         final_output=None,

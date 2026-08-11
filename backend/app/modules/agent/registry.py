@@ -5,7 +5,9 @@ from collections.abc import Iterable
 
 from app.modules.agent.contracts import (
     AgentTool,
+    AgentToolBudget,
     AgentToolContext,
+    AgentToolMetadata,
     AgentToolResult,
 )
 
@@ -53,13 +55,49 @@ class ToolRegistry:
                 "name": tool.name,
                 "description": tool.description,
                 "parameters": tool.arguments_model.model_json_schema(),
+                "metadata": self.metadata_for(tool),
             }
             for tool in sorted(self._tools.values(), key=lambda item: item.name)
             if allowed_names is None or tool.name in allowed_names
         ]
 
+    @staticmethod
+    def metadata_for(tool: AgentTool) -> dict[str, object]:
+        metadata = getattr(tool, "metadata", None)
+        if isinstance(metadata, AgentToolMetadata):
+            return metadata.model_dump(mode="json")
+        # Existing tools remain compatible while the registry exposes a
+        # conservative governance default until they declare richer metadata.
+        return AgentToolMetadata(
+            risk="medium",
+            permissions=("read:published_knowledge",),
+            timeout_seconds=30.0,
+            budget=AgentToolBudget(max_calls_per_run=3),
+        ).model_dump(mode="json")
+
+    def metadata_definitions(
+        self,
+        allowed_names: set[str] | frozenset[str] | None = None,
+    ) -> list[dict[str, object]]:
+        """Return stable public definitions without invoking any tool."""
+        return self.definitions(allowed_names)
+
     def contains(self, name: str) -> bool:
         return name in self._tools
+
+    def metadata(self, name: str) -> AgentToolMetadata:
+        tool = self._tools.get(name)
+        if tool is None:
+            raise ToolNotRegisteredError(f"工具未注册：{name}")
+        raw = getattr(tool, "metadata", None)
+        if isinstance(raw, AgentToolMetadata):
+            return raw
+        return AgentToolMetadata(
+            risk="medium",
+            permissions=("read:published_knowledge",),
+            timeout_seconds=30.0,
+            budget=AgentToolBudget(max_calls_per_run=3),
+        )
 
     def invoke(
         self,

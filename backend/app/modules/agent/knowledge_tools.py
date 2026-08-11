@@ -13,6 +13,14 @@ from app.modules.agent.content_tools import (
     GenerateLearningReportTool,
     SummarizeDocumentTool,
 )
+from app.modules.agent.deterministic_tools import (
+    CalculatorTool,
+    DraftFollowUpPlanTool,
+    ExtractMeasurementsTool,
+    ExtractTableTool,
+    GetDocumentSectionTool,
+    VerifyCitationsTool,
+)
 from app.modules.agent.generation import AgentContentGeneratorPort
 from app.modules.knowledge.public_ports import PublishedKnowledgeCatalogPort
 from app.modules.rag.ports import KnowledgeSearchPort
@@ -112,6 +120,12 @@ def create_read_only_knowledge_registry(
     tools = [
         SearchKnowledgeTool(search),
         GetDocumentInfoTool(catalog),
+        CalculatorTool(),
+        GetDocumentSectionTool(catalog),
+        ExtractTableTool(catalog),
+        VerifyCitationsTool(catalog),
+        ExtractMeasurementsTool(),
+        DraftFollowUpPlanTool(catalog),
     ]
     if generator is not None:
         tools.extend(

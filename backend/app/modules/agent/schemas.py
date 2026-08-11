@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.modules.agent.contracts import AgentToolMetadata
+
 
 class AgentRunCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -74,3 +76,19 @@ class AgentRunListResponse(BaseModel):
 class AgentStopResponse(BaseModel):
     status: str
     message: str
+
+
+class AgentToolDefinitionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    description: str
+    parameters: dict[str, object]
+    metadata: AgentToolMetadata
+
+
+class AgentToolCatalogResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    catalog_version: str
+    tools: list[AgentToolDefinitionResponse]

@@ -210,6 +210,17 @@ class BoundedAgentGraph:
                 "error_type": "TOOL_NOT_ALLOWED_FOR_SPECIALIST",
                 **_with_usage(state, decision.usage),
             }
+        metadata = self.registry.metadata(decision.tool_name)
+        if state.get("tool_call_counts", {}).get(decision.tool_name, 0) >= (
+            metadata.budget.max_calls_per_run
+        ):
+            return {
+                "current_node": AgentNode.SELECT_TOOL,
+                "selected_tool": decision.tool_name,
+                "tool_arguments": {},
+                "error_type": "TOOL_CALL_BUDGET_EXCEEDED",
+                **_with_usage(state, decision.usage),
+            }
         return {
             "current_node": AgentNode.SELECT_TOOL,
             "selected_tool": decision.tool_name,
@@ -227,10 +238,25 @@ class BoundedAgentGraph:
                 "last_tool_result": None,
                 "error_type": "TOOL_NOT_SELECTED",
             }
+        source_ids: list[str] = []
+        references = state.get("resolved_references") or {}
+        for value in [
+            *(references.get("source_ids") or []),
+            *(references.get("document_ids") or []),
+        ]:
+            if str(value) and str(value) not in source_ids:
+                source_ids.append(str(value))
+        for digest in state.get("tool_result_digests", []):
+            for value in digest.get("source_ids", []):
+                if str(value) and str(value) not in source_ids:
+                    source_ids.append(str(value))
+        visual_observations = tuple(state.get("visual_observations", []))
         context = AgentToolContext(
             run_id=state["run_id"],
             user_id=state["user_id"],
             task_context=self._current_task(state["task"]),
+            source_ids=tuple(source_ids),
+            visual_observations=visual_observations,
         )
         executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="agent-tool")
         future = executor.submit(
@@ -243,7 +269,14 @@ class BoundedAgentGraph:
             0.001,
             state["run_timeout_seconds"] - (monotonic() - self._started_at),
         )
-        timeout = min(state["tool_timeout_seconds"], remaining)
+        metadata = self.registry.metadata(tool_name)
+        timeout = min(
+            state["tool_timeout_seconds"],
+            metadata.timeout_seconds,
+            remaining,
+        )
+        next_tool_counts = dict(state.get("tool_call_counts", {}))
+        next_tool_counts[tool_name] = next_tool_counts.get(tool_name, 0) + 1
         try:
             result = future.result(timeout=timeout)
         except FutureTimeoutError:
@@ -252,6 +285,7 @@ class BoundedAgentGraph:
                 "current_node": AgentNode.EXECUTE_TOOL,
                 "step_count": state["step_count"] + 1,
                 "tool_call_count": state["tool_call_count"] + 1,
+                "tool_call_counts": next_tool_counts,
                 "last_tool_result": None,
                 "error_type": "TOOL_TIMEOUT",
             }
@@ -260,16 +294,39 @@ class BoundedAgentGraph:
                 "current_node": AgentNode.EXECUTE_TOOL,
                 "step_count": state["step_count"] + 1,
                 "tool_call_count": state["tool_call_count"] + 1,
+                "tool_call_counts": next_tool_counts,
                 "last_tool_result": None,
                 "error_type": "TOOL_EXECUTION_FAILED",
             }
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
         digest = ToolResultDigest.from_result(tool_name, result)
+        accumulated_observations = list(state.get("visual_observations", []))
+        raw_observations = result.data.get("observations")
+        if isinstance(raw_observations, list):
+            seen = {
+                (
+                    str(item.get("media_asset_id") or ""),
+                    str(item.get("observation") or ""),
+                )
+                for item in accumulated_observations
+                if isinstance(item, dict)
+            }
+            for item in raw_observations:
+                if not isinstance(item, dict):
+                    continue
+                key = (
+                    str(item.get("media_asset_id") or ""),
+                    str(item.get("observation") or ""),
+                )
+                if key not in seen:
+                    accumulated_observations.append(item)
+                    seen.add(key)
         return {
             "current_node": AgentNode.EXECUTE_TOOL,
             "step_count": state["step_count"] + 1,
             "tool_call_count": state["tool_call_count"] + 1,
+            "tool_call_counts": next_tool_counts,
             "last_tool_result": result.model_dump(mode="json"),
             "tool_result_summaries": [
                 *state["tool_result_summaries"],
@@ -279,6 +336,7 @@ class BoundedAgentGraph:
                 *state["tool_result_digests"],
                 digest.model_dump(mode="json"),
             ],
+            "visual_observations": accumulated_observations,
             "used_tokens": state["used_tokens"] + result.used_tokens,
             "estimated_cost_cny": (
                 state["estimated_cost_cny"] + result.estimated_cost_cny

@@ -17,14 +17,29 @@ ALL_SPECIALISTS = frozenset(
     }
 )
 
-VISION_TOOLS = frozenset({"observe_image", "inspect_image"})
+VISION_TOOLS = frozenset({"observe_image", "inspect_image", "extract_measurements"})
 PATIENT_TOOLS = frozenset(
-    {"search_knowledge", "get_document_info", "summarize_document", *VISION_TOOLS}
-)
-KNOWLEDGE_TOOLS = frozenset(
     {
         "search_knowledge",
         "get_document_info",
+        "get_document_section",
+        "extract_table",
+        "verify_citations",
+        "draft_follow_up_plan",
+        "calculator",
+        *VISION_TOOLS,
+    }
+)
+KNOWLEDGE_TOOLS = frozenset(
+    {
+        "calculator",
+        "search_knowledge",
+        "get_document_info",
+        "get_document_section",
+        "extract_table",
+        "verify_citations",
+        "extract_measurements",
+        "draft_follow_up_plan",
         "summarize_document",
         "compare_documents",
         "generate_learning_report",

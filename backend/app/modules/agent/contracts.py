@@ -1,7 +1,7 @@
 """Agent白名单工具与受控编排的稳定契约。"""
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -61,9 +61,23 @@ class ToolResultDigest(BaseModel):
         found = data.get("found") if isinstance(data, dict) else None
         count = data.get("count") if isinstance(data, dict) else None
         missing = data.get("missing_document_ids") if isinstance(data, dict) else None
-        if found is False or count == 0 or (missing and not result.source_ids):
+        ok = data.get("ok") if isinstance(data, dict) else None
+        error_code = data.get("error_code") if isinstance(data, dict) else None
+        deterministic_payload = any(
+            key in data
+            for key in ("section", "table", "verified", "measurements", "questions")
+        )
+        if ok is False and error_code:
+            status = "failed"
+        elif found is False or count == 0 or (missing and not result.source_ids):
             status = "empty"
-        elif result.source_ids or result.artifacts or excerpts:
+        elif (
+            result.source_ids
+            or result.artifacts
+            or excerpts
+            or ok is True
+            or deterministic_payload
+        ):
             status = "completed"
         else:
             status = "ambiguous"
@@ -80,6 +94,38 @@ class AgentToolArguments(BaseModel):
     """所有工具参数默认拒绝未声明字段。"""
 
     model_config = ConfigDict(extra="forbid")
+
+
+class AgentToolBudget(BaseModel):
+    """Tool-local deterministic limits exposed to the planner and API."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    max_calls_per_run: int = Field(default=1, ge=1, le=3)
+    max_items: int = Field(default=20, ge=1, le=100)
+    max_input_chars: int = Field(default=4000, ge=1, le=20_000)
+
+
+class AgentToolCost(BaseModel):
+    """Whether invoking a tool can call a model or create provider cost."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    mode: Literal["none", "model"] = "none"
+    model_calls: int = Field(default=0, ge=0, le=4)
+
+
+class AgentToolMetadata(BaseModel):
+    """Public governance metadata; it never contains prompts or credentials."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    version: str = Field(default="1.0.0", min_length=5, max_length=20)
+    risk: Literal["low", "medium", "high"] = "low"
+    permissions: tuple[str, ...] = ()
+    timeout_seconds: float = Field(default=2.0, gt=0, le=60)
+    budget: AgentToolBudget = Field(default_factory=AgentToolBudget)
+    cost: AgentToolCost = Field(default_factory=AgentToolCost)
 
 
 class AgentToolResult(BaseModel):
@@ -114,6 +160,8 @@ class AgentToolContext:
     run_id: str
     user_id: str
     task_context: str = ""
+    source_ids: tuple[str, ...] = ()
+    visual_observations: tuple[dict[str, object], ...] = ()
 
 
 class AgentTool(Protocol):
@@ -122,6 +170,7 @@ class AgentTool(Protocol):
     name: str
     description: str
     arguments_model: type[AgentToolArguments]
+    metadata: AgentToolMetadata
 
     def invoke(
         self,
