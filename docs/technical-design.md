@@ -2389,3 +2389,11 @@ volumes. The release sequence is: run no-cost checks, upgrade migrations,
 backup production data, start MySQL/Redis/backend/worker/web, verify `/livez` and
 `/readyz`, then run the post-release stability script. Stage 26.7 does not claim
 production completion until that sequence and its audit are recorded by 26.8.
+
+Certificate freshness is deployment-aware. A normal domain certificate keeps a
+14-day minimum by default, while a Let's Encrypt short-lived public-IP
+certificate uses a 48-hour minimum because its total lifetime is about six days.
+Both thresholds can be overridden by the operator. The production check can
+also require the configured Certbot renewal timer to be active, so a currently
+valid short-lived certificate is not accepted without an automatic renewal
+path.

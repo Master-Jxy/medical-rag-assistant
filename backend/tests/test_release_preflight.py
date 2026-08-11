@@ -88,3 +88,16 @@ def test_ci_runs_all_no_cost_release_gates() -> None:
     )
     assert all(item in workflow for item in required)
     assert "DASHSCOPE_API_KEY" not in workflow
+
+
+def test_post_release_check_handles_short_lived_ip_certificates() -> None:
+    script = (
+        Path(__file__).resolve().parents[2] / "deploy" / "post_release_check.sh"
+    ).read_text(encoding="utf-8")
+
+    assert "CERTIFICATE_MIN_VALIDITY_SECONDS" in script
+    assert "certificate_min_seconds=172800" in script
+    assert "certificate_min_seconds=1209600" in script
+    assert "CERTBOT_RENEW_TIMER_UNIT" in script
+    assert "certificate_validity" in script
+    assert "certificate_14d" not in script

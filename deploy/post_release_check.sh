@@ -5,6 +5,8 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 ENV_FILE="${ENV_FILE:-${REPO_ROOT}/deploy/.env}"
 BASE_URL="${BASE_URL:-http://127.0.0.1}"
 HTTPS_IDENTIFIER="${HTTPS_IDENTIFIER:-}"
+CERTIFICATE_MIN_VALIDITY_SECONDS="${CERTIFICATE_MIN_VALIDITY_SECONDS:-}"
+CERTBOT_RENEW_TIMER_UNIT="${CERTBOT_RENEW_TIMER_UNIT:-}"
 BACKUP_ROOT="${BACKUP_ROOT:-/home/deploy/medical-rag-backups}"
 COMPOSE=(docker compose --env-file "${ENV_FILE}" -f "${REPO_ROOT}/compose.yaml" -f "${REPO_ROOT}/deploy/compose.https.yaml")
 failures=0
@@ -79,14 +81,32 @@ else
 fi
 
 if [[ -n "${HTTPS_IDENTIFIER}" ]]; then
-  if echo | openssl s_client -servername "${HTTPS_IDENTIFIER}" -connect "${HTTPS_IDENTIFIER}:443" 2>/dev/null | openssl x509 -checkend 1209600 -noout >/dev/null 2>&1; then
-    printf 'PASS certificate_14d\n'
+  certificate_min_seconds="${CERTIFICATE_MIN_VALIDITY_SECONDS}"
+  if [[ -z "${certificate_min_seconds}" ]]; then
+    if [[ "${HTTPS_IDENTIFIER}" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || [[ "${HTTPS_IDENTIFIER}" == *:* ]]; then
+      certificate_min_seconds=172800
+    else
+      certificate_min_seconds=1209600
+    fi
+  fi
+  if [[ ! "${certificate_min_seconds}" =~ ^[0-9]+$ ]] || (( certificate_min_seconds <= 0 )); then
+    printf 'FAIL certificate_validity invalid_min_seconds=%s\n' "${certificate_min_seconds:-empty}"
+    failures=$((failures + 1))
+  elif echo | openssl s_client -servername "${HTTPS_IDENTIFIER}" -connect "${HTTPS_IDENTIFIER}:443" 2>/dev/null | openssl x509 -checkend "${certificate_min_seconds}" -noout >/dev/null 2>&1; then
+    printf 'PASS certificate_validity min_seconds=%s\n' "${certificate_min_seconds}"
   else
-    printf 'FAIL certificate_14d\n'
+    printf 'FAIL certificate_validity min_seconds=%s\n' "${certificate_min_seconds}"
     failures=$((failures + 1))
   fi
+
+  if [[ -n "${CERTBOT_RENEW_TIMER_UNIT}" ]]; then
+    check certbot_renew_timer systemctl is-active --quiet "${CERTBOT_RENEW_TIMER_UNIT}"
+  else
+    printf 'SKIP certbot_renew_timer unit_not_supplied\n'
+  fi
 else
-  printf 'SKIP certificate_14d HTTPS_IDENTIFIER_not_supplied\n'
+  printf 'SKIP certificate_validity HTTPS_IDENTIFIER_not_supplied\n'
+  printf 'SKIP certbot_renew_timer HTTPS_IDENTIFIER_not_supplied\n'
 fi
 
 exit "${failures}"
