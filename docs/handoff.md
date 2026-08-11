@@ -70,13 +70,13 @@ OCR。以上只使用Fake和本地合成资产，没有真实模型调用。
 
 生产当前状态：
 
-- GitHub `main`：`b8e1719fa3be90b53822e58f07d2179737ae46b6`。
-- 服务器工作区：同一提交，工作区干净。
-- 备份：`/home/deploy/medical-rag-backups/backup-20260810T003429Z`，7项SHA-256通过。
-- 数据库迁移：`0030_multimodal_chat_assets (head)`。
-- 容器：backend、web、mysql、redis均为healthy。
+- GitHub应用提交：`6c515e2fd06f0031d01dc4241f2392c7ef2082c0`。
+- 服务器工作区：同一应用提交，工作区干净；最终纯文档审计提交随后快进。
+- 备份：`/home/deploy/medical-rag-backups/backup-20260811T020551Z`，7项SHA-256通过。
+- 数据库迁移：`0033_stage26_job_leases (head)`。
+- 容器：mysql、redis、backend、web为healthy，worker为running，重启计数总和0。
 - 网络：HTTP 80返回308；HTTPS首页和`/api/v1/health`返回200。
-- 静态资产：`index-CPEwi2bu.js`、`index-Xv-mGLQX.css`。
+- 静态资产：`index-yKrn7dFv.js`、`index-DrFkzane.css`。
 - 视觉配置：enabled / DashScope / `qwen3-vl-plus` / automatic retries 0。
 
 生产容器内使用内存生成的非医疗测试图完成一次无持久化真实视觉烟测：
@@ -208,12 +208,12 @@ Protected auth SHA-256
 - 本地MySQL已从`0025_quota_policy_v2`升级到`0033_stage26_job_leases (head)`；未删除数据、未重建卷。
 - 本地浏览器验收使用临时账号并已清理：Agent/RAG在1440、1280、1024、390视口无横向溢出；新建会话后textarea自动获得焦点；`/livez`和`/readyz`均通过。
 
-## 8. 当前候选与发布边界
+## 8. 当前发布状态
 
-- 当前分支：`main`，HEAD为本地Stage 26候选，较远端多出14个提交；尚未推送GitHub或生产部署。
+- Stage 26已完成GitHub推送、生产迁移、五服务部署和HTTPS黑盒验收；完整证据见`docs/release-audit-stage26-enterprise-hardening.md`。
 - 受保护认证文件SHA-256仍为：`9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0`。
 - 本地测试临时账号、Agent会话和媒体目录中的临时数据已清理；真实生产资料、`.env`、Chroma正文和备份未读取。
 
 ## 9. 唯一下一任务
 
-**执行26.8发布收口：先对当前提交做最终敏感信息与迁移/Compose检查，推送GitHub；再在服务器创建外置备份并校验SHA-256，升级到0033，启动MySQL/Redis/backend/worker/web，运行`deploy/post_release_check.sh`和HTTPS浏览器黑盒验收；任何一步失败都停在当前提交并记录回滚点。**
+**进入Stage 26发布观察期：先观察24小时容器重启、错误标记、队列积压和证书自动续期；没有真实生产故障时不继续改架构。下一项产品开发应从人工确认合法资料和黄金题开始，使`corpus_v2/eval_v2`从`not_eligible`逐步具备真实评估资格。**
