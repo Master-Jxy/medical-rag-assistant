@@ -175,6 +175,10 @@ class Settings(BaseSettings):
         default=5 * 1024 * 1024, ge=1024, le=100 * 1024 * 1024
     )
     telemetry_log_backup_count: int = Field(default=5, ge=1, le=30)
+    metrics_enabled: bool = False
+    metrics_bearer_token: SecretStr | None = None
+    backup_manifest_path: Path | None = None
+    backup_max_age_hours: int = Field(default=24, ge=1, le=24 * 30)
     agent_enabled: bool = False
     agent_max_steps: int = Field(default=5, ge=1, le=5)
     agent_max_tool_calls: int = Field(default=3, ge=1, le=3)

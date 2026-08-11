@@ -27,6 +27,7 @@ REQUIRED_FILES = (
     "backend/alembic.ini",
     "backend/requirements.txt",
     "frontend/package-lock.json",
+    "deploy/post_release_check.sh",
 )
 FORBIDDEN_TRACKED_PARTS = (
     "backend/data/uploads/",
@@ -133,6 +134,7 @@ def check_compose_contract(repo_root: Path) -> CheckResult:
         and "services:" in https
         and "down -v" not in compose
         and "down -v" not in https
+        and "worker:" in compose
     )
     return CheckResult(
         "compose_contract",

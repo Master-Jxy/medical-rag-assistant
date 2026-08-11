@@ -3,7 +3,8 @@
 import json
 import logging
 from logging.handlers import RotatingFileHandler
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, deque
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 
@@ -11,6 +12,36 @@ from app.core.config import Settings
 from app.ports.telemetry import TelemetryEvent, TelemetryMetricsSnapshot
 
 logger = logging.getLogger("medical_rag.telemetry")
+
+
+def render_prometheus(snapshot: TelemetryMetricsSnapshot) -> str:
+    """Render only bounded, low-cardinality process metrics."""
+
+    lines = [
+        "# TYPE medical_rag_http_requests_total counter",
+        f'medical_rag_http_requests_total{{result="success"}} {snapshot.request_success}',
+        f'medical_rag_http_requests_total{{result="failure"}} {snapshot.request_failure}',
+        "# TYPE medical_rag_http_request_duration_ms gauge",
+        f"medical_rag_http_request_duration_ms {snapshot.average_duration_ms or 0}",
+        f"medical_rag_http_request_p50_duration_ms {snapshot.request_p50_duration_ms or 0}",
+        f"medical_rag_http_request_p95_duration_ms {snapshot.request_p95_duration_ms or 0}",
+        "# TYPE medical_rag_model_input_tokens_total counter",
+        f"medical_rag_model_input_tokens_total {snapshot.input_tokens}",
+        "# TYPE medical_rag_model_output_tokens_total counter",
+        f"medical_rag_model_output_tokens_total {snapshot.output_tokens}",
+        "# TYPE medical_rag_rate_limit_total counter",
+        f"medical_rag_rate_limit_total {snapshot.rate_limit_count}",
+        "# TYPE medical_rag_redis_degradation_total counter",
+        f"medical_rag_redis_degradation_total {snapshot.redis_degradation_count}",
+        "# TYPE medical_rag_user_stop_total counter",
+        f"medical_rag_user_stop_total {snapshot.user_stop_count}",
+    ]
+    for stage, value in sorted(snapshot.stage_average_duration_ms.items()):
+        safe_stage = stage.replace("-", "_")
+        lines.append(
+            f'medical_rag_stage_duration_ms{{stage="{safe_stage}"}} {value or 0}'
+        )
+    return "\n".join(lines) + "\n"
 
 
 class JsonLoggingTelemetryAdapter:
@@ -79,8 +110,12 @@ class InMemoryTelemetryMetrics:
         self._request_failure = 0
         self._request_duration_total = 0.0
         self._request_duration_count = 0
+        self._request_durations = deque(maxlen=2048)
         self._stage_duration_total: dict[str, float] = defaultdict(float)
         self._stage_duration_count: Counter[str] = Counter()
+        self._stage_durations: dict[str, deque] = defaultdict(
+            lambda: deque(maxlen=2048)
+        )
         self._input_tokens = 0
         self._output_tokens = 0
         self._known_token_events = 0
@@ -93,6 +128,7 @@ class InMemoryTelemetryMetrics:
         self._user_stop_count = 0
         self._failure_counts: Counter[str] = Counter()
         self._error_type_counts: Counter[str] = Counter()
+        self._process_started_at = datetime.now(timezone.utc).isoformat()
 
     def emit(self, event: TelemetryEvent) -> None:
         with self._lock:
@@ -107,11 +143,13 @@ class InMemoryTelemetryMetrics:
                 if event.duration_ms is not None:
                     self._request_duration_total += event.duration_ms
                     self._request_duration_count += 1
+                    self._request_durations.append(event.duration_ms)
 
             if event.event_name == "rag_stage" and event.stage:
                 if event.duration_ms is not None:
                     self._stage_duration_total[event.stage] += event.duration_ms
                     self._stage_duration_count[event.stage] += 1
+                    self._stage_durations[event.stage].append(event.duration_ms)
                 if event.result == "failure":
                     failure_key = {
                         "knowledge_retrieval": "retrieval",
@@ -161,6 +199,10 @@ class InMemoryTelemetryMetrics:
                 )
                 for stage in self.STAGES
             }
+            stage_p95 = {
+                stage: self._percentile(self._stage_durations[stage], 0.95)
+                for stage in self.STAGES
+            }
             if self._unknown_token_events:
                 token_measurement = "unknown"
             elif self._known_token_events:
@@ -197,7 +239,24 @@ class InMemoryTelemetryMetrics:
                     for key in ("model", "retrieval", "persistence")
                 },
                 error_type_counts=dict(self._error_type_counts),
+                request_p50_duration_ms=self._percentile(
+                    self._request_durations, 0.50
+                ),
+                request_p95_duration_ms=self._percentile(
+                    self._request_durations, 0.95
+                ),
+                stage_p95_duration_ms=stage_p95,
+                window_kind="process_lifetime",
+                process_started_at=self._process_started_at,
             )
+
+    @staticmethod
+    def _percentile(values, ratio: float) -> float | None:
+        ordered = sorted(float(value) for value in values)
+        if not ordered:
+            return None
+        index = min(len(ordered) - 1, max(0, int((len(ordered) - 1) * ratio + 0.999999)))
+        return round(ordered[index], 3)
 
 
 class LocalTelemetryAdapter:

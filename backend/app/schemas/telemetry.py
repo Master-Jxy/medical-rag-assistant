@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TelemetryStatsResponse(BaseModel):
@@ -28,3 +28,8 @@ class TelemetryStatsResponse(BaseModel):
     user_stop_count: int
     failure_counts: dict[str, int]
     error_type_counts: dict[str, int]
+    request_p50_duration_ms: float | None = None
+    request_p95_duration_ms: float | None = None
+    stage_p95_duration_ms: dict[str, float | None] = Field(default_factory=dict)
+    window_kind: str = "process_lifetime"
+    process_started_at: str | None = None

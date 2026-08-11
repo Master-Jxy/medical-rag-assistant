@@ -26,6 +26,8 @@ from app.api.usage import router as usage_router
 from app.api.knowledge_trace import router as knowledge_trace_router
 from app.api.model_catalog import router as model_catalog_router
 from app.api.media import router as media_router
+from app.api.metrics import router as metrics_router
+from app.api.admin_slo import router as admin_slo_router
 from app.core.config import Settings, get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.request_context import new_request_id, reset_request_id, set_request_id
@@ -220,6 +222,7 @@ def create_app(
     application.include_router(auth_router, prefix="/api/v1")
     application.include_router(admin_documents_router, prefix="/api/v1")
     application.include_router(admin_telemetry_router, prefix="/api/v1")
+    application.include_router(admin_slo_router, prefix="/api/v1")
     application.include_router(admin_reviews_router, prefix="/api/v1")
     application.include_router(admin_knowledge_assets_router, prefix="/api/v1")
     application.include_router(admin_operations_router, prefix="/api/v1")
@@ -233,6 +236,7 @@ def create_app(
     application.include_router(knowledge_trace_router, prefix="/api/v1")
     application.include_router(model_catalog_router, prefix="/api/v1")
     application.include_router(media_router, prefix="/api/v1")
+    application.include_router(metrics_router)
     register_exception_handlers(application)
     return application
 

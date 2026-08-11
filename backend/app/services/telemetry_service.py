@@ -52,4 +52,9 @@ class TelemetryStatsService:
             user_stop_count=snapshot.user_stop_count,
             failure_counts=snapshot.failure_counts,
             error_type_counts=top_errors,
+            request_p50_duration_ms=snapshot.request_p50_duration_ms,
+            request_p95_duration_ms=snapshot.request_p95_duration_ms,
+            stage_p95_duration_ms=snapshot.stage_p95_duration_ms or {},
+            window_kind=snapshot.window_kind,
+            process_started_at=snapshot.process_started_at,
         )

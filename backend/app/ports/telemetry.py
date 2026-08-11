@@ -66,6 +66,11 @@ class TelemetryMetricsSnapshot:
     user_stop_count: int
     failure_counts: dict[str, int]
     error_type_counts: dict[str, int]
+    request_p50_duration_ms: float | None = None
+    request_p95_duration_ms: float | None = None
+    stage_p95_duration_ms: dict[str, float | None] | None = None
+    window_kind: str = "process_lifetime"
+    process_started_at: str | None = None
 
 
 class TelemetryMetricsPort(TelemetryPort, Protocol):
@@ -102,6 +107,20 @@ class NullTelemetry:
             user_stop_count=0,
             failure_counts={"model": 0, "retrieval": 0, "persistence": 0},
             error_type_counts={},
+            request_p50_duration_ms=None,
+            request_p95_duration_ms=None,
+            stage_p95_duration_ms={
+                stage: None
+                for stage in (
+                    "query_construction",
+                    "knowledge_retrieval",
+                    "rerank",
+                    "model_generation",
+                    "tool",
+                )
+            },
+            window_kind="process_lifetime",
+            process_started_at=None,
         )
 
 
