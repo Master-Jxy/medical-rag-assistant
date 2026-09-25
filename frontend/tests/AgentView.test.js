@@ -171,6 +171,56 @@ beforeEach(() => {
 })
 
 describe('Codex式资料Agent工作台', () => {
+  it('线程和消息按 total 自动读取后续分页', async () => {
+    const firstThreads = [
+      { ...thread },
+      ...Array.from({ length: 99 }, (_, index) => ({
+        ...secondThread,
+        id: `thread-extra-${index}`,
+      })),
+    ]
+    agentApi.listAgentThreads.mockImplementation(async (_status, offset) => ({
+      items: offset === 0 ? firstThreads : [{
+        ...secondThread, id: 'thread-last', title: '最后一页线程',
+      }],
+      total: 101,
+    }))
+    const firstMessages = Array.from({ length: 100 }, (_, index) => ({
+      ...messages[index % 2],
+      id: `message-page-${index}`,
+      sequence_no: index + 1,
+      run_id: null,
+      metadata: {},
+    }))
+    agentApi.listAgentMessages.mockImplementation(async (_id, offset) => ({
+      items: offset === 0 ? firstMessages : [{
+        ...messages[1], id: 'message-last', sequence_no: 101, run_id: null,
+      }],
+      total: 101,
+    }))
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(agentApi.listAgentThreads).toHaveBeenNthCalledWith(1, 'active', 0, 100)
+    expect(agentApi.listAgentThreads).toHaveBeenNthCalledWith(2, 'active', 100, 100)
+    expect(agentApi.listAgentMessages).toHaveBeenNthCalledWith(1, 'thread-1', 0, 100)
+    expect(agentApi.listAgentMessages).toHaveBeenNthCalledWith(2, 'thread-1', 100, 100)
+    expect(wrapper.text()).toContain('最后一页线程')
+  })
+
+  it('中文输入法组合期间按 Enter 不发送 Agent 消息', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('textarea').setValue('正在组合')
+
+    await wrapper.get('textarea').trigger('keydown', {
+      key: 'Enter',
+      isComposing: true,
+    })
+
+    expect(agentApi.streamAgentMessage).not.toHaveBeenCalled()
+  })
+
   it('仅把Agent助手回答渲染为安全Markdown并使用统一名称', async () => {
     agentApi.listAgentMessages.mockResolvedValue({
       items: [{
@@ -428,7 +478,7 @@ describe('Codex式资料Agent工作台', () => {
     await archivedButton.trigger('click')
     await flushPromises()
 
-    expect(agentApi.listAgentThreads).toHaveBeenLastCalledWith('archived')
+    expect(agentApi.listAgentThreads).toHaveBeenLastCalledWith('archived', 0, 100)
     expect(wrapper.text()).toContain('已归档患者安全')
 
     const restoreButton = wrapper.findAll('button').find(

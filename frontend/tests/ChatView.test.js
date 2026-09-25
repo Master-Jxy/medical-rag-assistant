@@ -91,6 +91,63 @@ beforeEach(() => {
 })
 
 describe('ChatView 会话交互', () => {
+  it('幂等回放 token 替换已有部分正文而不是重复追加', async () => {
+    api.streamConversation.mockImplementation(async (_id, _question, handlers) => {
+      handlers.onOpen?.()
+      handlers.onToken('第一段')
+      handlers.onToken('第一段第二段', { replace: true })
+      handlers.onDone({
+        request_id: 'replay-request',
+        user_message_id: 'replay-user',
+        assistant_message_id: 'replay-assistant',
+      })
+    })
+    const wrapper = mountChatView()
+    await flushPromises()
+
+    await wrapper.get('textarea').setValue('回放测试')
+    await wrapper.get('form.composer').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('第一段第二段')
+    expect(wrapper.text()).not.toContain('第一段第一段第二段')
+  })
+
+  it('会话列表按 total 自动读取后续分页', async () => {
+    const firstPage = [
+      ...summaries.map((item) => ({ ...item })),
+      ...Array.from({ length: 98 }, (_, index) => ({
+        ...summaries[0],
+        id: `conversation-extra-${index}`,
+      })),
+    ]
+    api.listConversations.mockImplementation(async (_limit, offset) => ({
+      conversations: offset === 0 ? firstPage : [{
+        ...summaries[0], id: 'conversation-last', title: '最后一页会话',
+      }],
+      total: 101,
+    }))
+    const wrapper = mountChatView()
+    await flushPromises()
+
+    expect(api.listConversations).toHaveBeenNthCalledWith(1, 100, 0)
+    expect(api.listConversations).toHaveBeenNthCalledWith(2, 100, 100)
+    expect(wrapper.text()).toContain('最后一页会话')
+  })
+
+  it('中文输入法组合期间按 Enter 不发送', async () => {
+    const wrapper = mountChatView()
+    await flushPromises()
+    await wrapper.get('textarea').setValue('正在组合')
+
+    await wrapper.get('textarea').trigger('keydown', {
+      key: 'Enter',
+      isComposing: true,
+    })
+
+    expect(api.streamConversation).not.toHaveBeenCalled()
+  })
+
   it('仅把RAG助手回答渲染为安全Markdown', async () => {
     api.getConversation.mockResolvedValue({
       id: 'conversation-1',

@@ -167,7 +167,7 @@ def chat_in_conversation(
     """保存用户问题和助手回答，具体事务由服务层负责。"""
     rate_limiter.check(current_user.id)
     ensure_conversation_recovery(http_request, session)
-    UserModelSelectionService(session, settings).validate_text_selection(
+    selected_route = UserModelSelectionService(session, settings).validate_text_selection(
         user_id=current_user.id,
         user_role=current_user.role,
         surface=ModelSurface.RAG,
@@ -182,6 +182,7 @@ def chat_in_conversation(
         request.top_k,
         idempotency_key,
         request.attachment_ids,
+        request.model_id,
     )
 
 
@@ -231,7 +232,7 @@ async def stream_chat_in_conversation(
     request_id = get_request_id()
     rate_limiter.check(current_user.id)
     ensure_conversation_recovery(http_request, session)
-    UserModelSelectionService(session, settings).validate_text_selection(
+    selected_route = UserModelSelectionService(session, settings).validate_text_selection(
         user_id=current_user.id,
         user_role=current_user.role,
         surface=ModelSurface.RAG,
@@ -247,6 +248,7 @@ async def stream_chat_in_conversation(
         request_id,
         idempotency_key,
         request.attachment_ids,
+        request.model_id,
     )
 
     async def event_generator():
@@ -254,9 +256,14 @@ async def stream_chat_in_conversation(
             async for item in service_iterator:
                 yield format_sse(item["event"], item["data"])
         except AppError as exc:
+            public_exc = RagServiceError() if isinstance(exc, RagServiceError) else exc
             yield format_sse(
                 "error",
-                {"code": exc.code, "message": exc.message, "request_id": request_id},
+                {
+                    "code": public_exc.code,
+                    "message": public_exc.message,
+                    "request_id": request_id,
+                },
             )
         except Exception:
             exc = RagServiceError()

@@ -17,10 +17,11 @@ class AllowingIdempotency:
         question,
         top_k,
         attachment_ids=None,
+        model_id=None,
     ) -> IdempotencyClaim:
         return IdempotencyClaim(
             f"test:{endpoint}:{client_request_id}",
-            f"fingerprint:{conversation_id}:{question}:{top_k}:{attachment_ids or []}",
+            f"fingerprint:{conversation_id}:{question}:{top_k}:{attachment_ids or []}:{model_id}",
         )
 
     def complete(self, claim, **result) -> None:

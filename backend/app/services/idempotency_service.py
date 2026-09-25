@@ -76,12 +76,13 @@ class IdempotencyService:
         question: str,
         top_k: int,
         attachment_ids: list[str] | None = None,
+        model_id: str | None = None,
     ) -> IdempotencyClaim:
         subject = hashlib.sha256(
             f"{user_id}:{endpoint}:{client_request_id}".encode("utf-8")
         ).hexdigest()
         fingerprint = hashlib.sha256(
-            f"{conversation_id}\0{question}\0{top_k}\0{','.join(attachment_ids or [])}".encode("utf-8")
+            f"{conversation_id}\0{question}\0{top_k}\0{','.join(attachment_ids or [])}\0{model_id or ''}".encode("utf-8")
         ).hexdigest()
         key = f"idempotency:conversation-chat:{subject}"
         try:

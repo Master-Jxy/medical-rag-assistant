@@ -23,12 +23,14 @@ class DashScopeAsyncChatModel:
         settings: Settings | None = None,
         *,
         surface: ModelSurface = ModelSurface.RAG,
+        model_id: str | None = None,
     ) -> None:
         current_settings = settings or get_settings()
         self.model = resolve_model_route(
             current_settings,
             surface=surface,
             capabilities=frozenset({ModelCapability.TEXT}),
+            model_id=model_id,
         ).model_name
         self.api_key = current_settings.require_dashscope_api_key()
 

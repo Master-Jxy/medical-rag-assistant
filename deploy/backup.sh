@@ -22,13 +22,33 @@ cleanup_staging() {
     rm -rf -- "${STAGING_DIR}"
   fi
 }
-trap cleanup_staging ERR INT TERM
+
+services_quiesced=false
+restart_writers() {
+  if [[ "${services_quiesced}" == true ]]; then
+    "${compose[@]}" up -d --wait --wait-timeout 180 backend worker
+    services_quiesced=false
+  fi
+}
+
+handle_failure() {
+  local status=$?
+  trap - ERR INT TERM
+  cleanup_staging
+  if [[ "${services_quiesced}" == true ]]; then
+    set +e
+    restart_writers >&2
+    set -e
+  fi
+  exit "${status}"
+}
+trap handle_failure ERR INT TERM
 
 [[ -f "${ENV_FILE}" ]] || fail "missing env file"
 [[ -f "${COMPOSE_FILE}" ]] || fail "missing compose file"
 [[ "${BACKUP_ROOT}" = /* && "${BACKUP_ROOT}" != "/" ]] || fail "unsafe backup root"
 [[ "${BACKUP_RETENTION_COUNT}" =~ ^[1-9][0-9]*$ ]] || fail "invalid retention count"
-for command_name in docker gzip sha256sum tar awk date install; do
+for command_name in docker gzip sha256sum tar awk date install ln mv find wc; do
   command -v "${command_name}" >/dev/null || fail "missing command: ${command_name}"
 done
 
@@ -41,7 +61,7 @@ compose=(docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}")
 project_name="$("${compose[@]}" config | awk '$1 == "name:" { print $2; exit }')"
 [[ -n "${project_name}" ]] || fail "cannot resolve compose project"
 
-for service in mysql redis backend; do
+for service in mysql redis backend worker; do
   container_id="$("${compose[@]}" ps -q "${service}")"
   [[ -n "${container_id}" ]] || fail "service is not running: ${service}"
 done
@@ -74,6 +94,9 @@ archive_volume() {
   [[ -s "${STAGING_DIR}/${output_name}" ]] || fail "empty archive: ${logical_name}"
 }
 
+"${compose[@]}" stop backend worker
+services_quiesced=true
+
 "${compose[@]}" exec -T mysql sh -ec \
   'exec mysqldump -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" \
     --single-transaction --routines --events --triggers --no-tablespaces \
@@ -85,6 +108,8 @@ archive_volume() {
 archive_volume app_data app_data.tar.gz
 archive_volume chroma_data chroma_data.tar.gz
 archive_volume redis_data redis_data.tar.gz
+
+restart_writers
 
 install -m 600 "${ENV_FILE}" "${STAGING_DIR}/deploy.env"
 install -m 600 "${COMPOSE_FILE}" "${STAGING_DIR}/compose.yaml"
@@ -118,6 +143,10 @@ EOF
 
 mv -- "${STAGING_DIR}" "${FINAL_DIR}"
 trap - ERR INT TERM
+
+latest_link="${BACKUP_ROOT}/.latest-${STAMP}"
+ln -s "$(basename "${FINAL_DIR}")" "${latest_link}"
+mv -Tf -- "${latest_link}" "${BACKUP_ROOT}/latest"
 
 mapfile -t backups < <(
   find "${BACKUP_ROOT}" -mindepth 1 -maxdepth 1 -type d -name 'backup-*' -printf '%f\n' \

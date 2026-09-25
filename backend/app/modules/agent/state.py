@@ -92,6 +92,7 @@ def create_initial_state(
     resolved_references: ResolvedReferences | None = None,
     previous_clarification_key: str | None = None,
     context_budget: dict[str, int] | None = None,
+    visual_observations: list[dict[str, object]] | None = None,
 ) -> AgentGraphState:
     normalized_task = task.strip()
     if not run_id.strip() or not user_id.strip():
@@ -134,7 +135,7 @@ def create_initial_state(
         tool_arguments={},
         tool_result_summaries=[],
         tool_result_digests=[],
-        visual_observations=[],
+        visual_observations=list(visual_observations or []),
         last_tool_result=None,
         next_action=None,
         final_output=None,

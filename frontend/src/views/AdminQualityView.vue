@@ -18,9 +18,21 @@ const maxDaily = computed(() => Math.max(1, ...(overview.value?.daily_counts || 
 async function load() {
   loading.value = true
   try {
-    const [metrics, reviews] = await Promise.all([getQualityOverview(), getQualityReviews()])
+    const metricsPromise = getQualityOverview()
+    const reviews = []
+    const limit = 50
+    let offset = 0
+    while (true) {
+      const page = await getQualityReviews(offset, limit)
+      const rows = page.items || []
+      reviews.push(...rows)
+      const total = Number(page.total ?? reviews.length)
+      if (!rows.length || rows.length < limit || reviews.length >= total) break
+      offset += rows.length
+    }
+    const metrics = await metricsPromise
     overview.value = metrics
-    queue.value = reviews.items
+    queue.value = reviews
     errorMessage.value = ''
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)

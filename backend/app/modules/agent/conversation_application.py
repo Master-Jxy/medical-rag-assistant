@@ -45,6 +45,10 @@ from app.modules.usage.contracts import QuotaPolicyMode
 from app.modules.media.service import MediaAssetService
 from app.modules.vision.service import VisionChatService
 from app.modules.vision.router_service import VisionRouterService
+from app.modules.vision.contracts import VisionObservation
+from app.modules.vision.models import VisionObservationRecord
+from app.core.model_factory import resolve_model_route
+from app.modules.model_gateway.contracts import ModelCapability, ModelSurface
 
 
 class AgentConversationApplication:
@@ -70,6 +74,7 @@ class AgentConversationApplication:
     ) -> None:
         self.session = session
         self.policy = policy
+        self.cancellation = cancellation
         self.generation_lock = generation_lock
         self.idempotency = idempotency
         self.context_builder = context_builder
@@ -114,6 +119,8 @@ class AgentConversationApplication:
         client_request_id: str,
         request_id: str,
         reply_to_message_id: str | None = None,
+        reused_attachment_ids: list[str] | None = None,
+        reused_visual_records: list[VisionObservationRecord] | None = None,
     ) -> Iterator[dict[str, object]]:
         if not self.policy.enabled:
             raise AgentDisabledError()
@@ -121,11 +128,17 @@ class AgentConversationApplication:
             thread = self.threads.get_thread(user_id, thread_id)
         except AgentThreadNotFoundError as exc:
             raise AgentThreadNotFoundAppError() from exc
+        effective_attachment_ids = list(
+            reused_attachment_ids
+            if reused_attachment_ids is not None
+            else payload.attachment_ids
+        )
         metadata = {
             "referenced_message_ids": list(payload.referenced_message_ids),
             "source_ids": list(payload.source_ids),
             "artifact_ids": list(payload.artifact_ids),
-            "attachment_ids": list(payload.attachment_ids),
+            "attachment_ids": effective_attachment_ids,
+            "model_id": payload.model_id,
         }
         reference_fingerprint = json.dumps(metadata, sort_keys=True)
         claim = self.idempotency.begin_agent(
@@ -169,11 +182,17 @@ class AgentConversationApplication:
                 sequence_no=user_sequence,
                 turn_id=turn_id,
             )
+            selected_route = resolve_model_route(
+                self.settings,
+                surface=ModelSurface.AGENT,
+                capabilities=frozenset({ModelCapability.TEXT}),
+                model_id=payload.model_id,
+            )
             run = self.runs.create_run(
                 user_id=user_id,
                 task=payload.content or "请分析上传的图片，并在需要时检索知识库。",
                 policy=self.policy,
-                model_name=self.agent.model_name,
+                model_name=selected_route.model_name,
                 thread_id=thread_id,
                 trigger_message_id=user_message.id,
             )
@@ -194,11 +213,106 @@ class AgentConversationApplication:
             )
             self.session.commit()
             vision_payload: list[dict[str, object]] = []
-            if payload.attachment_ids:
-                assets = self.media_service.bind_agent(
-                    user_id, payload.attachment_ids, user_message.id
-                )
+            assets = []
+            if effective_attachment_ids:
+                if reused_attachment_ids is None:
+                    assets = self.media_service.bind_agent(
+                        user_id, effective_attachment_ids, user_message.id
+                    )
+                else:
+                    assets = [
+                        self.media_service.owned_asset(user_id, asset_id)
+                        for asset_id in effective_attachment_ids
+                    ]
+            yield {
+                "event": "message_created",
+                "data": {
+                    "thread_id": thread_id,
+                    "user_message_id": user_message.id,
+                    "assistant_message_id": assistant_message.id,
+                    "run_id": run.id,
+                    "user_sequence_no": user_message.sequence_no,
+                    "assistant_sequence_no": assistant_message.sequence_no,
+                    "turn_id": turn_id,
+                    "content": user_message.content,
+                },
+            }
+            if assets:
                 for asset in assets:
+                    if self.cancellation.is_requested(user_id, run.id):
+                        saved_run = self.runs.get_run(user_id, run.id)
+                        if saved_run.status in {"pending", "running"}:
+                            self.runs.stop_run(user_id, run.id)
+                        self._complete_message(
+                            user_id,
+                            thread_id,
+                            assistant_message.id,
+                            content="Agent已安全停止。",
+                            status="stopped",
+                            source_ids=[],
+                            source_items=[],
+                            artifact_ids=[],
+                            stop_reason="user_requested",
+                        )
+                        self.idempotency.complete_agent(
+                            claim,
+                            request_id=request_id,
+                            thread_id=thread_id,
+                            user_message_id=user_message.id,
+                            assistant_message_id=assistant_message.id,
+                        )
+                        terminal = True
+                        yield {
+                            "event": "stopped",
+                            "data": {"run_id": run.id, "reason": "user_requested"},
+                        }
+                        yield {
+                            "event": "message_completed",
+                            "data": {
+                                "message_id": assistant_message.id,
+                                "status": "stopped",
+                                "run_id": run.id,
+                                "sequence_no": assistant_message.sequence_no,
+                                "turn_id": assistant_message.turn_id,
+                                "usage": self.usage_query.group_summary(
+                                    assistant_message.id, user_id
+                                ),
+                                "quota": self.quota_gate.current(user_id),
+                            },
+                        }
+                        return
+                    reusable = [
+                        item for item in (reused_visual_records or [])
+                        if item.media_asset_id == asset.id
+                    ]
+                    if reusable:
+                        for sequence_no, source in enumerate(reusable, start=1):
+                            observation = VisionObservation.model_validate(
+                                source.observation_json
+                            )
+                            self.session.add(VisionObservationRecord(
+                                media_asset_id=asset.id,
+                                user_id=user_id,
+                                run_id=run.id,
+                                observation_scope_id=run.id,
+                                kind=source.kind,
+                                focus_instruction_hash=source.focus_instruction_hash,
+                                model_name=source.model_name,
+                                status="completed",
+                                sequence_no=sequence_no,
+                                route_kind=source.route_kind,
+                                quality_status=source.quality_status,
+                                quality_codes=list(source.quality_codes or []),
+                                provider_call_count=0,
+                                observation_json=observation.model_dump(mode="json"),
+                                completed_at=source.completed_at,
+                            ))
+                            vision_payload.append({
+                                "media_asset_id": asset.id,
+                                "observation": observation.model_dump(mode="json"),
+                            })
+                        self.session.commit()
+                        continue
                     observation = self.vision_router.route_overview(
                         user_id=user_id,
                         asset_id=asset.id,
@@ -256,18 +370,6 @@ class AgentConversationApplication:
                     input_price_per_million_tokens_cny=self.quota_input_price,
                     output_price_per_million_tokens_cny=self.quota_output_price,
                 )
-            yield {
-                "event": "message_created",
-                "data": {
-                    "thread_id": thread_id,
-                    "user_message_id": user_message.id,
-                    "assistant_message_id": assistant_message.id,
-                    "run_id": run.id,
-                    "user_sequence_no": user_message.sequence_no,
-                    "assistant_sequence_no": assistant_message.sequence_no,
-                    "turn_id": turn_id,
-                },
-            }
             if vision_payload:
                 yield {
                     "event": "tool_started",
@@ -297,6 +399,7 @@ class AgentConversationApplication:
                 resolved_references=context.resolved_references,
                 previous_clarification_key=context.previous_clarification_key,
                 context_budget=dict(context.section_tokens),
+                visual_observations=vision_payload,
             )
             for item in agent_stream:
                 event = str(item["event"])
@@ -499,6 +602,8 @@ class AgentConversationApplication:
                 agent_stream.close()
             if lease is not None:
                 self.generation_lock.release(lease)
+            if run is not None:
+                self.cancellation.clear(user_id, run.id)
 
     def retry_message(
         self,
@@ -528,15 +633,22 @@ class AgentConversationApplication:
         except AgentMessageNotFoundError as exc:
             raise AgentMessageNotFoundAppError() from exc
         metadata = original.message_metadata or {}
+        attachment_ids = [
+            str(value) for value in metadata.get("attachment_ids", []) if value
+        ]
+        reused_visual_records = self._reusable_visual_records(
+            user_id, attachment_ids
+        )
         payload = AgentMessageStreamRequest(
             content=original.content,
-            attachment_ids=[],
+            attachment_ids=attachment_ids,
             referenced_message_ids=[
                 original.id,
                 *metadata.get("referenced_message_ids", []),
             ],
             source_ids=metadata.get("source_ids", []),
             artifact_ids=metadata.get("artifact_ids", []),
+            model_id=metadata.get("model_id"),
         )
         yield from self.stream_message(
             user_id=user_id,
@@ -545,7 +657,41 @@ class AgentConversationApplication:
             client_request_id=client_request_id,
             request_id=request_id,
             reply_to_message_id=original.id,
+            reused_attachment_ids=attachment_ids,
+            reused_visual_records=reused_visual_records,
         )
+
+    def _reusable_visual_records(
+        self,
+        user_id: str,
+        attachment_ids: list[str],
+    ) -> list[VisionObservationRecord]:
+        if not attachment_ids:
+            return []
+        rows = list(self.session.scalars(
+            select(VisionObservationRecord)
+            .where(
+                VisionObservationRecord.user_id == user_id,
+                VisionObservationRecord.media_asset_id.in_(attachment_ids),
+                VisionObservationRecord.status == "completed",
+                VisionObservationRecord.kind.in_(("overview", "focused")),
+                VisionObservationRecord.observation_json.is_not(None),
+            )
+            .order_by(VisionObservationRecord.created_at.desc())
+        ))
+        selected: list[VisionObservationRecord] = []
+        seen: set[tuple[str, str, str]] = set()
+        for row in rows:
+            key = (
+                row.media_asset_id,
+                row.kind,
+                row.focus_instruction_hash,
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            selected.append(row)
+        return list(reversed(selected))
 
     def _complete_message(
         self,

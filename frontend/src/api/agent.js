@@ -8,9 +8,9 @@ export async function createAgentThread(title = '新对话', assistantMode = 'ge
   })).data
 }
 
-export async function listAgentThreads(status = 'active') {
+export async function listAgentThreads(status = 'active', offset = 0, limit = 100) {
   return (await http.get('/agent/threads', {
-    params: { status, offset: 0, limit: 100 },
+    params: { status, offset, limit },
   })).data
 }
 
@@ -36,10 +36,10 @@ export async function deleteAgentThread(threadId) {
   return (await http.delete(`/agent/threads/${encodeURIComponent(threadId)}`)).data
 }
 
-export async function listAgentMessages(threadId, limit = 100) {
+export async function listAgentMessages(threadId, offset = 0, limit = 100) {
   return (await http.get(
     `/agent/threads/${encodeURIComponent(threadId)}/messages`,
-    { params: { offset: 0, limit } },
+    { params: { offset, limit } },
   )).data
 }
 
@@ -73,6 +73,12 @@ export async function downloadAgentArtifact(artifactId) {
 function userError(message) {
   const error = new Error(message)
   error.userMessage = message
+  return error
+}
+
+function abortError() {
+  const error = new Error('已停止生成。')
+  error.name = 'AbortError'
   return error
 }
 
@@ -146,6 +152,7 @@ async function streamAgentEndpoint(
     if (response.status === 401) notifyUnauthorized()
     throw await createApiErrorFromResponse(response)
   }
+  if (handlers.signal?.aborted) throw abortError()
   if (!response.body) throw userError('浏览器不支持读取流式响应。')
 
   const reader = response.body.getReader()
@@ -165,5 +172,8 @@ async function streamAgentEndpoint(
     if (buffer.trim()) dispatch(parseFrame(buffer), handlers)
   } finally {
     handlers.signal?.removeEventListener('abort', cancel)
+  }
+  if (handlers.signal?.aborted) {
+    throw abortError()
   }
 }

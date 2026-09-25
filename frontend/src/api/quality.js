@@ -10,8 +10,8 @@ export async function getQualityOverview() {
   return (await http.get('/admin/quality/overview')).data
 }
 
-export async function getQualityReviews() {
-  return (await http.get('/admin/quality/reviews', { params: { offset: 0, limit: 50 } })).data
+export async function getQualityReviews(offset = 0, limit = 50) {
+  return (await http.get('/admin/quality/reviews', { params: { offset, limit } })).data
 }
 
 export async function getQualityReview(id) {

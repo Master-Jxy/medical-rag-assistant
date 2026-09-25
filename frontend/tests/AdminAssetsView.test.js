@@ -80,7 +80,7 @@ describe('统一知识资产页面', () => {
     })
     await flushPromises()
 
-    expect(platformApi.getAssets).toHaveBeenCalledWith({ limit: 100 })
+    expect(platformApi.getAssets).toHaveBeenCalledWith({ limit: 100, offset: 0 })
     expect(wrapper.text()).toContain('统一管理用户提交和系统资料')
     expect(wrapper.text()).toContain('近重复：用户审核资料.txt')
     expect(wrapper.findAll('.asset-table > article')).toHaveLength(2)
@@ -89,7 +89,7 @@ describe('统一知识资产页面', () => {
     await wrapper.findAll('.asset-filters select')[0].setValue('system')
     await wrapper.get('.asset-filters').trigger('submit')
     await flushPromises()
-    expect(platformApi.getAssets).toHaveBeenLastCalledWith({ limit: 100, source: 'system' })
+    expect(platformApi.getAssets).toHaveBeenLastCalledWith({ limit: 100, offset: 0, source: 'system' })
 
     const editButton = wrapper.find('button[title="编辑治理信息"]')
     await editButton.trigger('click')

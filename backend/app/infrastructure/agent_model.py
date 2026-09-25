@@ -69,6 +69,7 @@ class LangChainAgentModel:
         settings: Settings,
         usage_sink: Callable[[str, ModelUsage], None] | None = None,
         call_budget: AgentModelCallBudget | None = None,
+        model_id: str | None = None,
     ) -> None:
         self.settings = settings
         self.usage_sink = usage_sink
@@ -76,7 +77,11 @@ class LangChainAgentModel:
             settings.agent_max_model_calls
         )
         try:
-            chat_model = create_chat_model(settings, surface=ModelSurface.AGENT)
+            chat_model = create_chat_model(
+                settings,
+                surface=ModelSurface.AGENT,
+                model_id=model_id,
+            )
         except TypeError as exc:
             # Keep injected legacy/test factories with the original one-argument
             # contract usable while the production factory accepts a surface.

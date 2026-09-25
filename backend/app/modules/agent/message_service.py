@@ -33,15 +33,36 @@ class AgentMessageService:
             .where(MessageAttachment.agent_message_id == message.id)
             .order_by(MessageAttachment.position)
         ).all()
+        if not rows:
+            attachment_ids = [
+                str(value)
+                for value in (message.message_metadata or {}).get("attachment_ids", [])
+                if value
+            ]
+            if attachment_ids:
+                assets = list(self.session.scalars(
+                    select(MediaAsset).where(
+                        MediaAsset.user_id == message.user_id,
+                        MediaAsset.id.in_(attachment_ids),
+                    )
+                ))
+                assets_by_id = {asset.id: asset for asset in assets}
+                rows = [
+                    (None, assets_by_id[asset_id])
+                    for asset_id in attachment_ids
+                    if asset_id in assets_by_id
+                ]
         payload["attachments"] = [
             {
-                "id": attachment.id, "media_asset_id": asset.id,
-                "position": attachment.position, "original_name": asset.original_name,
+                "id": attachment.id if attachment is not None else f"reused:{message.id}:{asset.id}",
+                "media_asset_id": asset.id,
+                "position": attachment.position if attachment is not None else position,
+                "original_name": asset.original_name,
                 "mime_type": asset.mime_type, "byte_size": asset.byte_size,
                 "width": asset.width, "height": asset.height,
                 "preview_url": f"/api/v1/media/assets/{asset.id}/preview",
             }
-            for attachment, asset in rows
+            for position, (attachment, asset) in enumerate(rows, start=1)
         ]
         observations = list(self.session.scalars(
             select(VisionObservationRecord).where(

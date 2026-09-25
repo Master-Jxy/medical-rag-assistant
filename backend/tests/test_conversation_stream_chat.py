@@ -211,7 +211,8 @@ def test_failed_stream_saves_partial_content_without_sources(tmp_path) -> None:
                 },
             )
             assert "event: error" in response.text
-            assert "测试流中错误" in response.text
+            assert "问答服务暂时不可用，请稍后重试" in response.text
+            assert "测试流中错误" not in response.text
 
             detail = client.get(
                 f"/api/v1/conversations/{conversation_id}",

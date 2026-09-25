@@ -10,7 +10,7 @@ from langchain_core.messages import BaseMessage
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConfigurationError, RagServiceError
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.request_context import get_request_id
 from app.db.session import get_db_session
 from app.modules.knowledge.retrieval_eligibility import (
@@ -57,25 +57,48 @@ class RagService:
         retrieval_policy: RagRetrievalPolicy | None = None,
         rerank_stage: RerankStage | None = None,
         telemetry: TelemetryPort | None = None,
+        settings: Settings | None = None,
+        model_id: str | None = None,
     ) -> None:
         try:
-            settings = get_settings()
+            settings = settings or get_settings()
+            self.settings = settings
+            self.model_id = model_id
             self.query_builder = query_builder or CurrentQueryBuilderAdapter()
             self.knowledge_search = (
                 knowledge_search or create_current_knowledge_search(settings)
             )
             self.answer_generator = (
-                answer_generator or CurrentQwenAnswerGeneratorAdapter()
+                answer_generator
+                or CurrentQwenAnswerGeneratorAdapter(settings, model_id=model_id)
             )
             self.retrieval_policy = retrieval_policy or RagRetrievalPolicy.from_settings(
                 settings
             )
             self.rerank_stage = rerank_stage or create_current_rerank_stage(settings)
             self.telemetry = telemetry or NullTelemetry()
-            self.model_name = settings.chat_model_name
+            self.model_name = getattr(
+                self.answer_generator,
+                "model_name",
+                settings.chat_model_name,
+            )
             self._auxiliary_model_usages: list[dict[str, object]] = []
         except ValueError as exc:
             raise ConfigurationError(str(exc)) from exc
+
+    def for_model(self, model_id: str | None) -> "RagService":
+        if not model_id or model_id == self.model_id:
+            return self
+        return RagService(
+            self.query_builder,
+            self.knowledge_search,
+            CurrentQwenAnswerGeneratorAdapter(self.settings, model_id=model_id),
+            self.retrieval_policy,
+            self.rerank_stage,
+            telemetry=self.telemetry,
+            settings=self.settings,
+            model_id=model_id,
+        )
 
     def ask(
         self,

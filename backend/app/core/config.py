@@ -337,6 +337,10 @@ class Settings(BaseSettings):
             raise ValueError(
                 "RAG_PENDING_RECOVERY_AGE_SECONDS 必须大于生成锁 TTL 与收尾余量之和"
             )
+        if self.job_worker_heartbeat_seconds * 2 > self.job_worker_lease_seconds:
+            raise ValueError(
+                "JOB_WORKER_HEARTBEAT_SECONDS 必须不大于租约时长的一半"
+            )
         return self
 
     def require_dashscope_api_key(self) -> str:

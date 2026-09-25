@@ -22,7 +22,8 @@ def test_https_nginx_keeps_acme_redirect_security_and_sse_contract() -> None:
     assert "proxy_buffering off;" in https
     assert "proxy_read_timeout 650s;" in https
     assert "X-Forwarded-Proto $scheme" in https
-    assert "Strict-Transport-Security" not in https
+    assert "Strict-Transport-Security" in https
+    assert "max-age=31536000" in https
 
 
 def test_https_compose_override_only_changes_web_boundary() -> None:

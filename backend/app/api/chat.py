@@ -19,6 +19,7 @@ from app.services.chat_rate_limit_service import (
     get_chat_rate_limit_service,
 )
 from app.services.rag_service import RagService, get_rag_service
+from app.services.direct_chat_service import DirectChatApplicationService
 
 router = APIRouter(tags=["知识库问答"])
 
@@ -48,7 +49,15 @@ def chat(
         surface=ModelSurface.RAG,
         model_id=request.model_id,
     )
-    answer, sources = rag_service.ask(request.question, request.top_k)
+    answer, sources = DirectChatApplicationService(
+        session, rag_service, settings
+    ).ask(
+        user_id=current_user.id,
+        request_id=request_id,
+        question=request.question,
+        top_k=request.top_k,
+        model_id=request.model_id,
+    )
     return ChatResponse(answer=answer, sources=sources, request_id=request_id)
 
 
@@ -79,9 +88,15 @@ def stream_chat(
 
     def event_generator():
         try:
-            for item in rag_service.stream_ask(request.question, request.top_k):
-                if item["event"] == "model_usage":
-                    continue
+            for item in DirectChatApplicationService(
+                session, rag_service, settings
+            ).stream(
+                user_id=current_user.id,
+                request_id=request_id,
+                question=request.question,
+                top_k=request.top_k,
+                model_id=request.model_id,
+            ):
                 yield format_sse(item["event"], item["data"])
             yield format_sse(
                 "done",
@@ -91,9 +106,14 @@ def stream_chat(
                 },
             )
         except AppError as exc:
+            public_exc = RagServiceError() if isinstance(exc, RagServiceError) else exc
             yield format_sse(
                 "error",
-                {"code": exc.code, "message": exc.message, "request_id": request_id},
+                {
+                    "code": public_exc.code,
+                    "message": public_exc.message,
+                    "request_id": request_id,
+                },
             )
         except Exception:
             exc = RagServiceError()

@@ -111,6 +111,7 @@ class AgentApplicationService:
         try:
             run = self.repository.get_run(user_id, run_id)
             if run.status == AgentRunStatus.PENDING:
+                self.cancellation.request_stop(user_id, run_id)
                 self.repository.stop_run(user_id, run_id)
                 self.session.commit()
                 return AgentStopResponse(status="stopped", message="运行已停止")
@@ -137,6 +138,7 @@ class AgentApplicationService:
         resolved_references: ResolvedReferences | None = None,
         previous_clarification_key: str | None = None,
         context_budget: dict[str, int] | None = None,
+        visual_observations: list[dict[str, object]] | None = None,
     ) -> Iterator[dict[str, object]]:
         try:
             run = self.repository.get_run(user_id, run_id)
@@ -158,6 +160,7 @@ class AgentApplicationService:
             resolved_references=resolved_references,
             previous_clarification_key=previous_clarification_key,
             context_budget=context_budget,
+            visual_observations=visual_observations,
         )
         graph = self.graph_factory(user_id, run_id)
         tool_started_at = monotonic()

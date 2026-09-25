@@ -332,7 +332,8 @@ async function retry(messageId) {
   const threadId = currentThreadId.value
   if (!threadId) return
   try {
-    await stream.retry(threadId, messageId)
+    const message = timeline.orderedMessages.value.find((item) => item.id === messageId)
+    await stream.retry(threadId, messageId, message)
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
   }
@@ -342,8 +343,10 @@ async function stop() {
   const thread = threadState.currentThread.value
   if (!thread) return
   try {
-    await stream.stop(thread.id, thread.active_run_id)
-    notice.value = '正在安全停止当前任务。'
+    const result = await stream.stop(thread.id, thread.active_run_id)
+    notice.value = result?.status === 'stopping'
+      ? '正在安全停止当前任务。'
+      : '当前请求已停止。'
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)
   }

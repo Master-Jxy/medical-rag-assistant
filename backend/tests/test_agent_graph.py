@@ -1,6 +1,6 @@
 """任务11.4：LangGraph显式流程和硬预算。"""
 
-from time import sleep
+from time import monotonic, sleep
 
 import pytest
 
@@ -159,6 +159,27 @@ def test_graph_converts_tool_timeout_to_safe_failure() -> None:
     assert result["status"] == AgentRunStatus.FAILED
     assert result["error_type"] == "TOOL_TIMEOUT"
     assert "Traceback" not in result["final_output"]
+
+
+def test_tool_timeout_waits_for_worker_to_leave_shared_boundary() -> None:
+    tool = StubTool(delay=0.05)
+    runner = BoundedAgentGraph(
+        planner=StubPlanner(),
+        registry=ToolRegistry([tool]),
+    )
+
+    started = monotonic()
+    result = runner.invoke(
+        initial_state(AgentPolicy(
+            enabled=True,
+            tool_timeout_seconds=0.01,
+            run_timeout_seconds=1,
+        ))
+    )
+
+    assert result["error_type"] == "TOOL_TIMEOUT"
+    assert monotonic() - started >= 0.04
+    assert len(tool.contexts) == 1
 
 
 def test_graph_honors_user_stop_before_any_tool() -> None:

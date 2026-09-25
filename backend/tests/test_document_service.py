@@ -126,8 +126,12 @@ def test_table_documents_are_split_by_rows_with_repeated_header(tmp_path) -> Non
         file_hash="c" * 64,
     )
 
-    assert len(chunks) == 2
+    assert len(chunks) == 4
     assert all(chunk.page_content.startswith("Name | Value") for chunk in chunks)
+    assert all(len(chunk.page_content) <= settings.chunk_size for chunk in chunks)
+    assert "".join(
+        chunk.page_content.split("\n", 1)[1] for chunk in chunks
+    ) == "alpha | 1111111111beta | 2222222222"
     assert all(chunk.metadata["page"] == 2 for chunk in chunks)
     assert all(chunk.metadata["document_type"] == "pdf" for chunk in chunks)
 

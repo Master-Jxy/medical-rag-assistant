@@ -2,7 +2,7 @@ name: ${COMPOSE_PROJECT_NAME:-medical-rag}
 
 services:
   mysql:
-    image: mysql:8.0
+    image: mysql:8.0.46@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
@@ -30,7 +30,7 @@ services:
         ipv4_address: 172.30.0.30
 
   redis:
-    image: redis:6.2
+    image: redis:6.2.23@sha256:a873de27e877d8ea401f530a4c7571bae34882a7178a0a0f3df12263bfba14a5
     restart: unless-stopped
     command:
       - redis-server
@@ -123,7 +123,7 @@ services:
       TELEMETRY_LOG_BACKUP_COUNT: ${TELEMETRY_LOG_BACKUP_COUNT:-5}
       METRICS_ENABLED: ${METRICS_ENABLED:-false}
       METRICS_BEARER_TOKEN: ${METRICS_BEARER_TOKEN:-}
-      BACKUP_MANIFEST_PATH: ${BACKUP_MANIFEST_PATH:-}
+      BACKUP_MANIFEST_PATH: ${BACKUP_MANIFEST_PATH:-/backups/latest/manifest.txt}
       BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-24}
       AGENT_ENABLED: ${AGENT_ENABLED:-false}
       AGENT_MAX_STEPS: ${AGENT_MAX_STEPS:-5}
@@ -140,6 +140,7 @@ services:
     volumes:
       - app_data:/app/data
       - chroma_data:/app/chroma_db
+      - ${BACKUP_ROOT:-/home/deploy/medical-rag-backups}:/backups:ro
     depends_on:
       mysql:
         condition: service_healthy

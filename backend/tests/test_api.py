@@ -4,10 +4,15 @@ from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import sessionmaker
 
 from app.main import app, create_app
+from app.core.config import get_settings
 from app.core.exceptions import RagServiceError
+from app.db.base import Base
+from app.db.session import build_engine, get_db_session
 from app.modules.auth.dependencies import get_current_user
+from app.modules.auth.models import User
 from app.modules.auth.schemas import UserResponse
 from app.infrastructure.redis import RedisHealthStatus
 from app.schemas.chat import SourceItem
@@ -125,13 +130,36 @@ class AllowAllChatRateLimiter:
 
 
 @pytest.fixture
-def authenticated_chat():
+def authenticated_chat(tmp_path):
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'api.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        session.add(
+            User(
+                id=TEST_USER.id,
+                email=TEST_USER.email,
+                display_name=TEST_USER.display_name,
+                password_hash="not-used-by-api-tests",
+                role=TEST_USER.role,
+            )
+        )
+        session.commit()
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    settings = get_settings().model_copy(update={"quota_policy_mode": "off"})
     app.dependency_overrides[get_current_user] = lambda: TEST_USER
     app.dependency_overrides[get_chat_rate_limit_service] = AllowAllChatRateLimiter
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_settings] = lambda: settings
     try:
         yield
     finally:
         app.dependency_overrides.clear()
+        engine.dispose()
 
 
 def test_health_check() -> None:
@@ -235,7 +263,8 @@ def test_stream_chat_converts_runtime_error_to_safe_sse_event(authenticated_chat
     assert response.status_code == 200
     assert "event: error" in response.text
     assert "RAG_SERVICE_ERROR" in response.text
-    assert "测试流式错误" in response.text
+    assert "问答服务暂时不可用，请稍后重试" in response.text
+    assert "测试流式错误" not in response.text
     assert "Traceback" not in response.text
 
 

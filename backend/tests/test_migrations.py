@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -1326,6 +1327,123 @@ def test_stage26_ocr_routes_migrate_map_and_roundtrip(tmp_path) -> None:
     }
     assert "ocr_mode" in final_checks["ck_vision_observations_route_kind"]
     engine.dispose()
+
+
+def test_stage26_job_leases_recover_dirty_rows_and_roundtrip(tmp_path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'stage26-job-leases.db'}"
+    config = build_alembic_config(database_url)
+    command.upgrade(config, "0032_stage26_vision_ocr_routes")
+    engine = build_engine(database_url)
+    now = datetime.now(timezone.utc)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO processing_jobs "
+                "(id, job_type, object_type, object_id, status, progress, "
+                "attempt_count, error_type, created_at, started_at, finished_at) "
+                "VALUES "
+                "('legacy-running', 'publish_submission', 'knowledge_submission', "
+                "'submission-running', 'running', 40, -2, NULL, :now, :now, NULL), "
+                "('legacy-completed', 'publish_submission', 'knowledge_submission', "
+                "'submission-completed', 'completed', 100, 1, NULL, :now, :now, :now)"
+            ),
+            {"now": now},
+        )
+
+    command.upgrade(config, "0033_stage26_job_leases")
+    with engine.connect() as connection:
+        rows = connection.execute(
+            text(
+                "SELECT id, status, attempt_count, max_attempts, dispatch_key, "
+                "lease_owner, lease_expires_at FROM processing_jobs ORDER BY id"
+            )
+        ).all()
+    assert rows == [
+        ("legacy-completed", "completed", 1, 3, "legacy-completed", None, None),
+        ("legacy-running", "queued", 0, 3, "legacy-running", None, None),
+    ]
+
+    command.downgrade(config, "0032_stage26_vision_ocr_routes")
+    with engine.connect() as connection:
+        downgraded = connection.execute(
+            text(
+                "SELECT id, status, attempt_count FROM processing_jobs ORDER BY id"
+            )
+        ).all()
+    assert downgraded == [
+        ("legacy-completed", "completed", 1),
+        ("legacy-running", "queued", 0),
+    ]
+
+    command.upgrade(config, "0033_stage26_job_leases")
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text("SELECT COUNT(*) FROM processing_jobs")
+        ) == 2
+        assert connection.scalar(
+            text(
+                "SELECT COUNT(*) FROM processing_jobs "
+                "WHERE dispatch_key = id AND max_attempts = 3"
+            )
+        ) == 2
+    engine.dispose()
+
+
+@pytest.mark.skipif(
+    not os.environ.get("MIGRATION_MYSQL_DATABASE_URL"),
+    reason="dedicated MySQL migration database is not configured",
+)
+def test_stage26_job_leases_mysql_dirty_data_roundtrip() -> None:
+    database_url = os.environ["MIGRATION_MYSQL_DATABASE_URL"]
+    config = build_alembic_config(database_url)
+    command.downgrade(config, "base")
+    command.upgrade(config, "0032_stage26_vision_ocr_routes")
+    engine = build_engine(database_url)
+    now = datetime.now(timezone.utc)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO processing_jobs "
+                    "(id, job_type, object_type, object_id, status, progress, "
+                    "attempt_count, error_type, created_at, started_at, finished_at) "
+                    "VALUES "
+                    "('mysql-running', 'publish_submission', 'knowledge_submission', "
+                    "'mysql-submission', 'running', 20, -1, NULL, :now, :now, NULL)"
+                ),
+                {"now": now},
+            )
+
+        command.upgrade(config, "0033_stage26_job_leases")
+        with engine.connect() as connection:
+            assert connection.execute(
+                text(
+                    "SELECT status, attempt_count, max_attempts, dispatch_key, "
+                    "lease_owner, lease_expires_at FROM processing_jobs "
+                    "WHERE id = 'mysql-running'"
+                )
+            ).one() == ("queued", 0, 3, "mysql-running", None, None)
+
+        command.downgrade(config, "0032_stage26_vision_ocr_routes")
+        with engine.connect() as connection:
+            assert connection.execute(
+                text(
+                    "SELECT status, attempt_count FROM processing_jobs "
+                    "WHERE id = 'mysql-running'"
+                )
+            ).one() == ("queued", 0)
+
+        command.upgrade(config, "0033_stage26_job_leases")
+        with engine.connect() as connection:
+            assert connection.scalar(
+                text(
+                    "SELECT COUNT(*) FROM processing_jobs "
+                    "WHERE id = 'mysql-running' AND dispatch_key = id"
+                )
+            ) == 1
+    finally:
+        engine.dispose()
+        command.downgrade(config, "base")
 
 
 def test_legacy_json_import_creates_idempotent_system_documents(tmp_path) -> None:

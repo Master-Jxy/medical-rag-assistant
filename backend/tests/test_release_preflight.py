@@ -2,6 +2,7 @@ import subprocess
 from pathlib import Path
 
 from scripts.release_preflight import (
+    check_git,
     check_runtime_environment,
     check_sensitive_files,
     run_preflight,
@@ -46,11 +47,65 @@ def test_runtime_environment_reports_names_without_values(monkeypatch) -> None:
     assert "secret" not in result.detail
 
 
+def test_git_check_rejects_non_whitespace_dirty_worktree(tmp_path: Path) -> None:
+    init_repo(tmp_path, {"tracked.txt": b"before\n"})
+    commit_environment = {
+        "GIT_AUTHOR_NAME": "Test",
+        "GIT_AUTHOR_EMAIL": "test@example.com",
+        "GIT_COMMITTER_NAME": "Test",
+        "GIT_COMMITTER_EMAIL": "test@example.com",
+    }
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "commit", "-qm", "initial"],
+        check=True,
+        env=commit_environment,
+    )
+    (tmp_path / "tracked.txt").write_text("after\n", encoding="utf-8")
+
+    result = check_git(tmp_path, allow_dirty=False)
+
+    assert result.status == "FAIL"
+    assert result.detail == "dirty worktree or git diff --check failed"
+
+
 def test_repository_preflight_outputs_pass_fail_skip_contract(tmp_path: Path) -> None:
     files = {
-        "compose.yaml": b"services:\n  backend:\n    healthcheck: http://127.0.0.1:8000/readyz\n  worker:\n    image: worker\nvolumes:\n  mysql_data:\n  chroma_data:\n",
-        "deploy/compose.https.yaml": b"services:\n  web: {}\n",
+        "compose.yaml": (
+            b"services:\n"
+            b"  mysql:\n"
+            b"    image: mysql:8@sha256:" + (b"d" * 64) + b"\n"
+            b"    volumes:\n      - mysql_data:/var/lib/mysql\n"
+            b"  redis:\n    image: redis:6@sha256:" + (b"e" * 64) + b"\n"
+            b"  backend:\n"
+            b"    image: backend\n"
+            b"    healthcheck:\n"
+            b"      test: ['CMD', 'curl', 'http://127.0.0.1:8000/readyz']\n"
+            b"    volumes:\n"
+            b"      - chroma_data:/app/chroma_db\n"
+            b"      - type: bind\n"
+            b"        source: ./backups\n"
+            b"        target: /backups\n"
+            b"        read_only: true\n"
+            b"  worker:\n    image: worker\n"
+            b"  web:\n    image: web\n"
+            b"volumes:\n  mysql_data:\n  chroma_data:\n"
+        ),
+        "deploy/compose.https.yaml": (
+            b"services:\n  web:\n    ports:\n      - '443:443'\n"
+        ),
         "deploy/post_release_check.sh": b"#!/usr/bin/env bash\n",
+        "backend/Dockerfile": (
+            b"FROM ubuntu:22.04@sha256:" + (b"a" * 64) + b"\n"
+        ),
+        "frontend/Dockerfile": (
+            b"FROM nginx:1.0@sha256:" + (b"b" * 64) + b"\n"
+        ),
+        ".github/workflows/ci.yml": (
+            b"jobs:\n  test:\n    runs-on: ubuntu-24.04\n"
+            b"    steps:\n      - uses: actions/checkout@"
+            + (b"c" * 40)
+            + b"\n"
+        ),
         "backend/alembic.ini": b"[alembic]\n",
         "backend/requirements.txt": b"fastapi==0.139.0\n",
         "frontend/package-lock.json": b"{}\n",
@@ -63,6 +118,7 @@ def test_repository_preflight_outputs_pass_fail_skip_contract(tmp_path: Path) ->
         "git_diff_check": "SKIP",
         "sensitive_file_scan": "PASS",
         "compose_contract": "PASS",
+        "supply_chain_pins": "PASS",
         "runtime_environment": "SKIP",
         "livez": "SKIP",
         "readyz": "SKIP",
@@ -75,7 +131,8 @@ def test_ci_runs_all_no_cost_release_gates() -> None:
     ).read_text(encoding="utf-8")
     required = (
         "python -m pytest -q backend/tests",
-        "downgrade 0029_dedup_version_governance",
+        "downgrade 0032_stage26_vision_ocr_routes",
+        "test_stage26_job_leases_mysql_dirty_data_roundtrip",
         "python -m pip check",
         "npm test",
         "npm run test:stream",
@@ -101,3 +158,15 @@ def test_post_release_check_handles_short_lived_ip_certificates() -> None:
     assert "CERTBOT_RENEW_TIMER_UNIT" in script
     assert "certificate_validity" in script
     assert "certificate_14d" not in script
+    assert "BACKUP_MANIFEST_PATH" in script
+    assert "sha256sum -c SHA256SUMS" in script
+    assert "backup_freshness_and_checksums" in script
+
+
+def test_nginx_proxies_metrics_and_sets_browser_security_headers() -> None:
+    root = Path(__file__).resolve().parents[2]
+    for relative in ("deploy/nginx.conf", "deploy/nginx.https.conf.template"):
+        config = (root / relative).read_text(encoding="utf-8")
+        assert "location = /metrics" in config
+        assert "Content-Security-Policy" in config
+        assert "Permissions-Policy" in config

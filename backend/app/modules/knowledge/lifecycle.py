@@ -890,18 +890,52 @@ class DocumentLifecycleService:
         rows = [row.strip() for row in document.page_content.splitlines() if row.strip()]
         if not rows:
             return []
-        if len(document.page_content) <= self.settings.chunk_size:
+        chunk_size = self.settings.chunk_size
+        if len(document.page_content) <= chunk_size:
             return [document]
         header = rows[0]
         chunks: list[Document] = []
-        current = header
+        active_header = header if len(header) < chunk_size else ""
+        if not active_header:
+            for start in range(0, len(header), chunk_size):
+                chunks.append(Document(
+                    page_content=header[start : start + chunk_size],
+                    metadata=dict(document.metadata),
+                ))
+
+        current_rows: list[str] = []
+
+        def flush_rows() -> None:
+            if not current_rows:
+                return
+            content = "\n".join(([active_header] if active_header else []) + current_rows)
+            chunks.append(Document(
+                page_content=content,
+                metadata=dict(document.metadata),
+            ))
+            current_rows.clear()
+
         for row in rows[1:]:
-            candidate = f"{current}\n{row}"
-            if len(candidate) > self.settings.chunk_size and current != header:
-                chunks.append(Document(page_content=current, metadata=dict(document.metadata)))
-                current = f"{header}\n{row}"
-            else:
-                current = candidate
-        if current.strip():
-            chunks.append(Document(page_content=current, metadata=dict(document.metadata)))
+            prefix_length = len(active_header) + 1 if active_header else 0
+            row_budget = max(1, chunk_size - prefix_length)
+            if len(row) > row_budget:
+                flush_rows()
+                for start in range(0, len(row), row_budget):
+                    part = row[start : start + row_budget]
+                    content = f"{active_header}\n{part}" if active_header else part
+                    chunks.append(Document(
+                        page_content=content,
+                        metadata=dict(document.metadata),
+                    ))
+                continue
+
+            candidate_rows = [*current_rows, row]
+            candidate = "\n".join(
+                ([active_header] if active_header else []) + candidate_rows
+            )
+            if len(candidate) > chunk_size:
+                flush_rows()
+            current_rows.append(row)
+
+        flush_rows()
         return chunks

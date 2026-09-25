@@ -28,6 +28,9 @@ REQUIRED_FILES = (
     "backend/requirements.txt",
     "frontend/package-lock.json",
     "deploy/post_release_check.sh",
+    "backend/Dockerfile",
+    "frontend/Dockerfile",
+    ".github/workflows/ci.yml",
 )
 FORBIDDEN_TRACKED_PARTS = (
     "backend/data/uploads/",
@@ -65,11 +68,15 @@ def check_git(repo_root: Path, allow_dirty: bool) -> CheckResult:
     inside = _git(repo_root, "rev-parse", "--is-inside-work-tree")
     if inside.returncode != 0:
         return CheckResult("git_diff_check", "FAIL", "not a git worktree")
+    status = _git(repo_root, "status", "--porcelain", "--untracked-files=all")
     diff = _git(repo_root, "diff", "--check", "HEAD", "--")
+    clean = status.returncode == 0 and not status.stdout.strip()
     return CheckResult(
         "git_diff_check",
-        "PASS" if diff.returncode == 0 else "FAIL",
-        "clean diff syntax" if diff.returncode == 0 else "git diff --check failed",
+        "PASS" if diff.returncode == 0 and clean else "FAIL",
+        "clean worktree and diff syntax"
+        if diff.returncode == 0 and clean
+        else "dirty worktree or git diff --check failed",
     )
 
 
@@ -125,21 +132,73 @@ def check_compose_contract(repo_root: Path) -> CheckResult:
     https_path = repo_root / "deploy" / "compose.https.yaml"
     if not compose_path.is_file() or not https_path.is_file():
         return CheckResult("compose_contract", "FAIL", "compose files missing")
-    compose = compose_path.read_text(encoding="utf-8")
-    https = https_path.read_text(encoding="utf-8")
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "MYSQL_DATABASE": "preflight",
+            "MYSQL_USER": "preflight",
+            "MYSQL_PASSWORD": "preflight",
+            "MYSQL_ROOT_PASSWORD": "preflight",
+            "JWT_SECRET_KEY": "preflight-only-secret-longer-than-32-characters",
+            "DASHSCOPE_API_KEY": "preflight-disabled",
+            "HTTPS_IDENTIFIER": "example.invalid",
+        }
+    )
+    resolved = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-f",
+            str(compose_path),
+            "-f",
+            str(https_path),
+            "config",
+            "--format",
+            "json",
+        ],
+        cwd=repo_root,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if resolved.returncode != 0:
+        return CheckResult("compose_contract", "FAIL", "docker compose config failed")
+    try:
+        model = json.loads(resolved.stdout)
+    except (TypeError, ValueError):
+        return CheckResult("compose_contract", "FAIL", "invalid compose config JSON")
+
+    services = model.get("services", {})
+    volumes = model.get("volumes", {})
+    backend = services.get("backend", {})
+    healthcheck = backend.get("healthcheck", {}).get("test", [])
+    backup_mount = next(
+        (
+            item
+            for item in backend.get("volumes", [])
+            if isinstance(item, dict) and item.get("target") == "/backups"
+        ),
+        None,
+    )
     valid = (
-        "http://127.0.0.1:8000/readyz" in compose
-        and "mysql_data:" in compose
-        and "chroma_data:" in compose
-        and "services:" in https
-        and "down -v" not in compose
-        and "down -v" not in https
-        and "worker:" in compose
+        {"mysql", "redis", "backend", "worker", "web"} <= set(services)
+        and {"mysql_data", "chroma_data"} <= set(volumes)
+        and any("readyz" in str(item) for item in healthcheck)
+        and backup_mount is not None
+        and bool(backup_mount.get("read_only"))
+        and any(
+            str(port.get("target")) == "443"
+            for port in services.get("web", {}).get("ports", [])
+            if isinstance(port, dict)
+        )
     )
     return CheckResult(
         "compose_contract",
         "PASS" if valid else "FAIL",
-        "base+https readiness and volume contract" if valid else "compose contract mismatch",
+        "resolved base+https readiness and volume contract"
+        if valid
+        else "resolved compose contract mismatch",
     )
 
 
@@ -152,6 +211,33 @@ def check_runtime_environment(required: bool) -> CheckResult:
         "runtime_environment",
         "FAIL" if missing else "PASS",
         "missing=" + ",".join(missing) if missing else "required variable names present",
+    )
+
+
+def check_supply_chain(repo_root: Path) -> CheckResult:
+    backend = (repo_root / "backend" / "Dockerfile").read_text(encoding="utf-8")
+    frontend = (repo_root / "frontend" / "Dockerfile").read_text(encoding="utf-8")
+    compose = (repo_root / "compose.yaml").read_text(encoding="utf-8")
+    workflow = (repo_root / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+    image_pattern = re.compile(r"@sha256:[0-9a-f]{64}\b")
+    action_refs = re.findall(r"uses:\s*[^\s@]+@([^\s#]+)", workflow)
+    valid = (
+        bool(image_pattern.search(backend.splitlines()[0]))
+        and bool(image_pattern.search(frontend.splitlines()[0]))
+        and len(image_pattern.findall(compose)) >= 2
+        and "pip install --upgrade" not in backend
+        and "ubuntu-latest" not in workflow
+        and bool(action_refs)
+        and all(re.fullmatch(r"[0-9a-f]{40}", ref) for ref in action_refs)
+    )
+    return CheckResult(
+        "supply_chain_pins",
+        "PASS" if valid else "FAIL",
+        "production images and CI actions are immutable"
+        if valid
+        else "mutable image, installer, runner, or action reference",
     )
 
 
@@ -185,6 +271,7 @@ def run_preflight(
         check_git(repo_root, allow_dirty),
         check_sensitive_files(repo_root, excluded_paths),
         check_compose_contract(repo_root),
+        check_supply_chain(repo_root),
         check_runtime_environment(require_runtime_env),
         check_endpoint("livez", live_url, "ok"),
         check_endpoint("readyz", ready_url, "ready"),

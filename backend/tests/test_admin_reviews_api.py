@@ -941,6 +941,70 @@ def test_publish_finalization_failure_compensates_document_file_and_vectors(
         engine.dispose()
 
 
+def test_running_publish_cancellation_marks_submission_failed_for_safe_retry(
+    tmp_path,
+) -> None:
+    engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'review-cancel.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    submitter = create_test_user(factory, "cancel-submitter")
+    admin = create_test_user(factory, "cancel-admin", role="admin")
+    settings = Settings(
+        _env_file=None,
+        submission_dir=tmp_path / "isolated",
+        upload_dir=tmp_path / "published",
+    )
+    submission_id = add_submission(factory, settings, submitter.id, "cancel")
+    started = asyncio.Event()
+
+    async def exercise() -> None:
+        with factory() as session:
+            record = session.get(KnowledgeSubmission, submission_id)
+            record.status = "indexing"
+            session.commit()
+            lifecycle = DocumentLifecycleService(
+                session, settings, FakeVectorStore()
+            )
+
+            async def blocked_create(*_args, **_kwargs):
+                started.set()
+                await asyncio.Event().wait()
+
+            lifecycle.create_document = blocked_create
+            service = KnowledgeReviewService(
+                session,
+                settings,
+                lifecycle,
+                SqlAlchemyAuditRecorder(session),
+                SqlAlchemyJobService(session),
+            )
+            task = asyncio.create_task(service.execute_queued_publish(
+                job_id="cancelled-job",
+                submission_id=submission_id,
+                payload={
+                    "actor_user_id": admin.id,
+                    "request_id": "cancel-request",
+                    "duplicate_decision": "new",
+                },
+            ))
+            await asyncio.wait_for(started.wait(), timeout=2)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+    try:
+        asyncio.run(exercise())
+        with factory() as session:
+            record = session.get(KnowledgeSubmission, submission_id)
+            assert record.status == "failed"
+            assert record.failure_reason == "CANCELLED"
+            assert record.document_id is None
+            assert session.scalar(select(KnowledgeDocument)) is None
+        assert (settings.submission_dir / f"{submission_id}.txt").exists()
+    finally:
+        engine.dispose()
+
+
 def test_admin_can_publish_markdown_submission_with_structured_chunks(tmp_path) -> None:
     engine = build_engine(f"sqlite+pysqlite:///{tmp_path / 'review-markdown.db'}")
     Base.metadata.create_all(engine)

@@ -72,7 +72,7 @@ function resizeTextarea() {
 }
 
 function handleKeydown(event) {
-  if (event.key !== 'Enter' || event.shiftKey) return
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
   event.preventDefault()
   submit()
 }

@@ -277,10 +277,16 @@ class BoundedAgentGraph:
         )
         next_tool_counts = dict(state.get("tool_call_counts", {}))
         next_tool_counts[tool_name] = next_tool_counts.get(tool_name, 0) + 1
+        executor_stopped = False
         try:
             result = future.result(timeout=timeout)
         except FutureTimeoutError:
             future.cancel()
+            # Python cannot preempt an already-running worker thread. Wait for
+            # it to leave the shared Session/tool boundary before the graph
+            # returns and the outer generation lock can be released.
+            executor.shutdown(wait=True, cancel_futures=True)
+            executor_stopped = True
             return {
                 "current_node": AgentNode.EXECUTE_TOOL,
                 "step_count": state["step_count"] + 1,
@@ -299,7 +305,8 @@ class BoundedAgentGraph:
                 "error_type": "TOOL_EXECUTION_FAILED",
             }
         finally:
-            executor.shutdown(wait=False, cancel_futures=True)
+            if not executor_stopped:
+                executor.shutdown(wait=True, cancel_futures=True)
         digest = ToolResultDigest.from_result(tool_name, result)
         accumulated_observations = list(state.get("visual_observations", []))
         raw_observations = result.data.get("observations")

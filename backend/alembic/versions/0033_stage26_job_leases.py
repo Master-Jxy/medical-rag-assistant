@@ -35,6 +35,11 @@ def upgrade() -> None:
     op.execute("UPDATE processing_jobs SET dispatch_key = id WHERE dispatch_key IS NULL")
     op.execute("UPDATE processing_jobs SET available_at = created_at WHERE available_at IS NULL")
     op.execute("UPDATE processing_jobs SET max_attempts = 3 WHERE max_attempts IS NULL")
+    op.execute("UPDATE processing_jobs SET attempt_count = 0 WHERE attempt_count < 0")
+    op.execute(
+        "UPDATE processing_jobs SET status = 'queued', started_at = NULL "
+        "WHERE status = 'running'"
+    )
 
     with op.batch_alter_table("processing_jobs") as batch_op:
         batch_op.alter_column("dispatch_key", existing_type=sa.String(191), nullable=False)

@@ -3,6 +3,36 @@
 > 最后更新：2026-08-11
 > 本文只保留当前事实、工作区边界和一个下一任务。
 
+## 0. 2026-08-11 综合审查修复（最新事实）
+
+本节优先于后续历史阶段记录。当前分支为 `main`，基线提交为 `5b621e7`；本轮修复尚未提交、推送或部署，也没有调用真实/付费模型。
+
+本轮完成的主要修复：
+
+- Agent：工具超时会等待工作线程离开共享边界；停止、重试、模型选择和图片观察上下文保持一致；纯图片失败任务可复用原附件与既有结构化视觉观察，不重复绑定、重复识图或重复计费。
+- RAG/直聊：用户选择模型真正进入同步/异步模型客户端；幂等指纹包含显式模型；额度预留、使用账本和失败释放覆盖旧 `/chat` 接口；SSE 内部异常不再泄露；回放 token 使用替换语义，避免正文重复追加。
+- 后台任务：运行中取消会终止异步 handler；危险心跳/租约配置被拒绝；0033 会清洗负数尝试次数并把无租约旧 `running` 任务恢复为 `queued`。
+- 文档：表格中的超长表头和超长行均不会产生超过 `chunk_size` 的片段。
+- 前端：Agent abort 不再误判完成；RAG/Agent 会话、消息及管理员资产/质量列表会按 `total` 读取后续分页；RAG/Agent 均防止输入法组合态 Enter 误发送。
+- 部署：备份期间暂停 backend/worker，失败时可靠恢复；恢复校验备份所属项目并启停 worker；`latest/manifest.txt`、SHA-256、只读挂载和发布后校验统一；Nginx 增加 `/metrics`、CSP、Permissions-Policy 与 HTTPS HSTS。
+- 供应链：生产基础镜像固定 digest，CI Actions 固定 commit，发布预检真实执行并解析 `docker compose config`，且拒绝普通脏工作区。
+
+最终本地验证：
+
+```text
+backend: 701 passed, 2 skipped
+frontend: 22 files / 99 tests passed
+SSE parser: PASS
+Vite production build: PASS
+pip check: PASS
+docker compose base + HTTPS config: PASS
+release preflight compose/supply-chain gates: PASS
+git diff --check: PASS
+protected auth SHA-256: 9468793F2264CD89F859F149BB72B7DCA5D7941805A66E13D4CDAF6DDF7BA9B0
+```
+
+两个 skip 均为环境型测试，其中 `test_stage26_job_leases_mysql_dirty_data_roundtrip` 已接入 GitHub CI 的独立 MySQL 8.0.46 服务，本机未启动额外 MySQL 容器以避免占用系统盘。
+
 ## 1. 当前真实状态
 
 Stage 25 多模态聊天与输入器升级已完成开发、推送和生产发布。RAG与Agent均支持私有
@@ -234,6 +264,4 @@ Protected auth SHA-256
 
 ## 10. 唯一下一任务
 
-**进入多模态热修复观察期：先观察24小时带图失败率、容器重启、错误标记和队列积压；
-没有真实生产故障时不继续扩大热修复。下一项产品开发仍从人工确认合法资料和黄金题开始，
-使`corpus_v2/eval_v2`从`not_eligible`逐步具备真实评估资格。**
+**审阅本轮未提交 diff，确认后提交并推送，让 GitHub CI 完成真实 MySQL 0033 脏数据往返测试；CI 全绿后再安排受控备份与生产部署。不要在本地验证阶段直接修改生产数据卷。**

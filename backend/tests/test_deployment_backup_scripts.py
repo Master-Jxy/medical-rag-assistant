@@ -22,6 +22,9 @@ def test_backup_script_has_manifest_checksums_retention_and_incomplete_cleanup()
     assert "--no-tablespaces" in script
     assert "redis-cli SAVE" in script
     assert "app_data" in script and "chroma_data" in script and "redis_data" in script
+    assert 'stop backend worker' in script
+    assert 'up -d --wait --wait-timeout 180 backend worker' in script
+    assert 'BACKUP_ROOT}/latest' in script
     assert "down -v" not in script
 
 
@@ -34,6 +37,9 @@ def test_restore_requires_exact_confirmation_and_verified_backup() -> None:
     assert "backup_format=medical-rag-backup-v1" in script
     assert "pre-restore" in script
     assert "DROP DATABASE IF EXISTS" in script
+    assert "backup belongs to compose project" in script
+    assert 'stop backend worker web redis' in script
+    assert 'redis backend worker web' in script
     assert "down -v" not in script
 
 

@@ -21,6 +21,8 @@ class JobWorker:
         lease_seconds: int = 60,
         heartbeat_seconds: int = 15,
     ) -> None:
+        if heartbeat_seconds * 2 > lease_seconds:
+            raise ValueError("heartbeat_seconds must not exceed half of lease_seconds")
         self.session_factory = session_factory
         self.handlers = dict(handlers)
         self.worker_id = worker_id
@@ -47,7 +49,33 @@ class JobWorker:
             self._heartbeat_loop(lease, stop_heartbeat)
         )
         try:
-            await handler(lease)
+            handler_task = asyncio.create_task(handler(lease))
+            cancellation_poll_seconds = min(
+                1.0,
+                max(0.1, self.heartbeat_seconds / 3),
+            )
+            while not handler_task.done():
+                await asyncio.wait(
+                    {handler_task, heartbeat_task},
+                    timeout=cancellation_poll_seconds,
+                )
+                if handler_task.done():
+                    break
+                with self.session_factory() as session:
+                    cancellation_requested = JobQueueService(
+                        session
+                    ).cancellation_requested(lease)
+                if cancellation_requested:
+                    handler_task.cancel()
+                    await asyncio.gather(handler_task, return_exceptions=True)
+                    with self.session_factory() as session:
+                        JobQueueService(session).fail(lease, "CANCELLED")
+                    return "cancelled"
+                if heartbeat_task.done():
+                    handler_task.cancel()
+                    await asyncio.gather(handler_task, return_exceptions=True)
+                    await heartbeat_task
+            await handler_task
             with self.session_factory() as session:
                 queue = JobQueueService(session)
                 if queue.cancellation_requested(lease):
@@ -65,6 +93,9 @@ class JobWorker:
                 except JobLeaseLostError:
                     return "lease_lost"
         finally:
+            if "handler_task" in locals() and not handler_task.done():
+                handler_task.cancel()
+                await asyncio.gather(handler_task, return_exceptions=True)
             stop_heartbeat.set()
             heartbeat_task.cancel()
             await asyncio.gather(heartbeat_task, return_exceptions=True)

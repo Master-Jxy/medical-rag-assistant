@@ -50,9 +50,36 @@ export function useAgentThread() {
     currentThread.value = null
   }
 
+  async function loadAllThreads(status) {
+    const limit = 100
+    const items = []
+    let offset = 0
+    while (true) {
+      const page = await listAgentThreads(status, offset, limit)
+      const rows = page.items || []
+      items.push(...rows)
+      const total = Number(page.total ?? items.length)
+      if (!rows.length || rows.length < limit || items.length >= total) return items
+      offset += rows.length
+    }
+  }
+
+  async function loadAllMessages(threadId) {
+    const limit = 100
+    const items = []
+    let offset = 0
+    while (true) {
+      const page = await listAgentMessages(threadId, offset, limit)
+      const rows = page.items || []
+      items.push(...rows)
+      const total = Number(page.total ?? items.length)
+      if (!rows.length || rows.length < limit || items.length >= total) return items
+      offset += rows.length
+    }
+  }
+
   async function loadThreadData(thread) {
-    const result = await listAgentMessages(thread.id)
-    const rows = result.items
+    const rows = await loadAllMessages(thread.id)
     const runIds = [...new Set(rows.map((item) => item.run_id).filter(Boolean))]
     const runs = await Promise.all(runIds.map(async (runId) => [runId, await getAgentRun(runId)]))
     const details = {}
@@ -78,7 +105,7 @@ export function useAgentThread() {
   async function loadThreads(selectFirst = true) {
     loading.value = true
     try {
-      const incoming = (await listAgentThreads(statusFilter.value)).items
+      const incoming = await loadAllThreads(statusFilter.value)
       threads.value = incoming.map((item) => ({ ...item }))
       if (currentThread.value) {
         const refreshed = findThread(currentThread.value.id)

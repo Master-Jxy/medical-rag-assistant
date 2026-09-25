@@ -3,9 +3,12 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 
+import pytest
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
+from app.core.config import Settings
 from app.db.base import Base
 from app.db.session import build_engine
 from app.modules.jobs.models import ProcessingJob
@@ -118,3 +121,59 @@ def test_worker_executes_handler_and_completes_job(tmp_path) -> None:
         assert job.progress == 100
         assert job.lease_owner is None
     engine.dispose()
+
+
+def test_worker_cancels_running_handler_before_it_returns(tmp_path) -> None:
+    engine, factory = build_factory(tmp_path)
+    job_id = enqueue(factory, "cancel-running")
+    started = asyncio.Event()
+    handler_cancelled = asyncio.Event()
+
+    async def handler(_lease):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            handler_cancelled.set()
+
+    worker = JobWorker(
+        factory,
+        {"publish_submission": handler},
+        worker_id="worker",
+        lease_seconds=30,
+        heartbeat_seconds=1,
+    )
+
+    async def exercise() -> str:
+        task = asyncio.create_task(worker.run_once())
+        await asyncio.wait_for(started.wait(), timeout=2)
+        with factory() as session:
+            requested = JobQueueService(session).request_cancel(job_id)
+            assert requested.status == "running"
+        return await asyncio.wait_for(task, timeout=2)
+
+    assert asyncio.run(exercise()) == "cancelled"
+    assert handler_cancelled.is_set()
+    with factory() as session:
+        job = session.get(ProcessingJob, job_id)
+        assert job.status == "cancelled"
+        assert job.last_error_code == "CANCELLED"
+        assert job.lease_owner is None
+    engine.dispose()
+
+
+def test_worker_configuration_requires_heartbeat_margin() -> None:
+    with pytest.raises(ValidationError, match="租约时长的一半"):
+        Settings(
+            _env_file=None,
+            job_worker_lease_seconds=30,
+            job_worker_heartbeat_seconds=20,
+        )
+    with pytest.raises(ValueError, match="half of lease_seconds"):
+        JobWorker(
+            None,
+            {},
+            worker_id="invalid",
+            lease_seconds=30,
+            heartbeat_seconds=20,
+        )

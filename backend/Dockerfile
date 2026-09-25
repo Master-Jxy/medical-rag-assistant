@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:22.04@sha256:3b06811b2afd352be909dd088a004166d665dc76d38b13eada33522a9d915c6f
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -16,8 +16,7 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirrors.cloud.aliyuncs.co
     groupadd --system app && useradd --system --gid app --home /app app
 
 COPY backend/requirements.txt ./requirements.txt
-RUN python3 -m pip install --upgrade pip setuptools wheel && \
-    python3 -m pip install --timeout 120 -r requirements.txt
+RUN python3 -m pip install --timeout 120 -r requirements.txt
 
 COPY backend/alembic.ini ./alembic.ini
 COPY backend/alembic ./alembic

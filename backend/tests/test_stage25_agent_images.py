@@ -225,6 +225,46 @@ def test_agent_image_overview_flows_into_knowledge_tool_and_history(tmp_path) ->
         usage = list(session.scalars(select(ModelUsageRecord)))
         assert any(item.surface == "vision_agent" and item.total_tokens == 168 for item in usage)
         assert all(item.usage_group_id == messages[1].id for item in usage)
+
+        original_run = AgentRepository(session).list_runs(user.id)[0]
+        original_run.status = "failed"
+        session.commit()
+        observation_count = len(list(session.scalars(select(VisionObservationRecord))))
+        stopped_retry = service.retry_message(
+            user_id=user.id,
+            message_id=messages[0].id,
+            client_request_id="agent-image-stop-retry",
+            request_id="request-image-stop-retry",
+        )
+        created = next(stopped_retry)
+        assert created["event"] == "message_created"
+        cancellation.request_stop(user.id, created["data"]["run_id"])
+        stopped_events = list(stopped_retry)
+        assert stopped_events[-1]["event"] == "message_completed"
+        assert stopped_events[-1]["data"]["status"] == "stopped"
+        assert len(list(session.scalars(select(VisionObservationRecord)))) == observation_count
+
+        retry_messages = AgentMessageService(session).list(
+            user.id, thread.id, offset=0, limit=20
+        )
+        stopped_user_message = retry_messages[2]
+        assert stopped_user_message.attachments[0]["media_asset_id"] == asset.id
+        assert len(list(session.scalars(select(MessageAttachment)))) == 1
+
+        completed_retry_events = list(service.retry_message(
+            user_id=user.id,
+            message_id=stopped_user_message.id,
+            client_request_id="agent-image-complete-retry",
+            request_id="request-image-complete-retry",
+        ))
+        assert completed_retry_events[-1]["event"] == "message_completed"
+        assert completed_retry_events[-1]["data"]["status"] == "completed"
+        final_messages = AgentMessageService(session).list(
+            user.id, thread.id, offset=0, limit=20
+        )
+        assert final_messages[4].attachments[0]["media_asset_id"] == asset.id
+        assert len(list(session.scalars(select(MessageAttachment)))) == 1
+
         stored_path = PrivateMediaStorage(settings).resolve(asset.storage_key)
         assert stored_path.exists()
         AgentThreadService(

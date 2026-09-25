@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.exceptions import ConversationNotFoundError, ConversationStoreError
 from app.models import Conversation, Message
-from app.modules.usage.models import ModelUsageRecord
+from app.modules.usage.query_service import UsageQueryService
 from app.modules.media.models import MediaAsset, MessageAttachment
 from app.modules.media.service import MediaAssetService
 from app.modules.vision.models import VisionObservationRecord
@@ -97,9 +97,6 @@ class ConversationService:
         if conversation is None:
             raise ConversationNotFoundError()
 
-        usage_rows = self.session.scalars(select(ModelUsageRecord).where(
-            ModelUsageRecord.usage_group_id.in_([m.id for m in conversation.messages])
-        )).all()
         attachment_rows = self.session.execute(
             select(MessageAttachment, MediaAsset)
             .join(MediaAsset, MediaAsset.id == MessageAttachment.media_asset_id)
@@ -129,25 +126,13 @@ class ConversationService:
                 "sequence_no": observation.sequence_no,
                 "observation": observation.observation_json or {},
             })
-        usage_by_message = {}
-        for row in usage_rows:
-            usage_by_message.setdefault(row.usage_group_id, []).append(row)
+        usage_query = UsageQueryService(self.session)
         messages = []
         for message in conversation.messages:
             payload = MessageResponse.model_validate(message).model_dump()
             payload["attachments"] = attachments_by_message.get(message.id, [])
             payload["vision_observations"] = observations_by_message.get(message.id, [])
-            rows = usage_by_message.get(message.id, [])
-            if rows:
-                if any(row.token_measurement == "unknown" for row in rows):
-                    payload["usage"] = {"measurement": "unknown"}
-                elif any(row.token_measurement == "actual" for row in rows):
-                    actual = [row for row in rows if row.token_measurement == "actual"]
-                    payload["usage"] = {"measurement": "actual", "input_tokens": sum(row.input_tokens or 0 for row in actual),
-                        "output_tokens": sum(row.output_tokens or 0 for row in actual), "total_tokens": sum(row.total_tokens or 0 for row in actual),
-                        "estimated_cost_cny": float(sum(row.estimated_cost_cny for row in actual)) if all(row.estimated_cost_cny is not None for row in actual) else None}
-                else:
-                    payload["usage"] = {"measurement": "not_applicable", "input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "estimated_cost_cny": 0}
+            payload["usage"] = usage_query.group_summary(message.id, conversation.user_id)
             messages.append(MessageResponse.model_validate(payload))
         return ConversationDetail(
             **self._to_summary(

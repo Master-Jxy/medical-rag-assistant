@@ -271,6 +271,7 @@ def test_repeated_stream_replays_completed_mysql_answer_without_second_stream(
             assert first.text.count("event: token") == 2
             assert second.text.count("event: token") == 1
             assert "流式回答" in second.text
+            assert '"replace": true' in second.text
             assert "event: sources" in second.text
             assert "event: done" in second.text
             assert rag.stream_calls == 1

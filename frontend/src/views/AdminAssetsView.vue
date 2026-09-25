@@ -103,9 +103,20 @@ function queryParams() {
 async function load() {
   loading.value = true
   try {
-    const result = await getAssets(queryParams())
-    items.value = result.items || []
-    total.value = result.total ?? items.value.length
+    const baseParams = queryParams()
+    const rows = []
+    let offset = 0
+    let expectedTotal = 0
+    while (true) {
+      const result = await getAssets({ ...baseParams, offset })
+      const page = result.items || []
+      rows.push(...page)
+      expectedTotal = Number(result.total ?? rows.length)
+      if (!page.length || page.length < baseParams.limit || rows.length >= expectedTotal) break
+      offset += page.length
+    }
+    items.value = rows
+    total.value = expectedTotal
     errorMessage.value = ''
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error)

@@ -68,6 +68,10 @@ project_name="$("${compose[@]}" config | awk '$1 == "name:" { print $2; exit }')
 [[ -n "${project_name}" ]] || fail "cannot resolve compose project"
 [[ "${CONFIRM_PROJECT}" == "${project_name}" ]] \
   || fail "--confirm-project must exactly match ${project_name}"
+backup_project="$(awk -F= '$1 == "compose_project" { print $2; exit }' "${BACKUP_DIR}/manifest.txt")"
+[[ -n "${backup_project}" ]] || fail "backup manifest has no compose project"
+[[ "${backup_project}" == "${project_name}" ]] \
+  || fail "backup belongs to compose project ${backup_project}, not ${project_name}"
 
 backend_image="$("${compose[@]}" images -q backend)"
 [[ -n "${backend_image}" ]] || fail "cannot resolve backend image"
@@ -108,7 +112,7 @@ if [[ "${SKIP_SAFETY_BACKUP}" == false ]]; then
     BACKUP_RETENTION_COUNT=3 "${SCRIPT_REPO_ROOT}/backup.sh"
 fi
 
-"${compose[@]}" stop backend web redis
+"${compose[@]}" stop backend worker web redis
 restore_volume app_data app_data.tar.gz
 restore_volume chroma_data chroma_data.tar.gz
 restore_volume redis_data redis_data.tar.gz
@@ -125,6 +129,6 @@ gzip -dc "${BACKUP_DIR}/mysql.sql.gz" \
   | "${compose[@]}" exec -T mysql sh -ec \
       'exec mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"'
 
-"${compose[@]}" up -d --wait --wait-timeout 180 redis backend web
+"${compose[@]}" up -d --wait --wait-timeout 180 redis backend worker web
 "${compose[@]}" ps
 printf 'restore_completed: project=%s backup=%s\n' "${project_name}" "${BACKUP_DIR}"

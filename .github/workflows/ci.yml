@@ -22,11 +22,24 @@ env:
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.0.46@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+        env:
+          MYSQL_ROOT_PASSWORD: migration-root
+          MYSQL_DATABASE: medical_rag_migration
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pmigration-root --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.13"
           cache: pip
@@ -35,25 +48,31 @@ jobs:
         run: python -m pip install -r backend/requirements.txt
       - name: Backend tests
         run: python -m pytest -q backend/tests
-      - name: Alembic 0029 to 0030 roundtrip
+      - name: Alembic 0032 to 0033 SQLite roundtrip
         env:
           DATABASE_URL: sqlite:///${{ runner.temp }}/stage26-ci.db
         run: |
           python -m alembic -c backend/alembic.ini upgrade head
-          python -m alembic -c backend/alembic.ini downgrade 0029_dedup_version_governance
+          python -m alembic -c backend/alembic.ini downgrade 0032_stage26_vision_ocr_routes
           python -m alembic -c backend/alembic.ini upgrade head
+      - name: Alembic 0033 dirty-data MySQL roundtrip
+        env:
+          MIGRATION_MYSQL_DATABASE_URL: mysql+pymysql://root:migration-root@127.0.0.1:3306/medical_rag_migration
+        run: >-
+          python -m pytest -q
+          backend/tests/test_migrations.py::test_stage26_job_leases_mysql_dirty_data_roundtrip
       - name: Python dependency consistency
         run: python -m pip check
 
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -66,11 +85,11 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
 
   release-baseline:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.13"
       - name: Diff and sensitive-file release preflight

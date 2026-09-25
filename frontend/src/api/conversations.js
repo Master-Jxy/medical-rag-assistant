@@ -3,8 +3,8 @@ import { consumeSseResponse } from './chat.js'
 import { getAuthorizationHeaders, notifyUnauthorized } from '../auth/token.js'
 import { createUuid } from '../utils/uuid.js'
 
-export async function listConversations(limit = 50) {
-  const response = await http.get('/conversations', { params: { limit, offset: 0 } })
+export async function listConversations(limit = 50, offset = 0) {
+  const response = await http.get('/conversations', { params: { limit, offset } })
   return response.data
 }
 

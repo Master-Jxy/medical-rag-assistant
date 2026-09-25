@@ -45,6 +45,7 @@ from app.modules.rag.adapters import RAG_SYSTEM_PROMPT
 from app.schemas.conversation import UsageSummaryResponse
 from app.modules.media.service import MediaAssetService
 from app.modules.vision.contracts import VisionObservation
+from app.modules.vision.models import VisionObservationRecord
 from app.modules.vision.router_service import VisionRouterService
 from app.modules.vision.service import VisionChatService
 
@@ -111,6 +112,7 @@ class ConversationChatService:
         top_k: int,
         client_request_id: str,
         attachment_ids: list[str] | None = None,
+        model_id: str | None = None,
     ) -> ConversationChatResponse:
         attachment_ids = attachment_ids or []
         request_id = str(uuid4())
@@ -123,6 +125,7 @@ class ConversationChatService:
             question,
             top_k,
             attachment_ids,
+            model_id,
         )
         if claim.completed_record is not None:
             return self._load_completed_response(
@@ -133,6 +136,8 @@ class ConversationChatService:
         completed = False
         answer_persisted = False
         reservation = None
+        quota_finalized = False
+        rag_service = self._rag_service_for(model_id)
         try:
             lease = self.generation_lock.acquire(user_id, conversation_id)
             history = self._load_recent_history(user_id, conversation_id, question)
@@ -165,9 +170,9 @@ class ConversationChatService:
                 )
                 raise
             try:
-                ask_with_usage = getattr(self.rag_service, "ask_with_usage", None)
+                ask_with_usage = getattr(rag_service, "ask_with_usage", None)
                 if ask_with_usage is None:
-                    answer, sources = self.rag_service.ask(
+                    answer, sources = rag_service.ask(
                         effective_question, top_k, history=history
                     )
                     model_usage = ModelUsage.unknown()
@@ -201,9 +206,11 @@ class ConversationChatService:
                 request_id,
                 user_id,
                 model_usage,
+                rag_service=rag_service,
             )
             if reservation is not None:
                 self.quota_gate.settle(reservation.id, settlement_usage)
+                quota_finalized = True
             usage_summary = self._usage_summary(assistant_message.id)
             response = ConversationChatResponse(
                 answer=answer,
@@ -213,6 +220,15 @@ class ConversationChatService:
                 user_message_id=user_message.id,
                 assistant_message_id=assistant_message.id,
                 usage=usage_summary,
+                vision_observations=[
+                    {
+                        "media_asset_id": item["media_asset_id"],
+                        "kind": "overview",
+                        "sequence_no": index,
+                        "observation": item["observation"],
+                    }
+                    for index, item in enumerate(_vision_payload, start=1)
+                ],
             )
             self.idempotency.complete(
                 claim,
@@ -224,7 +240,7 @@ class ConversationChatService:
             completed = True
             return response
         finally:
-            if reservation is not None and not answer_persisted:
+            if reservation is not None and not quota_finalized:
                 self.quota_gate.release(reservation.id)
             if not completed and not answer_persisted:
                 self.idempotency.abandon(claim)
@@ -240,6 +256,7 @@ class ConversationChatService:
         request_id: str,
         client_request_id: str,
         attachment_ids: list[str] | None = None,
+        model_id: str | None = None,
     ):
         """先同步校验归属，再返回 SSE 迭代器，越权请求因此能直接返回404。"""
         attachment_ids = attachment_ids or []
@@ -252,6 +269,7 @@ class ConversationChatService:
             question,
             top_k,
             attachment_ids,
+            model_id,
         )
         if claim.completed_record is not None:
             response = self._load_completed_response(
@@ -266,6 +284,7 @@ class ConversationChatService:
         assistant_message = None
         vision_payload: list[dict] = []
         effective_question = question
+        rag_service = self._rag_service_for(model_id)
         try:
             lease = self.generation_lock.acquire(user_id, conversation_id)
             history = self._load_recent_history(user_id, conversation_id, question)
@@ -313,7 +332,9 @@ class ConversationChatService:
                     "event": "vision_observations",
                     "data": {"label": "图片识别结果", "observations": vision_payload},
                 }
-            rag_iterator = self._async_rag_stream(effective_question, top_k, history)
+            rag_iterator = self._async_rag_stream(
+                rag_service, effective_question, top_k, history
+            )
             try:
                 while True:
                     next_item = asyncio.create_task(anext(rag_iterator))
@@ -363,6 +384,7 @@ class ConversationChatService:
                         user_id,
                         model_usage,
                         status="cancelled",
+                        rag_service=rag_service,
                     )
                     if reservation is not None:
                         self.quota_gate.settle(reservation.id, settlement_usage)
@@ -395,6 +417,7 @@ class ConversationChatService:
                     user_id,
                     model_usage,
                     status="cancelled",
+                    rag_service=rag_service,
                 )
                 if reservation is not None:
                     self.quota_gate.settle(reservation.id, settlement_usage)
@@ -416,6 +439,7 @@ class ConversationChatService:
                     user_id,
                     model_usage,
                     status="failed",
+                    rag_service=rag_service,
                 )
                 if reservation is not None:
                     self.quota_gate.settle(reservation.id, settlement_usage)
@@ -436,6 +460,7 @@ class ConversationChatService:
                     request_id,
                     user_id,
                     model_usage,
+                    rag_service=rag_service,
                     status="failed",
                 )
                 if reservation is not None:
@@ -501,9 +526,11 @@ class ConversationChatService:
         user_id: str,
         usage: ModelUsage,
         status: str = "completed",
+        rag_service=None,
     ) -> ModelUsage:
+        active_rag_service = rag_service or self.rag_service
         usages = [usage]
-        drain = getattr(self.rag_service, "drain_auxiliary_model_usages", None)
+        drain = getattr(active_rag_service, "drain_auxiliary_model_usages", None)
         auxiliary = drain() if callable(drain) else []
         for index, item in enumerate(auxiliary, start=1):
             auxiliary_usage = item.get("usage")
@@ -541,7 +568,7 @@ class ConversationChatService:
                 user_id=user_id,
                 surface="rag",
                 operation="answer",
-                model_name=getattr(self.rag_service, "model_name", "unknown"),
+                model_name=getattr(active_rag_service, "model_name", "unknown"),
                 usage=usage,
                 usage_group_id=assistant_message_id,
                 status=status,
@@ -575,18 +602,23 @@ class ConversationChatService:
 
     async def _async_rag_stream(
         self,
+        rag_service,
         question: str,
         top_k: int,
         history: list[tuple[str, str]],
     ) -> AsyncIterator[dict]:
         """生产环境走原生异步流；同步测试替身保持兼容。"""
-        async_stream = getattr(self.rag_service, "astream_ask", None)
+        async_stream = getattr(rag_service, "astream_ask", None)
         if async_stream is not None:
             async for item in async_stream(question, top_k, history=history):
                 yield item
             return
-        for item in self.rag_service.stream_ask(question, top_k, history=history):
+        for item in rag_service.stream_ask(question, top_k, history=history):
             yield item
+
+    def _rag_service_for(self, model_id: str | None):
+        selector = getattr(self.rag_service, "for_model", None)
+        return selector(model_id) if callable(selector) else self.rag_service
 
     def _load_completed_response(
         self,
@@ -626,9 +658,18 @@ class ConversationChatService:
                 file_name=source.file_name,
                 page=source.page,
                 content=source.content,
+                document_id=source.document_id,
+                chunk_id=source.chunk_id,
             )
             for source in assistant_message.sources
         ]
+        observations = list(self.session.scalars(
+            select(VisionObservationRecord).where(
+                VisionObservationRecord.assistant_message_id == assistant_message.id,
+                VisionObservationRecord.status == "completed",
+                VisionObservationRecord.kind.in_(("overview", "focused")),
+            ).order_by(VisionObservationRecord.sequence_no)
+        ))
         return ConversationChatResponse(
             answer=assistant_message.content,
             sources=sources,
@@ -637,12 +678,34 @@ class ConversationChatService:
             user_message_id=user_message.id,
             assistant_message_id=assistant_message.id,
             usage=self._usage_summary(assistant_message.id),
+            vision_observations=[
+                {
+                    "media_asset_id": item.media_asset_id,
+                    "kind": item.kind,
+                    "sequence_no": item.sequence_no,
+                    "observation": item.observation_json or {},
+                }
+                for item in observations
+            ],
         )
 
     @staticmethod
     async def _replay_completed_stream(response: ConversationChatResponse):
         """重复 SSE 请求用 MySQL 结果产生一次可解析的稳定回放。"""
-        yield {"event": "token", "data": {"content": response.answer}}
+        if response.vision_observations:
+            yield {
+                "event": "vision_observations",
+                "data": {
+                    "label": "图片识别结果",
+                    "observations": [
+                        item.model_dump() for item in response.vision_observations
+                    ],
+                },
+            }
+        yield {
+            "event": "token",
+            "data": {"content": response.answer, "replace": True},
+        }
         if response.sources:
             yield {
                 "event": "sources",

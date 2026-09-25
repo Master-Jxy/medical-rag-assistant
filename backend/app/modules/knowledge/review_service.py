@@ -1,5 +1,6 @@
 """管理员审核与发布编排；并发状态由原子迁移裁决。"""
 
+import asyncio
 import logging
 from uuid import uuid4
 
@@ -443,7 +444,7 @@ class KnowledgeReviewService:
             )
             self.session.commit()
             self.session.refresh(record)
-        except Exception as exc:
+        except BaseException as exc:
             self.session.rollback()
             cleanup_failed = False
             if superseded_vectors_deleted and superseded_snapshot is not None:
@@ -461,11 +462,19 @@ class KnowledgeReviewService:
             record = self._get(submission_id)
             record.status = "failed"
             record.failure_reason = (
-                "PUBLISH_CLEANUP_UNCERTAIN" if cleanup_failed else type(exc).__name__
+                "PUBLISH_CLEANUP_UNCERTAIN"
+                if cleanup_failed
+                else "CANCELLED"
+                if isinstance(exc, asyncio.CancelledError)
+                else type(exc).__name__
             )
             if manage_job_lifecycle:
                 self.jobs.fail(job.id, record.failure_reason)
             self.session.commit()
+            if isinstance(exc, asyncio.CancelledError):
+                raise
+            if not isinstance(exc, Exception):
+                raise
             raise DocumentStoreError() from exc
 
         self._cleanup_isolated_after_publication(

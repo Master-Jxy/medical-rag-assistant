@@ -128,3 +128,4 @@ class ConversationChatResponse(ChatResponse):
     user_message_id: str
     assistant_message_id: str
     usage: UsageSummaryResponse | None = None
+    vision_observations: list[VisionObservationResponse] = Field(default_factory=list)

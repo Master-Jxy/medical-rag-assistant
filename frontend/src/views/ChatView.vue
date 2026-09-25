@@ -230,8 +230,18 @@ function resizeQuestionInput() {
 }
 
 async function refreshConversationList() {
-  const data = await listConversations()
-  conversations.value = data.conversations.map((item) => ({ ...item }))
+  const limit = 100
+  const items = []
+  let offset = 0
+  while (true) {
+    const data = await listConversations(limit, offset)
+    const rows = data.conversations || []
+    items.push(...rows)
+    const total = Number(data.total ?? items.length)
+    if (!rows.length || rows.length < limit || items.length >= total) break
+    offset += rows.length
+  }
+  conversations.value = items.map((item) => ({ ...item }))
 }
 
 async function loadConversation(
@@ -430,8 +440,10 @@ async function sendQuestion() {
       onOpen() {
         requestAccepted = true
       },
-      onToken(content) {
-        assistantMessage.content += content
+      onToken(content, eventData = {}) {
+        assistantMessage.content = eventData.replace
+          ? content
+          : assistantMessage.content + content
         if (activeConversationId.value === conversationId) scrollToBottom()
       },
       onSources(sources) {

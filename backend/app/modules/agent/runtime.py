@@ -19,6 +19,7 @@ from app.modules.knowledge.retrieval_eligibility import (
 from app.modules.rag.hybrid_search import create_current_knowledge_search
 from app.modules.agent.usage import AgentModelCallBudget, AgentModelUsageCollector
 from app.modules.agent.repository import AgentRepository
+from app.modules.agent.thread_models import AgentMessage
 from app.modules.agent.vision_tools import InspectImageTool, ObserveImageTool
 from app.modules.media.repository import MediaRepository
 from app.modules.vision.service import VisionChatService
@@ -40,17 +41,33 @@ def create_agent_graph_factory(
         catalog = PublishedKnowledgeCatalogService(session, settings=settings)
         usage_collector = AgentModelUsageCollector()
         call_budget = AgentModelCallBudget(settings.agent_max_model_calls)
+        run = AgentRepository(session).get_run(user_id, run_id)
+        trigger_message = session.get(AgentMessage, run.trigger_message_id)
+        selected_model_id = None
+        if trigger_message is not None:
+            raw_model_id = (trigger_message.message_metadata or {}).get("model_id")
+            if isinstance(raw_model_id, str) and raw_model_id:
+                selected_model_id = raw_model_id
         model = LangChainAgentModel(
             settings,
             usage_collector.add,
             call_budget=call_budget,
+            model_id=selected_model_id,
         )
         generator = LangChainAgentContentGenerator(model)
         registry = create_read_only_knowledge_registry(search, catalog, generator)
-        run = AgentRepository(session).get_run(user_id, run_id)
-        allowed_asset_ids = MediaRepository(session).asset_ids_for_agent_message(
+        media_repository = MediaRepository(session)
+        allowed_asset_ids = media_repository.asset_ids_for_agent_message(
             run.trigger_message_id
         )
+        if not allowed_asset_ids and trigger_message is not None:
+            allowed_asset_ids = [
+                str(value)
+                for value in (trigger_message.message_metadata or {}).get(
+                    "attachment_ids", []
+                )
+                if value and media_repository.owned(user_id, str(value)) is not None
+            ]
         if allowed_asset_ids:
             vision = VisionRouterService(VisionChatService(session, settings), settings)
             usage_group_id = run.response_message_id or run.id

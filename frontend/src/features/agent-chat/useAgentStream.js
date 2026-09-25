@@ -98,19 +98,32 @@ export function useAgentStream(onSettled, onEvent, onAccepted) {
     })
   }
 
-  function retry(threadId, messageId) {
-    return runStream(threadId, (entry, handleEvent) => retryAgentMessage(
-      messageId,
-      requestId(),
-      { onEvent: handleEvent, signal: entry.controller.signal },
-    ))
+  function retry(threadId, messageId, message = null) {
+    return runStream(threadId, (entry, handleEvent) => {
+      entry.submissionId = `retry:${messageId}`
+      entry.optimisticAttachments = message?.attachments || []
+      entry.accepted = false
+      entry.state = reduceAgentEvent(entry.state, 'optimistic_user', {
+        id: `retry-${messageId}`,
+        content: message?.content || '',
+        submissionId: entry.submissionId,
+      })
+      return retryAgentMessage(
+        messageId,
+        requestId(),
+        { onEvent: handleEvent, signal: entry.controller.signal },
+      )
+    })
   }
 
   async function stop(threadId, fallbackRunId = '') {
     const entry = registry.get(threadId)
     if (entry?.phase === 'stopping') return
     const runId = entry?.runId || fallbackRunId
-    if (!runId) return
+    if (!runId) {
+      registry.abort(threadId)
+      return { status: 'stopped', message: '请求已停止' }
+    }
     registry.patch(threadId, { phase: 'stopping' })
     if (entry) entry.state = { ...entry.state, phase: 'stopping' }
     const result = await stopAgentRun(runId)

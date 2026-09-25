@@ -7,7 +7,9 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-from app.core.model_factory import create_chat_model
+from app.core.config import Settings, get_settings
+from app.core.model_factory import create_chat_model, resolve_model_route
+from app.modules.model_gateway.contracts import ModelCapability, ModelSurface
 from app.infrastructure.async_chat_model import DashScopeAsyncChatModel
 from app.infrastructure.vector_store import VectorStoreService
 from app.modules.rag.ports import (
@@ -122,7 +124,21 @@ class CurrentChromaKnowledgeSearchAdapter:
 class CurrentQwenAnswerGeneratorAdapter:
     """保持现有 Prompt、LangChain普通流与可取消DashScope异步流。"""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        *,
+        model_id: str | None = None,
+    ) -> None:
+        current_settings = settings or get_settings()
+        route = resolve_model_route(
+            current_settings,
+            surface=ModelSurface.RAG,
+            capabilities=frozenset({ModelCapability.TEXT}),
+            model_id=model_id,
+        )
+        self.model_id = route.id
+        self.model_name = route.model_name
         self.prompt = ChatPromptTemplate.from_messages(
             [
                 ("system", RAG_SYSTEM_PROMPT),
@@ -130,10 +146,18 @@ class CurrentQwenAnswerGeneratorAdapter:
                 ("human", "{question}"),
             ]
         )
-        self.model = create_chat_model()
+        self.model = create_chat_model(
+            current_settings,
+            surface=ModelSurface.RAG,
+            model_id=route.id,
+        )
         self.raw_chain = self.prompt | self.model
         self.chain = self.raw_chain | StrOutputParser()
-        self.async_chat_model = DashScopeAsyncChatModel()
+        self.async_chat_model = DashScopeAsyncChatModel(
+            current_settings,
+            surface=ModelSurface.RAG,
+            model_id=route.id,
+        )
 
     def answer_with_usage(
         self,

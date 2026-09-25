@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { streamConversation } from '../src/api/conversations.js'
+import { streamAgentMessage } from '../src/api/agent.js'
 import { consumeSseResponse } from '../src/api/chat.js'
 import { getApiErrorMessage } from '../src/api/http.js'
 
@@ -79,5 +80,30 @@ describe('Redis 保护错误提示', () => {
     await expect(consuming).rejects.toMatchObject({ name: 'AbortError' })
     expect(reader.cancel).toHaveBeenCalledOnce()
     expect(getApiErrorMessage(await consuming.catch((error) => error))).toBe('已停止生成。')
+  })
+
+  it('Agent 本地停止后不会把自然结束的 reader 误判为 completed', async () => {
+    const controller = new AbortController()
+    let finishRead
+    const reader = {
+      read: vi.fn(() => new Promise((resolve) => { finishRead = resolve })),
+      cancel: vi.fn(async () => finishRead({ done: true })),
+    }
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    })
+
+    const streaming = streamAgentMessage(
+      'thread-1',
+      { content: '停止测试' },
+      'request-1',
+      { signal: controller.signal },
+    )
+    while (!reader.read.mock.calls.length) await Promise.resolve()
+    controller.abort()
+
+    await expect(streaming).rejects.toMatchObject({ name: 'AbortError' })
+    expect(reader.cancel).toHaveBeenCalledOnce()
   })
 })

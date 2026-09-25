@@ -8,6 +8,7 @@ HTTPS_IDENTIFIER="${HTTPS_IDENTIFIER:-}"
 CERTIFICATE_MIN_VALIDITY_SECONDS="${CERTIFICATE_MIN_VALIDITY_SECONDS:-}"
 CERTBOT_RENEW_TIMER_UNIT="${CERTBOT_RENEW_TIMER_UNIT:-}"
 BACKUP_ROOT="${BACKUP_ROOT:-/home/deploy/medical-rag-backups}"
+BACKUP_MANIFEST_PATH="${BACKUP_MANIFEST_PATH:-${BACKUP_ROOT}/latest/manifest.txt}"
 COMPOSE=(docker compose --env-file "${ENV_FILE}" -f "${REPO_ROOT}/compose.yaml" -f "${REPO_ROOT}/deploy/compose.https.yaml")
 failures=0
 
@@ -72,11 +73,16 @@ else
   failures=$((failures + 1))
 fi
 
-latest_manifest="$(find "${BACKUP_ROOT}" -mindepth 2 -maxdepth 2 -name manifest.txt -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -n1 | cut -d' ' -f2- || true)"
-if [[ -n "${latest_manifest}" ]] && find "${latest_manifest}" -mmin -1440 -print -quit | grep -q .; then
-  printf 'PASS backup_freshness\n'
+latest_manifest="${BACKUP_MANIFEST_PATH}"
+backup_dir="$(dirname "${latest_manifest}")"
+if [[ -f "${latest_manifest}" ]] \
+  && find "${latest_manifest}" -mmin -1440 -print -quit | grep -q . \
+  && grep -qx 'backup_format=medical-rag-backup-v1' "${latest_manifest}" \
+  && [[ -f "${backup_dir}/SHA256SUMS" ]] \
+  && (cd "${backup_dir}" && sha256sum -c SHA256SUMS >/dev/null 2>&1); then
+  printf 'PASS backup_freshness_and_checksums\n'
 else
-  printf 'FAIL backup_freshness\n'
+  printf 'FAIL backup_freshness_and_checksums\n'
   failures=$((failures + 1))
 fi
 

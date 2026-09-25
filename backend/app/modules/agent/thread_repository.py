@@ -16,8 +16,10 @@ ALLOWED_MESSAGE_METADATA_KEYS = {
     "artifact_ids",
     "referenced_message_ids",
     "attachment_ids",
+    "model_id",
     "error_code",
     "stop_reason",
+    "model_id",
 }
 LIST_METADATA_KEYS = {
     "source_ids",
